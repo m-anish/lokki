@@ -1,0 +1,222 @@
+{
+  "version": "1.0",
+
+  "system": {
+    "role": "coordinator",
+    "unit_id": 0,
+    "unit_name": "Pagoda",
+    "peers": [1, 2],
+    "log_level": "INFO",
+    "heartbeat_interval_s": 30,
+    "heartbeat_timeout_s": 120,
+    "pwm_update_interval_ms": 500
+  },
+
+  "wifi": {
+    "ssid": "YourNetworkName",
+    "password": "YourPassword",
+    "hostname": "lokki-pagoda"
+  },
+
+  "lora": {
+    "enabled": true,
+    "frequency_mhz": 868,
+    "air_data_rate": 2400,
+    "tx_power_dbm": 22,
+    "channel": 0
+  },
+
+  "timezone": {
+    "name": "IST",
+    "utc_offset_hours": 5.5
+  },
+
+  "hardware": {
+    "i2c_sda_pin": 20,
+    "i2c_scl_pin": 21,
+    "i2c_freq_hz": 400000,
+    "pwm_freq_hz": 1000,
+    "ldr_adc_pin": 26,
+    "status_led_pin": 5,
+    "reset_btn_pin": 12,
+    "lora_uart_id": 0,
+    "lora_tx_pin": 0,
+    "lora_rx_pin": 1,
+    "lora_m0_pin": 2,
+    "lora_m1_pin": 3,
+    "lora_aux_pin": 4
+  },
+
+  "ldr": {
+    "enabled": true,
+    "smoothing_window_s": 60,
+    "cap_rules": [
+      { "above_percent": 70, "cap_percent": 20 },
+      { "above_percent": 90, "cap_percent": 5 }
+    ]
+  },
+
+  "pir": [
+    {
+      "id": "pir1",
+      "name": "Main Entrance",
+      "gpio_pin": 6,
+      "enabled": true,
+      "vacancy_timeout_s": 300,
+      "on_motion": {
+        "action": "set_scene",
+        "scene_name": "motion_active"
+      },
+      "on_vacancy": {
+        "action": "revert_to_schedule"
+      }
+    },
+    {
+      "id": "pir2",
+      "name": "Side Entrance",
+      "gpio_pin": 7,
+      "enabled": false,
+      "vacancy_timeout_s": 180,
+      "on_motion": {
+        "action": "set_led_channels",
+        "channels": ["ch1", "ch2"],
+        "duty_percent": 80,
+        "fade_ms": 2000
+      },
+      "on_vacancy": {
+        "action": "revert_to_schedule"
+      }
+    }
+  ],
+
+  "relays": [
+    {
+      "id": "rly1",
+      "name": "Main Power",
+      "gpio_pin": 10,
+      "enabled": true,
+      "default_state": "off",
+      "time_windows": [
+        { "start": "05:00", "end": "23:00", "state": "on" }
+      ]
+    },
+    {
+      "id": "rly2",
+      "name": "Spare",
+      "gpio_pin": 11,
+      "enabled": false,
+      "default_state": "off",
+      "time_windows": []
+    }
+  ],
+
+  "led_channels": [
+    {
+      "id": "ch1",
+      "name": "Altar Lights",
+      "gpio_pin": 16,
+      "enabled": true,
+      "default_duty_percent": 0,
+      "time_windows": [
+        { "start": "05:00", "end": "07:00", "duty_percent": 60, "fade_ms": 5000 },
+        { "start": "sunset", "end": "21:30", "duty_percent": 80, "fade_ms": 10000 },
+        { "start": "21:30", "end": "22:30", "duty_percent": 20, "fade_ms": 5000 }
+      ]
+    },
+    {
+      "id": "ch2",
+      "name": "Corridor",
+      "gpio_pin": 17,
+      "enabled": true,
+      "default_duty_percent": 0,
+      "time_windows": [
+        { "start": "05:00", "end": "sunrise", "duty_percent": 50 },
+        { "start": "21:00", "end": "23:00", "duty_percent": 30 }
+      ]
+    },
+    {
+      "id": "ch3",
+      "name": "Meditation Hall",
+      "gpio_pin": 18,
+      "enabled": false,
+      "default_duty_percent": 0,
+      "time_windows": []
+    },
+    {
+      "id": "ch4",
+      "name": "Garden Path",
+      "gpio_pin": 19,
+      "enabled": false,
+      "default_duty_percent": 0,
+      "time_windows": []
+    },
+    {
+      "id": "ch5",
+      "name": "Pagoda Exterior",
+      "gpio_pin": 22,
+      "enabled": false,
+      "default_duty_percent": 0,
+      "time_windows": []
+    },
+    {
+      "id": "ch6",
+      "name": "Cell Block A",
+      "gpio_pin": 15,
+      "enabled": false,
+      "default_duty_percent": 0,
+      "time_windows": []
+    },
+    {
+      "id": "ch7",
+      "name": "Cell Block B",
+      "gpio_pin": 14,
+      "enabled": false,
+      "default_duty_percent": 0,
+      "time_windows": []
+    },
+    {
+      "id": "ch8",
+      "name": "Cell Block C",
+      "gpio_pin": 13,
+      "enabled": false,
+      "default_duty_percent": 0,
+      "time_windows": []
+    }
+  ],
+
+  "scenes": [
+    {
+      "name": "motion_active",
+      "led_channels": [
+        { "id": "ch1", "duty_percent": 100, "fade_ms": 1000 },
+        { "id": "ch2", "duty_percent": 80,  "fade_ms": 1000 }
+      ],
+      "relays": []
+    },
+    {
+      "name": "all_off",
+      "led_channels": [
+        { "id": "ch1", "duty_percent": 0 },
+        { "id": "ch2", "duty_percent": 0 },
+        { "id": "ch3", "duty_percent": 0 },
+        { "id": "ch4", "duty_percent": 0 },
+        { "id": "ch5", "duty_percent": 0 },
+        { "id": "ch6", "duty_percent": 0 },
+        { "id": "ch7", "duty_percent": 0 },
+        { "id": "ch8", "duty_percent": 0 }
+      ],
+      "relays": [
+        { "id": "rly1", "state": "off" },
+        { "id": "rly2", "state": "off" }
+      ]
+    }
+  ],
+
+  "notifications": {
+    "mqtt_enabled": false,
+    "broker": "broker.hivemq.com",
+    "port": 1883,
+    "topic_prefix": "lokki/pagoda",
+    "client_id": "lokki-pagoda"
+  }
+}
