@@ -1,298 +1,141 @@
-# PagodaLightPico
+# Lokki
 
-A MicroPython-based LED lighting controller for the Dhamma Laddha Vipassana meditation center’s pagoda and meditation cells, powered by the Raspberry Pi Pico W. This project enables precise PWM control of LED lighting, synchronized timekeeping with DS3231 RTC, and network time updates via NTP for serene and energy-efficient ambiance management.
+A campus-scale LED lighting automation system for wellness and hospitality venues — meditation centers, retreats, and resorts.
 
-## Features
+Lokki units are self-contained lighting controllers that coordinate via LoRa radio. Each unit runs its schedule autonomously. Multiple units on the same campus share state and respond to each other's events without cloud dependency.
 
-- WiFi-enabled time synchronization (NTP) on Raspberry Pi Pico W
-- DS3231 Real-Time Clock (RTC) integration for accurate local timekeeping
-- PWM-controlled LED lighting for pagoda and meditation cells
-- **NEW: Web-based configuration interface** for runtime settings updates
-- **NEW: JSON configuration system** with live validation and reload
-- **NEW (0.4.1): Streaming upload pages** for `config.json` and `sun_times.json` with chunked uploads for low RAM usage on Pico W
-- Modular codebase using MicroPython with hardware abstraction layers
-- Robust logging and debug facilities
-- Designed for low power and serene environmental control
+---
 
-## Requirements
+## What It Does
 
-### Software
-- MicroPython firmware installed on Pico W
-- WiFi connection for NTP time sync
+- Controls up to **8 independent LED channels** (PWM, 0–100%)
+- Switches **2 relay outputs** (scheduled or event-triggered)
+- Reads **4 PIR motion sensors** — motion overrides the schedule, lights up the space
+- Reads an **LDR ambient light sensor** — caps brightness automatically in daylight
+- Schedules lighting based on **time windows**, **sunrise/sunset**, or both
+- Coordinates across **4–8 units per campus** via LoRa — no cloud, no internet required
+- Exposes a **web dashboard and REST API** on the coordinator unit
+- Optionally reports to an **MQTT broker**
 
-## Installation
+---
 
-1. Clone this repository to your local machine.
-2. **Copy sample files to working files** from `firmware/micropython/config/samples/`:
-   - `cp firmware/micropython/config/samples/config.json.sample config.json`
-   - `cp firmware/micropython/config/samples/sun_times.json.sample sun_times.json`
-   Then update them with your WiFi credentials, timezone, I2C pins, and other settings.
-4. Copy all files to your Raspberry Pi Pico W.
-5. Boot the Pico W; the system will connect to WiFi, sync time, and start LED control.
+## Hardware
 
-## Configuration
+Built on a custom PCB (Rev0) with:
 
-Tip: Use the helper app (deployed via GitHub Pages) to generate validated `config.json` and `sun_times.json` files.
+| Component | Role |
+|-----------|------|
+| Raspberry Pi Pico 2 W (coordinator) | RP2350, WiFi + LoRa |
+| Raspberry Pi Pico 2 (leaf units) | RP2350, LoRa only |
+| PT4115 × 8 | Constant-current LED drivers |
+| IRLML2502 + relay × 2 | Switched AC/DC loads |
+| DS3231 | Battery-backed RTC |
+| E220-900T22D | LoRa radio (~868MHz) |
+| LM2596 module | +30V → +5V power supply |
+| WS2812 | Addressable status LED |
 
-### JSON Configuration (config.json)
-The system now uses JSON-based configuration for easy runtime updates:
+Full GPIO map and hardware details: [docs/architecture.md](docs/architecture.md)
 
-- **WiFi Settings**: Network SSID and password
-- **Timezone**: Name and UTC offset in hours
-- **Hardware**: GPIO pins for RTC I2C and LED PWM, PWM frequency
-- **System**: Log level and intervals/tunables
-- **Version**: Set `version` (e.g., `0.2.0`).
-  - The web UI enforces that the uploaded file's major.minor (e.g., `0.2`) must match the device's running config version's major.minor.
-  - If the running config has no valid semantic version (missing or not like `X.Y.Z`), uploads are rejected with a hard error until `config.json` is fixed.
-  - Both `config.json` and `sun_times.json` must include a `version` field and follow the same major.minor matching rule.
-  - `update_interval` (seconds): PWM update cadence. Default: 120
-  - `network_check_interval` (seconds): Network monitor cadence. Default: 120
-  - `server_idle_sleep_ms` (milliseconds): Web server accept-loop idle backoff. Default: 300
-  - `client_read_sleep_ms` (milliseconds): Web server client recv backoff. Default: 50
-- **Time Windows**: LED brightness schedules for different times of day
+---
 
-#### Ordering helper keys (UI-only)
-- Keys beginning with `_` are ignored by firmware logic but can be used by tools/UI.
-- You may include:
-  - A numeric `_order` inside each window object (e.g., `"day": { ..., "_order": 1 }`) to hint display order.
-  - A top-level `_order` array within `time_windows` that lists window names in order, e.g.:
-    ```json
-    "time_windows": {
-      "_order": ["day", "evening", "night"],
-      "day": { "start": "sunrise", "end": "sunset", "duty_cycle": 0 },
-      "evening": { "start": "sunset", "end": "22:00", "duty_cycle": 60 },
-      "night": { "start": "22:00", "end": "sunrise", "duty_cycle": 20 }
-    }
-    ```
-  - Ordering is for display only; the device selects a window by checking the current time against each window (keys starting with `_` are ignored).
+## Documentation
 
-### Web Interface (Async server)
-When WiFi is connected, access the web interface at:
+| Document | Contents |
+|----------|----------|
+| [docs/architecture.md](docs/architecture.md) | System overview, topology, GPIO map, failure modes |
+| [docs/config-schema.md](docs/config-schema.md) | Complete `config.json` structure with examples |
+| [docs/lora-protocol.md](docs/lora-protocol.md) | LoRa message types, packet format, chunked transfer |
+| [docs/firmware-modules.md](docs/firmware-modules.md) | Module map, interfaces, implementation phases |
+
+---
+
+## Repository Structure
+
 ```
-http://[pico-w-ip-address]/
+firmware/micropython/src/   # MicroPython firmware
+  core/                     # Config, schedule engine, priority arbiter
+  hardware/                 # PWM, relay, PIR, LDR, RTC, status LED, I2C sensors
+  comms/                    # LoRa transport/protocol, WiFi, MQTT
+  coordinator/              # Web server, fleet manager, REST API
+  shared/                   # Logger, status, sun times
+
+hardware/kicad/             # KiCad PCB project (Rev0, in progress)
+web/app/                    # Static fleet management web UI (GitHub Pages)
+shared/json/                # Shared JSON schemas
+docs/                       # Architecture and design documentation
 ```
 
-The new Microdot-powered web interface provides:
+---
 
-#### Main Dashboard (`/`)
-- 🏛️ **System status overview** with real-time information
-- ⏰ **Current time and date** display
-- 🧾 **Config version display** (shows current `config.json` version)
-- 📡 **Connection status** (WiFi, MQTT, Web Server)
-- 💡 **Active PWM pins** summary with configuration details
-- 🧭 **Navigation** to configuration and status pages
+## Quick Start
 
-#### Configuration Page (`/config`)
-- ⚙️ **View current configuration** in readable format
-- 📋 **JSON configuration display** for technical users
-- 🔄 **Future: Real-time editing** capabilities
+### 1. Flash MicroPython (RP2350 build)
+Download the Pico 2 / Pico 2 W MicroPython UF2 from [micropython.org](https://micropython.org/download/) and flash it.
 
-#### System Status (`/status`)
-- 📊 **Detailed system information** and health monitoring
-- 🔗 **Connection health** for all network services
-- ⏱️ **System uptime** and performance metrics
-
-#### JSON API Endpoints
-- `GET /api/config` - Current configuration as JSON
-- `GET /api/status` - System status as JSON  
-- `GET /api/pins` - PWM pins status as JSON
-
-#### Upload Pages (0.4.1)
-- `GET /upload-config` — Streamed HTML page to upload a new `config.json` in 1KB chunks.
-- `GET /upload-sun-times` — Streamed HTML page to upload a new `sun_times.json` in 1KB chunks.
-- Uploads use chunked endpoints to reduce RAM usage on Pico W. On success, the device applies the new file (config may require a soft reboot).
-
-## Usage
-
-### Basic Operation
-- The main script initializes WiFi and RTC, then starts controlling LEDs
-- Logs provide detailed status with timestamped entries
-- LED brightness automatically adjusts based on configured time windows
-- "Day" window is automatically adjusted to sunrise/sunset times from configurable location data
-
-### Configuration Updates
-1. **Via Web Interface** (Current):
-   - Navigate to `http://[pico-ip]/` for the main dashboard
-   - View current configuration at `http://[pico-ip]/config`
-   - Monitor system status at `http://[pico-ip]/status`
-   - Access JSON APIs for programmatic integration
-
-2. **Via JSON File**:
-   - Edit `config.json` directly on the device
-   - Changes are detected and applied on next update cycle
-   - Use `/api/config` endpoint to verify changes
-
-### Time Window Configuration
-- **Day Window**: Automatically set to sunrise/sunset (brightness usually 0%)
-- **Evening/Night Windows**: Configure custom lighting schedules
-- **Overnight Windows**: Support for schedules crossing midnight
-- **Brightness Control**: 0-100% PWM duty cycle for each window
-
-## Notifications (MQTT)
-The device can publish JSON events (window changes, errors, system events) to an MQTT broker.
-
-- Public brokers for testing: `broker.hivemq.com`, `test.mosquitto.org`
-- Managed free tier (recommended for reliability): EMQX Cloud
-- Minimal `config.json` example:
-  ```json
-  {
-    "notifications": {
-      "enabled": true,
-      "mqtt_broker": "broker.hivemq.com",
-      "mqtt_port": 1883,
-      "mqtt_topic": "PagodaLightPico/notifications",
-      "mqtt_client_id": "PagodaLightPico"
-    }
-  }
-  ```
-- Simple bridge (Pushover via Python):
-  ```python
-  import paho.mqtt.client as mqtt, requests, json
-  TOKEN="your_api_token"; USER="your_user_key"
-  def on_message(c,u,m):
-      try:
-          d=json.loads(m.payload.decode());
-          requests.post("https://api.pushover.net/1/messages.json",
-                      data={"token":TOKEN,"user":USER,
-                            "title":"🏯 PagodaLight","message":d.get("message","")})
-      except Exception as e:
-          print(e)
-  cl=mqtt.Client(); cl.on_message=on_message
-  cl.connect("broker.hivemq.com",1883,60)
-  cl.subscribe("PagodaLightPico/notifications/+")
-  cl.loop_forever()
-  ```
-
-### Testing MQTT Notifications
-
-This guide helps you quickly test the device’s MQTT notifications end-to-end.
-
-#### 1) Choose a free broker
-- Public, no signup (fastest): `broker.hivemq.com:1883`, `test.mosquitto.org:1883`
-- Managed free tier (more reliable, signup required): EMQX Cloud
-
-For a quick test, use HiveMQ Public (`broker.hivemq.com:1883`). Topics are public—use unique topic/client IDs.
-
-#### 2) Configure the device (`config.json`)
-Set the `notifications` block (keys read by `lib/mqtt_notifier.py` and `lib/config_manager.py`):
-
-```json
-{
-  "notifications": {
-    "enabled": true,
-    "mqtt_broker": "broker.hivemq.com",
-    "mqtt_port": 1883,
-    "mqtt_topic": "PagodaLightPico/notifications/your-unique-suffix",
-    "mqtt_client_id": "PagodaLightPico-your-unique-suffix",
-    "notify_on_window_change": true,
-    "notify_on_errors": true
-  }
-}
-```
-
-The notifier publishes to:
-- `.../system` (startup/shutdown)
-- `.../pin_change` (individual pin window changes)
-- `.../summary` (multi-pin summary)
-- `.../error` (errors)
-- `.../config` (config updates)
-
-#### 3) Subscribe on your computer (Linux)
-Option A: mosquitto-clients
+### 2. Configure
+Copy the sample config and edit for your deployment:
 ```bash
-sudo apt-get install -y mosquitto-clients
-mosquitto_sub -h broker.hivemq.com -p 1883 -t 'PagodaLightPico/notifications/your-unique-suffix/#' -v
+cp firmware/micropython/src/config/samples/config.json.sample config.json
 ```
 
-Option B: Python (paho-mqtt)
-```python
-import json
-import paho.mqtt.client as mqtt
+See [docs/config-schema.md](docs/config-schema.md) for all options. The web helper app at [web/app/config-builder.html](web/app/config-builder.html) can generate a valid config interactively.
 
-TOPIC = "PagodaLightPico/notifications/your-unique-suffix/#"
-
-def on_connect(client, userdata, flags, rc):
-    print("Connected rc=", rc)
-    client.subscribe(TOPIC)
-
-def on_message(client, userdata, msg):
-    try:
-        print(msg.topic, json.loads(msg.payload.decode()))
-    except Exception:
-        print(msg.topic, msg.payload.decode())
-
-client = mqtt.Client(client_id="PC-Subscriber-your-unique-suffix")
-client.on_connect = on_connect
-client.on_message = on_message
-client.connect("broker.hivemq.com", 1883, 60)
-client.loop_forever()
-```
-
-#### 4) Trigger device messages
-- On boot and successful MQTT connect, the device publishes a `system_startup` event to `.../system` (see `main.py` calling `mqtt_notifier.connect()`).
-- Window/duty changes publish to `.../pin_change` via `update_pwm_pins()`.
-
-Tips to see activity quickly:
-- Temporarily set `system.update_interval` low (e.g., `10`) in `config.json`.
-- Adjust one pin’s time windows or duty cycles around “now”. Ensure at least one pin is enabled.
-
-#### 5) Optional: sanity-check with a publish from PC
+### 3. Deploy firmware
 ```bash
-mosquitto_pub -h broker.hivemq.com -p 1883 \
-  -t 'PagodaLightPico/notifications/your-unique-suffix/test' \
-  -m '{"hello":"world"}'
+# rshell
+rshell -p /dev/ttyACM0 cp -r firmware/micropython/src/* /pyboard/
+rshell -p /dev/ttyACM0 cp config.json /pyboard/
+rshell -p /dev/ttyACM0 cp sun_times.json /pyboard/
+
+# or ampy
+ampy -p /dev/ttyACM0 put firmware/micropython/src/
+ampy -p /dev/ttyACM0 put config.json
+ampy -p /dev/ttyACM0 put sun_times.json
 ```
-You should see this in your subscriber.
 
-#### 6) Mobile viewing (optional)
-Use an MQTT app (e.g., MQTT Dash on Android), connect to `broker.hivemq.com:1883`, and subscribe to `PagodaLightPico/notifications/your-unique-suffix/#`.
+### 4. Access the web UI (coordinator only)
+```
+http://<coordinator-ip>/
+```
 
-#### Notes
-- Public brokers are plaintext; don’t publish secrets.
-- Use unique topics/client IDs to avoid cross-traffic.
-- For TLS/reliability (e.g., EMQX Cloud), you’ll need SSL settings. The bundled `umqtt.simple` supports SSL, but `MQTTNotifier.connect()` currently doesn’t pass `ssl=True`. Open an issue if you want SSL wired up in code.
+---
 
-## Troubleshooting
-- **WiFi signal**: Place device near router; avoid interference.
-- **Timeouts (ETIMEDOUT)**: Tune network settings in `config.json`:
-  Tunable fields (in `system`):
-  ```json
-  {
-    "system": {
-      "update_interval": 120,
-      "network_check_interval": 120,
-      "server_idle_sleep_ms": 300,
-      "client_read_sleep_ms": 50
-    }
-  }
-  ```
-- **MQTT**: Increase `mqtt_keepalive`/`mqtt_timeout`, prefer stable broker.
-- **Memory**: Reduce features (disable notifications), lower web response size, restart if needed.
-- **mDNS**: If discovery fails, use IP or ensure multicast is allowed on your network.
+## Network Topology
 
-## Developer Quickstart
-- Copy sample config: `cp firmware/micropython/config/samples/config.json.sample config.json`
-- Copy sample sun times: `cp firmware/micropython/config/samples/sun_times.json.sample sun_times.json`
-- Deploy firmware files to Pico W (choose one tool):
-  - rshell: `rshell -p /dev/ttyACM0 cp -r firmware/micropython/src/* /pyboard/` then `rshell -p /dev/ttyACM0 cp config.json /pyboard/ && rshell -p /dev/ttyACM0 cp sun_times.json /pyboard/`
-  - ampy: `ampy -p /dev/ttyACM0 put firmware/micropython/src/lib/ && ampy -p /dev/ttyACM0 put firmware/micropython/src/main.py && ampy -p /dev/ttyACM0 put config.json && ampy -p /dev/ttyACM0 put sun_times.json`
-- REPL/debug: `rshell -p /dev/ttyACM0 repl` or `screen /dev/ttyACM0 115200`
-- After edits: Ctrl+D in REPL for soft reset
-- Check memory in REPL: `import gc; gc.collect(); print(gc.mem_free())`
+```
+[ Internet / NTP ]
+        |
+      WiFi
+        |
+ [ COORDINATOR ]  ←→  Web UI, REST API, fleet state
+        |
+      LoRa (~868MHz)
+   ┌───┴───┐
+[LEAF 1] [LEAF 2] ...    ← run schedules autonomously
+```
 
-## Automated GitHub Pages deployment and Auto-merge
+Each leaf runs its own schedule locally. Coordinator failure does not stop leaf operation.
 
-The helper app in `web/app/` is deployed to GitHub Pages via the workflow at `.github/workflows/gh-pages.yml`.
+---
 
-- The site deploys automatically on pushes to the default branch (`main`/`master`).
-- For feature branches, open and merge a Pull Request. This will trigger automated github pages deployment.
+## Development
 
-## Contributing
+```bash
+# REPL access
+rshell -p /dev/ttyACM0 repl
+screen /dev/ttyACM0 115200
 
-Contributions, issues, and feature requests are welcome!  
-Feel free to fork the repository and submit pull requests.
+# Soft reset in REPL
+Ctrl+D
+
+# Check free memory
+import gc; gc.collect(); print(gc.mem_free())
+```
+
+Active development is on the `dev/lokki-v1` branch. See [docs/firmware-modules.md](docs/firmware-modules.md) for the phased implementation plan.
+
+---
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0 (GPLv3)**.  
-See the [LICENSE](LICENSE) file for details.
+GNU General Public License v3.0 — see [LICENSE](LICENSE).
