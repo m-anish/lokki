@@ -15,6 +15,7 @@ Lokki units are self-contained lighting controllers that coordinate via LoRa rad
 - Schedules lighting based on **time windows**, **sunrise/sunset**, or both
 - Coordinates across **4–8 units per campus** via LoRa — no cloud, no internet required
 - Exposes a **web dashboard and REST API** on the coordinator unit
+- Collects and displays basic **weather and environmental telemetry** (temperature, humidity, ambient light) via I2C sensors — visible in the web dashboard
 - Optionally reports to an **MQTT broker**
 
 ---
