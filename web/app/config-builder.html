@@ -741,6 +741,16 @@
           </div>
         </div>
         <div id="st_loc_display" style="font-size:.8em;color:var(--muted);margin-top:6px"></div>
+        <div class="field" style="margin-top:8px">
+          <label class="field-label">Sampling frequency</label>
+          <select id="st_freq">
+            <option value="monthly" selected>Monthly — 1st of each month (12 entries, recommended)</option>
+            <option value="fortnightly">Fortnightly — 1st and 15th (24 entries)</option>
+            <option value="weekly">Weekly — every Monday (~52 entries)</option>
+            <option value="daily">Daily — every day (365 entries)</option>
+          </select>
+          <div style="font-size:.78em;color:var(--muted);margin-top:3px">Firmware interpolates between sample dates — monthly is sufficient.</div>
+        </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
           <button class="btn btn-primary btn-sm" id="stGenBtn" onclick="generateSunTimes()" disabled>Generate sun_times.json</button>
           <span id="stGenStatus" style="font-size:.8em;color:var(--muted)">Set a location first</span>
@@ -2019,28 +2029,38 @@ function generateSunTimes() {
   if (_sunLat === null) return;
   if (typeof SunCalc === 'undefined') { showToast('SunCalc library not loaded', 'err'); return; }
   const offset = parseFloat(document.getElementById('tz_offset').value) || 0;
-  const year = new Date().getFullYear();
-  const pad = n => String(n).padStart(2, '0');
+  const freq   = document.getElementById('st_freq').value;
+  const year   = new Date().getFullYear();
+  const pad    = n => String(n).padStart(2, '0');
   const toLocal = t => {
     const utc = t.getTime() + t.getTimezoneOffset() * 60000;
     const d = new Date(utc + offset * 3600000);
     return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
-  const result = {};
+  const shouldInclude = (m, d) => {
+    if (freq === 'daily') return true;
+    if (freq === 'monthly') return d === 1;
+    if (freq === 'fortnightly') return d === 1 || d === 15;
+    if (freq === 'weekly') return new Date(year, m - 1, d).getDay() === 1; // Monday
+    return false;
+  };
+  const days = {};
   for (let m = 1; m <= 12; m++) {
-    const days = new Date(year, m, 0).getDate();
-    for (let d = 1; d <= days; d++) {
-      const times = SunCalc.getTimes(new Date(year, m-1, d), _sunLat, _sunLon);
-      result[`${pad(m)}-${pad(d)}`] = {
-        sunrise: toLocal(times.sunrise),
-        sunset:  toLocal(times.sunsetStart),
+    const daysInMonth = new Date(year, m, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      if (!shouldInclude(m, d)) continue;
+      const times = SunCalc.getTimes(new Date(year, m - 1, d), _sunLat, _sunLon);
+      days[`${pad(d)}-${pad(m)}`] = {
+        rise: toLocal(times.sunrise),
+        set:  toLocal(times.sunsetStart),
       };
     }
   }
-  _sunGenerated = result;
-  const count = Object.keys(result).length;
+  _sunGenerated = { location: document.getElementById('st_loc_display').textContent.replace('📍 ','').trim(),
+                    lat: _sunLat, lon: _sunLon, year, days };
+  const count = Object.keys(days).length;
   const status = document.getElementById('stGenStatus');
-  if (status) status.textContent = `✓ ${count} days generated for ${year}`;
+  if (status) status.textContent = `✓ ${count} entries generated for ${year}`;
   const dlBtn = document.getElementById('dlSunTimesBtn');
   if (dlBtn) { dlBtn.disabled = false; dlBtn.style.display = ''; }
   showToast('sun_times.json ready — click Download', 'ok');
