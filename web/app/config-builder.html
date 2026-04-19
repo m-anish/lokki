@@ -765,6 +765,7 @@
         <!-- Generate -->
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px">
           <button class="btn btn-primary btn-sm" id="stGenBtn" onclick="generateSunTimes()" disabled>Generate sun_times.json</button>
+          <button class="btn btn-success btn-sm" id="stDlBtnInline" onclick="downloadSunTimes()" style="display:none">⬇ Download sun_times.json</button>
           <span id="stGenStatus" style="font-size:.8em;color:var(--muted)">Set a location first</span>
         </div>
       </div>
@@ -2148,6 +2149,8 @@ function generateSunTimes() {
   if (status) status.textContent = `✓ ${count} entries — ${year} — ${tzObj.label}`;
   const dlBtn = document.getElementById('dlSunTimesBtn');
   if (dlBtn) { dlBtn.disabled = false; dlBtn.style.display = ''; }
+  const inlineBtn = document.getElementById('stDlBtnInline');
+  if (inlineBtn) inlineBtn.style.display = '';
   showToast('sun_times.json ready — click Download', 'ok');
 }
 
