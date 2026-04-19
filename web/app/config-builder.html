@@ -236,7 +236,6 @@
     .val-err  { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
 
     /* SUN TIMES SECTION */
-    .badge-suntimes { background: #d1fae5; color: #065f46; }
     .st-suggest { position: absolute; left: 0; right: 0; top: 100%; background: var(--card);
                    border: 1px solid var(--border); border-radius: 6px; z-index: 50;
                    box-shadow: 0 4px 12px rgba(0,0,0,.1); max-height: 200px; overflow-y: auto; }
@@ -244,7 +243,6 @@
     .st-suggest-item:hover { background: #f1f5f9; }
     .st-loc-wrap { position: relative; }
     @media (prefers-color-scheme: dark) {
-      .badge-suntimes { background: #052e16; color: #6ee7b7; }
       .st-suggest { background: #1e293b; }
       .st-suggest-item:hover { background: #1a2a3e; }
     }
@@ -715,7 +713,7 @@
       <div class="section-head" onclick="toggleSection(this)">
         <span class="section-icon">🌅</span>
         <span class="section-title">Sun Times</span>
-        <span class="section-badge badge-suntimes">Required</span>
+        <span class="section-badge badge-required">Required</span>
         <span class="chevron">›</span>
       </div>
       <div class="section-body">
@@ -1774,6 +1772,8 @@ function validate(cfg) {
     if (hasSolar)
       warns.push(`${ch.name}: has sunrise/sunset windows — overlap can't be checked automatically`);
   });
+  if (sunTimesNeeded() && _sunLat === null)
+    warns.push('Schedule uses sunrise/sunset — set a location in the Sun Times section and download sun_times.json');
   const banner = document.getElementById('valBanner');
   const btns   = [document.getElementById('dlBtn'), document.getElementById('saveDeviceBtn'),
                   document.getElementById('saveDeviceBtn2')];
