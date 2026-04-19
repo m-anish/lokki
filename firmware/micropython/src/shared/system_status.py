@@ -45,6 +45,7 @@ class SystemStatus:
         from hardware.relay_control import relay_controller
         from hardware.pir_manager import pir_manager
         from hardware.ldr_monitor import ldr_monitor
+        from hardware.i2c_sensors import i2c_sensors
         return {
             "uptime_s": self.get_uptime(),
             "uptime": self.get_uptime_string(),
@@ -58,6 +59,7 @@ class SystemStatus:
             "pir": pir_manager.get_all_states(),
             "ldr_ambient": ldr_monitor.ambient_percent,
             "ldr_cap": ldr_monitor.cap_percent,
+            "sensors": i2c_sensors.get_readings(),
             "error_count": self.error_count,
             "last_error": self.last_error,
         }

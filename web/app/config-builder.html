@@ -3,939 +3,1132 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Build config.json • PagodaLightPico</title>
+  <title>Lokki — Build config.json</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, 'Noto Sans', 'Liberation Sans', sans-serif; margin: 20px; background: #f5f5f5; }
-    .container { max-width: 920px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    h1 { color: #2c3e50; text-align: center; }
-    fieldset { border: 1px solid #e5e7eb; border-radius: 10px; margin: 16px 0; padding: 12px; background: #fafafa; }
-    fieldset.meta { border-left: 4px solid #60a5fa; }
-    fieldset.wifi { border-left: 4px solid #34d399; }
-    fieldset.tz { border-left: 4px solid #f59e0b; }
-    fieldset.hardware { border-left: 4px solid #10b981; }
-    fieldset.system { border-left: 4px solid #a78bfa; }
-    fieldset.notif { border-left: 4px solid #f87171; }
-    fieldset.pwm { border-left: 4px solid #22d3ee; }
-    label { display: block; margin: 6px 0; }
-    input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; max-width: 100%; }
-    .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; row-gap: 12px; align-items: start; }
-    @media (max-width: 640px){ .row { grid-template-columns: 1fr; } }
-    .actions { display: flex; gap: 12px; flex-wrap: wrap; }
-    button, a.button, label.button { padding: 10px 14px; border: 1px solid #999; border-radius: 8px; background: #fff; cursor: pointer; text-decoration: none; color: #222; display:inline-flex; align-items:center; gap:6px; }
-    pre { background: #0b1020; color: #d5e6ff; padding: 12px; border-radius: 8px; overflow: auto; max-height: 420px; }
-    .tip { font-size: 12px; color: #666; }
-    legend { font-weight: 600; color: #374151; }
-    .emoji { font-size: 1.1em; margin-right: 6px; }
-    /* collapsible */
-    fieldset.collapsed > :not(legend) { display: none; }
-    .legend-row { display:flex; align-items:center; gap:8px; }
-    .collapse-toggle { border:none; background:none; cursor:pointer; font-size:14px; }
-    /* PWM visuals */
-    .pin-card { background:#f8fafc; }
-    .gpio-head { font-size:12px; color:#374151; margin:2px 0 6px; display:flex; align-items:center; gap:6px; }
-    .window-block { background:#e8f2ff; border-left:6px solid #3b82f6; border:1px solid #dbeafe; }
-    .window-head { font-size: 12px; color: #374151; margin-bottom: 6px; display:flex; align-items:center; gap:6px; }
-    .sub-toggle { border:none; background:none; cursor:pointer; font-size:12px; padding:0 4px; }
-    .window-block.collapsed > .window-body { display:none; }
-    .pin-card .gpio-body.collapsed { display:none; }
-    /* validation */
-    .validation { margin-top:6px; font-size:12px; }
-    .validation.ok { color:#065f46; }
-    .validation.err { color:#b91c1c; }
-    /* password reveal */
-    .password-wrapper { position: relative; }
-    .reveal-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; font-size: 14px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+           margin: 0; background: #f0f2f5; color: #1a1a1a; }
+    .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+    h1 { font-size: 1.5em; margin: 0 0 4px; color: #1a1a1a; }
+    .subtitle { color: #666; font-size: .9em; margin-bottom: 20px; }
+    fieldset { border: none; border-radius: 10px; margin: 14px 0; padding: 16px 18px;
+               background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+    fieldset.sys   { border-left: 4px solid #6366f1; }
+    fieldset.wifi  { border-left: 4px solid #22c55e; }
+    fieldset.lora  { border-left: 4px solid #0ea5e9; }
+    fieldset.tz    { border-left: 4px solid #f59e0b; }
+    fieldset.hw    { border-left: 4px solid #10b981; }
+    fieldset.ldr   { border-left: 4px solid #eab308; }
+    fieldset.pir   { border-left: 4px solid #f97316; }
+    fieldset.relay { border-left: 4px solid #8b5cf6; }
+    fieldset.led   { border-left: 4px solid #06b6d4; }
+    fieldset.scene { border-left: 4px solid #ec4899; }
+    fieldset.notif { border-left: 4px solid #ef4444; }
+    legend { font-weight: 700; font-size: 1em; color: #374151; padding: 0; margin-bottom: 10px; }
+    label { display: block; font-size: .85em; color: #555; margin-bottom: 10px; }
+    label span.lbl { display: block; margin-bottom: 3px; font-weight: 500; color: #374151; }
+    input[type=text], input[type=password], input[type=number], input[type=time],
+    select, textarea {
+      width: 100%; padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 6px;
+      font-size: .9em; background: #fafafa; color: #1a1a1a; }
+    input:focus, select:focus, textarea:focus { outline: 2px solid #6366f1; border-color: transparent; background: #fff; }
+    .row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    @media (max-width: 600px) { .row, .row3 { grid-template-columns: 1fr; } }
+    .card { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px;
+             padding: 12px; margin: 10px 0; }
+    .card-head { display: flex; align-items: center; gap: 8px; font-weight: 600;
+                  font-size: .9em; margin-bottom: 10px; color: #374151; }
+    .btn { padding: 7px 14px; border: 1px solid #d1d5db; border-radius: 6px;
+           background: #fff; cursor: pointer; font-size: .85em; color: #374151; }
+    .btn:hover { background: #f3f4f6; }
+    .btn-sm { padding: 4px 10px; font-size: .78em; }
+    .btn-danger { border-color: #fca5a5; color: #b91c1c; }
+    .btn-danger:hover { background: #fef2f2; }
+    .btn-primary { background: #6366f1; color: #fff; border-color: #6366f1; }
+    .btn-primary:hover { background: #4f46e5; }
+    .win-block { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px;
+                  padding: 10px; margin: 6px 0; }
+    .range-row { display: flex; align-items: center; gap: 10px; }
+    .range-row input[type=range] { flex: 1; }
+    .range-val { min-width: 36px; text-align: right; font-weight: 600; font-size: .9em; }
+    .tip { font-size: .78em; color: #888; margin: 2px 0 6px; }
+    .val-msg { font-size: .8em; margin-top: 6px; padding: 4px 8px; border-radius: 4px; }
+    .val-ok  { background: #dcfce7; color: #166534; }
+    .val-err { background: #fee2e2; color: #991b1b; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0; }
+    pre { background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 8px;
+          overflow: auto; max-height: 500px; font-size: .82em; line-height: 1.5; }
+    .pw-wrap { position: relative; }
+    .pw-wrap input { padding-right: 36px; }
+    .pw-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+                  background: none; border: none; cursor: pointer; font-size: 14px; }
+    .collapse-btn { background: none; border: none; cursor: pointer; font-size: 12px;
+                     padding: 0 4px; color: #6b7280; }
+    fieldset.collapsed > *:not(legend) { display: none; }
+    .tab-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+    .tab { padding: 4px 12px; border: 1px solid #d1d5db; border-radius: 20px;
+            font-size: .8em; cursor: pointer; background: #f9fafb; }
+    .tab.active { background: #6366f1; color: #fff; border-color: #6366f1; }
+    hr { border: none; border-top: 1px solid #e5e7eb; margin: 16px 0; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1><span class="emoji">⚙️</span>Build config.json</h1>
+<div class="container">
+  <h1>Lokki — Config Builder</h1>
+  <p class="subtitle">Generates a valid <code>config.json</code> for Lokki v1 firmware. Upload an existing config to edit it.</p>
 
-    <form id="cfgForm" oninput="render()" onchange="render()">
-      <fieldset class="meta">
-        <legend><span class="legend-row"><button type="button" class="collapse-toggle" aria-label="toggle">▼</button><span class="emoji">🧩</span>Meta</span></legend>
-        <label>Version (semver)
-          <input id="version" type="text" value="0.4.1" placeholder="0.4.1" required />
+  <form id="form" oninput="scheduleRender()" onchange="scheduleRender()">
+
+    <!-- SYSTEM -->
+    <fieldset class="sys">
+      <legend><button type="button" class="collapse-btn">▼</button> System</legend>
+      <div class="row3">
+        <label><span class="lbl">Role</span>
+          <select id="s_role">
+            <option value="coordinator">coordinator</option>
+            <option value="leaf">leaf</option>
+          </select>
         </label>
-        <label>Hostname
-          <input id="hostname" type="text" value="PagodaLightPico" />
+        <label><span class="lbl">Unit ID (0 = coordinator)</span>
+          <input id="s_unit_id" type="number" min="0" max="8" value="0" />
         </label>
-      </fieldset>
-
-      <fieldset class="wifi">
-        <legend><span class="legend-row"><button type="button" class="collapse-toggle" aria-label="toggle">▼</button><span class="emoji">📶</span>WiFi</span></legend>
-        <div class="row">
-          <label>SSID
-            <input id="ssid" type="text" placeholder="your_wifi_ssid_here" />
-          </label>
-          <label>Password
-            <span class="password-wrapper">
-              <input id="password" type="password" placeholder="your_wifi_password_here" />
-              <button id="password_toggle" type="button" class="reveal-btn" aria-label="Show password" onclick="togglePassword()">🙈</button>
-            </span>
-          </label>
-        </div>
-      </fieldset>
-
-      <fieldset class="tz">
-        <legend><span class="legend-row"><button type="button" class="collapse-toggle" aria-label="toggle">▼</button><span class="emoji">🌍</span>Timezone</span></legend>
-        <div class="row">
-          <label>Search timezone
-            <input id="tz_search" type="text" placeholder="Search (e.g., India, PST, +5:30, Tokyo)" />
-          </label>
-          <label>Select timezone
-            <select id="tz_select" size="6" style="height:auto;"></select>
-          </label>
-          <div style="display:none">
-            <label>Name
-              <input id="tz_name" type="text" value="IST" />
-            </label>
-            <label>UTC Offset (hours)
-              <input id="tz_offset" type="number" step="0.25" value="5.5" />
-            </label>
-          </div>
-        </div>
-      </fieldset>
-
-      <fieldset class="hardware">
-        <legend><span class="legend-row"><button type="button" class="collapse-toggle" aria-label="toggle">▼</button><span class="emoji">🧰</span>Hardware</span></legend>
-        <div class="row">
-          <label>RTC SDA pin
-            <select id="rtc_sda"></select>
-          </label>
-          <label>RTC SCL pin
-            <select id="rtc_scl"></select>
-          </label>
-        </div>
-        <label>PWM frequency (Hz)
-          <input id="pwm_freq" type="number" value="1000" />
+        <label><span class="lbl">Unit Name</span>
+          <input id="s_unit_name" type="text" value="Pagoda" />
         </label>
-      </fieldset>
-
-      <fieldset class="system">
-        <legend><span class="legend-row"><button type="button" class="collapse-toggle" aria-label="toggle">▼</button><span class="emoji">🛠️</span>System</span></legend>
-        <div class="row">
-          <label>Log level
-            <select id="log_level">
-              <option>DEBUG</option>
-              <option selected>INFO</option>
-              <option>WARNING</option>
-              <option>ERROR</option>
-            </select>
-          </label>
-          <label>Update interval (s)
-            <input id="update_interval" type="number" value="120" />
-          </label>
-        </div>
-        <div class="row">
-          <label>Server idle sleep (ms)
-            <input id="server_idle_sleep_ms" type="number" value="300" />
-          </label>
-          <label>Client read sleep (ms)
-            <input id="client_read_sleep_ms" type="number" value="50" />
-          </label>
-        </div>
-        <label>Network check interval (s)
-          <input id="network_check_interval" type="number" value="120" />
+      </div>
+      <label><span class="lbl">Peer Unit IDs (comma-separated, coordinator only)</span>
+        <input id="s_peers" type="text" placeholder="1, 2, 3" value="1, 2" />
+      </label>
+      <div class="row3">
+        <label><span class="lbl">Log Level</span>
+          <select id="s_log_level">
+            <option>DEBUG</option><option selected>INFO</option><option>WARN</option><option>ERROR</option>
+          </select>
         </label>
-        <div class="row">
-          <label>RAM telemetry enabled
-            <select id="ram_telemetry_enabled"><option value="true">true</option><option value="false" selected>false</option></select>
-          </label>
-          <label>RAM telemetry interval (s)
-            <input id="ram_telemetry_interval" type="number" value="300" />
-          </label>
-        </div>
-        <label>Web title
-          <input id="web_title" type="text" value="PagodaLightPico" />
+        <label><span class="lbl">Heartbeat Interval (s)</span>
+          <input id="s_hb_interval" type="number" value="30" min="5" max="300" />
         </label>
-      </fieldset>
-
-      <fieldset class="notif">
-        <legend><span class="legend-row"><button type="button" class="collapse-toggle" aria-label="toggle">▼</button><span class="emoji">🔔</span>Notifications (MQTT)</span></legend>
-        <div class="row">
-          <label>Enabled
-            <select id="notif_enabled"><option value="true">true</option><option value="false" selected>false</option></select>
-          </label>
-          <label>Broker
-            <input id="mqtt_broker" type="text" value="broker.hivemq.com" />
-          </label>
-        </div>
-        <div class="row">
-          <label>Port
-            <input id="mqtt_port" type="number" value="1883" />
-          </label>
-          <label>Topic
-            <input id="mqtt_topic" type="text" value="PagodaLightPico/notifications" />
-          </label>
-        </div>
-        <div class="row">
-          <label>Client ID
-            <input id="mqtt_client_id" type="text" value="PagodaLightPico" />
-          </label>
-          <label>Notify on window change
-            <select id="notify_window"><option>true</option><option selected>false</option></select>
-          </label>
-        </div>
-        <label>Notify on errors
-          <select id="notify_errors"><option>true</option><option selected>false</option></select>
+        <label><span class="lbl">Heartbeat Timeout (s)</span>
+          <input id="s_hb_timeout" type="number" value="120" min="30" max="600" />
         </label>
-      </fieldset>
+      </div>
+      <label><span class="lbl">PWM Update Interval (ms)</span>
+        <input id="s_pwm_interval" type="number" value="500" min="100" max="5000" />
+      </label>
+    </fieldset>
 
-      <fieldset class="pwm">
-        <legend><span class="legend-row"><button type="button" class="collapse-toggle" aria-label="toggle">▼</button><span class="emoji">🎚️</span>PWM Pins</span></legend>
-        <div class="tip">Add up to 5 pins. For each pin, add 1–5 time windows. Duty cycle is 0–100.</div>
-        <div class="actions" style="margin:6px 0 12px;">
-          <button type="button" onclick="addPin()">Add Pin</button>
-        </div>
-        <div id="pinsContainer"></div>
-      </fieldset>
-    </form>
+    <!-- WIFI -->
+    <fieldset class="wifi">
+      <legend><button type="button" class="collapse-btn">▼</button> WiFi (coordinator only)</legend>
+      <div class="row">
+        <label><span class="lbl">SSID</span>
+          <input id="w_ssid" type="text" placeholder="YourNetworkName" />
+        </label>
+        <label><span class="lbl">Password</span>
+          <span class="pw-wrap">
+            <input id="w_password" type="password" placeholder="YourPassword" />
+            <button type="button" class="pw-toggle" onclick="togglePw()">🙈</button>
+          </span>
+        </label>
+      </div>
+      <label><span class="lbl">Hostname</span>
+        <input id="w_hostname" type="text" value="lokki-pagoda" />
+      </label>
+    </fieldset>
 
-    <div id="global_validation" class="tip"></div>
+    <!-- LORA -->
+    <fieldset class="lora">
+      <legend><button type="button" class="collapse-btn">▼</button> LoRa</legend>
+      <div class="row">
+        <label><span class="lbl">Frequency (MHz)</span>
+          <input id="l_freq" type="number" step="0.1" value="868" />
+        </label>
+        <label><span class="lbl">TX Power (dBm, max 22)</span>
+          <input id="l_power" type="number" value="22" min="0" max="22" />
+        </label>
+      </div>
+      <div class="row">
+        <label><span class="lbl">Channel (0–83)</span>
+          <input id="l_channel" type="number" value="0" min="0" max="83" />
+        </label>
+        <label><span class="lbl">Air Data Rate</span>
+          <select id="l_adr">
+            <option value="300">300 bps</option>
+            <option value="1200">1200 bps</option>
+            <option value="2400" selected>2400 bps</option>
+            <option value="4800">4800 bps</option>
+            <option value="9600">9600 bps</option>
+          </select>
+        </label>
+      </div>
+    </fieldset>
 
-    <div class="actions">
-      <button id="download_btn" type="button" onclick="downloadJSON()">Download config.json</button>
-      <button id="upload_btn" type="button">Upload and prefill</button>
-      <input id="upload_config" type="file" accept="application/json,.json" style="position:absolute; width:1px; height:1px; padding:0; margin:-1px; border:0; clip:rect(0,0,0,0); overflow:hidden;" />
-      <a class="button" href="./index.html">Back to Home</a>
-    </div>
-    <div id="upload_msg" class="tip"></div>
+    <!-- TIMEZONE -->
+    <fieldset class="tz">
+      <legend><button type="button" class="collapse-btn">▼</button> Timezone</legend>
+      <div class="row">
+        <label><span class="lbl">Search</span>
+          <input id="tz_search" type="text" placeholder="India, PST, +5:30, Tokyo…" />
+        </label>
+        <label><span class="lbl">Select</span>
+          <select id="tz_select" size="5" style="height:auto;"></select>
+        </label>
+      </div>
+      <div style="display:none">
+        <input id="tz_name" type="text" value="IST" />
+        <input id="tz_offset" type="number" step="0.25" value="5.5" />
+      </div>
+    </fieldset>
 
-    <h2>Preview</h2>
-    <pre id="preview"></pre>
+    <!-- HARDWARE -->
+    <fieldset class="hw">
+      <legend><button type="button" class="collapse-btn">▼</button> Hardware (GPIO Pins)</legend>
+      <p class="tip">Fixed by PCB layout — only change if you know what you're doing.</p>
+      <div class="row3">
+        <label><span class="lbl">I2C SDA</span><input id="h_sda" type="number" value="20" min="0" max="28" /></label>
+        <label><span class="lbl">I2C SCL</span><input id="h_scl" type="number" value="21" min="0" max="28" /></label>
+        <label><span class="lbl">I2C Freq (Hz)</span><input id="h_i2c_freq" type="number" value="400000" /></label>
+      </div>
+      <div class="row3">
+        <label><span class="lbl">PWM Freq (Hz)</span><input id="h_pwm_freq" type="number" value="1000" /></label>
+        <label><span class="lbl">LDR ADC Pin</span><input id="h_ldr_pin" type="number" value="26" min="26" max="28" /></label>
+        <label><span class="lbl">Status LED Pin</span><input id="h_status_led" type="number" value="5" min="0" max="28" /></label>
+      </div>
+      <div class="row3">
+        <label><span class="lbl">LoRa UART ID</span><input id="h_lora_uart" type="number" value="0" min="0" max="1" /></label>
+        <label><span class="lbl">LoRa TX Pin</span><input id="h_lora_tx" type="number" value="0" min="0" max="28" /></label>
+        <label><span class="lbl">LoRa RX Pin</span><input id="h_lora_rx" type="number" value="1" min="0" max="28" /></label>
+      </div>
+      <div class="row3">
+        <label><span class="lbl">LoRa M0 Pin</span><input id="h_lora_m0" type="number" value="2" min="0" max="28" /></label>
+        <label><span class="lbl">LoRa M1 Pin</span><input id="h_lora_m1" type="number" value="3" min="0" max="28" /></label>
+        <label><span class="lbl">LoRa AUX Pin</span><input id="h_lora_aux" type="number" value="4" min="0" max="28" /></label>
+      </div>
+    </fieldset>
+
+    <!-- LDR -->
+    <fieldset class="ldr">
+      <legend><button type="button" class="collapse-btn">▼</button> LDR (Ambient Light Cap)</legend>
+      <div class="row">
+        <label><span class="lbl">LDR Enabled</span>
+          <select id="ldr_enabled"><option value="true">true</option><option value="false">false</option></select>
+        </label>
+        <label><span class="lbl">Smoothing Window (s)</span>
+          <input id="ldr_smooth" type="number" value="60" min="5" max="300" />
+        </label>
+      </div>
+      <div id="ldr_rules_container"></div>
+      <button type="button" class="btn btn-sm" onclick="addCapRule()">+ Add Cap Rule</button>
+      <p class="tip">Rules are checked highest-threshold-first. If ambient light % exceeds the threshold, LED output is capped at cap_percent.</p>
+    </fieldset>
+
+    <!-- PIR -->
+    <fieldset class="pir">
+      <legend><button type="button" class="collapse-btn">▼</button> PIR Sensors</legend>
+      <div id="pir_container"></div>
+    </fieldset>
+
+    <!-- RELAYS -->
+    <fieldset class="relay">
+      <legend><button type="button" class="collapse-btn">▼</button> Relays</legend>
+      <div id="relay_container"></div>
+    </fieldset>
+
+    <!-- LED CHANNELS -->
+    <fieldset class="led">
+      <legend><button type="button" class="collapse-btn">▼</button> LED Channels (8 max)</legend>
+      <div id="led_container"></div>
+    </fieldset>
+
+    <!-- SCENES -->
+    <fieldset class="scene">
+      <legend><button type="button" class="collapse-btn">▼</button> Scenes</legend>
+      <p class="tip">Scenes specify partial output states. Only listed outputs change when a scene is applied.</p>
+      <div id="scene_container"></div>
+      <button type="button" class="btn btn-sm" onclick="addScene()">+ Add Scene</button>
+    </fieldset>
+
+    <!-- NOTIFICATIONS -->
+    <fieldset class="notif">
+      <legend><button type="button" class="collapse-btn">▼</button> Notifications (MQTT, optional)</legend>
+      <div class="row">
+        <label><span class="lbl">MQTT Enabled</span>
+          <select id="n_enabled"><option value="false" selected>false</option><option value="true">true</option></select>
+        </label>
+        <label><span class="lbl">Broker</span>
+          <input id="n_broker" type="text" value="broker.hivemq.com" />
+        </label>
+      </div>
+      <div class="row">
+        <label><span class="lbl">Port</span><input id="n_port" type="number" value="1883" /></label>
+        <label><span class="lbl">Topic Prefix</span><input id="n_topic" type="text" value="lokki/pagoda" /></label>
+      </div>
+      <label><span class="lbl">Client ID</span><input id="n_client_id" type="text" value="lokki-pagoda" /></label>
+    </fieldset>
+
+  </form>
+
+  <div id="val_msg"></div>
+
+  <div class="actions">
+    <button type="button" class="btn btn-primary" id="dl_btn" onclick="downloadJSON()">Download config.json</button>
+    <button type="button" class="btn" id="upload_btn">Upload &amp; Prefill</button>
+    <input id="upload_input" type="file" accept=".json,application/json"
+           style="position:absolute;width:1px;height:1px;clip:rect(0,0,0,0)" />
+    <a class="btn" href="./index.html">← Home</a>
   </div>
+  <div id="upload_msg" class="tip"></div>
 
-  <script>
-    // --- PWM Pins dynamic state ---
-    const MAX_PINS = 5;
-    const MAX_WINDOWS = 5;
-    const MIN_WINDOWS = 1;
-    const pins = [];
+  <h2 style="margin-top:24px">Preview</h2>
+  <pre id="preview"></pre>
+</div>
 
-    function newPin() {
-      const usedGpios = new Set(pins.map(p => p.gpio_pin));
-      let gpio = 16;
-      for (let i=0;i<=22;i++){ if(!usedGpios.has(i)){ gpio=i; break; } }
-      return { gpio_pin: gpio, name: `Pin ${gpio}`, enabled: false, windows: [ newWindow() ] };
-    }
+<script>
+// ============================================================
+// Timezone data
+// ============================================================
+const TZ_OPTIONS = [
+  {name:'UTC',offset:0,label:'UTC (±0:00)'},
+  {name:'GMT',offset:0,label:'Greenwich Mean Time (GMT) UTC±0:00'},
+  {name:'CET',offset:1,label:'Central European Time (CET) UTC+1:00'},
+  {name:'CEST',offset:2,label:'Central European Summer (CEST) UTC+2:00'},
+  {name:'EET',offset:2,label:'Eastern European Time (EET) UTC+2:00'},
+  {name:'MSK',offset:3,label:'Moscow Time (MSK) UTC+3:00'},
+  {name:'GST',offset:4,label:'Gulf Standard Time (GST) UTC+4:00'},
+  {name:'PKT',offset:5,label:'Pakistan Standard Time (PKT) UTC+5:00'},
+  {name:'IST',offset:5.5,label:'India Standard Time (IST) UTC+5:30'},
+  {name:'NPT',offset:5.75,label:'Nepal Time (NPT) UTC+5:45'},
+  {name:'BST_BD',offset:6,label:'Bangladesh Standard (BST) UTC+6:00'},
+  {name:'MMT',offset:6.5,label:'Myanmar Time (MMT) UTC+6:30'},
+  {name:'ICT',offset:7,label:'Indochina Time (ICT) UTC+7:00'},
+  {name:'CST_CN',offset:8,label:'China Standard Time (CST) UTC+8:00'},
+  {name:'JST',offset:9,label:'Japan Standard Time (JST) UTC+9:00'},
+  {name:'KST',offset:9,label:'Korea Standard Time (KST) UTC+9:00'},
+  {name:'ACST',offset:9.5,label:'Australian Central (ACST) UTC+9:30'},
+  {name:'AEST',offset:10,label:'Australian Eastern (AEST) UTC+10:00'},
+  {name:'NZST',offset:12,label:'New Zealand Standard (NZST) UTC+12:00'},
+  {name:'EST',offset:-5,label:'Eastern Standard (EST) UTC-5:00'},
+  {name:'EDT',offset:-4,label:'Eastern Daylight (EDT) UTC-4:00'},
+  {name:'CST',offset:-6,label:'Central Standard (CST) UTC-6:00'},
+  {name:'MST',offset:-7,label:'Mountain Standard (MST) UTC-7:00'},
+  {name:'PST',offset:-8,label:'Pacific Standard (PST) UTC-8:00'},
+  {name:'PDT',offset:-7,label:'Pacific Daylight (PDT) UTC-7:00'},
+  {name:'HST',offset:-10,label:'Hawaii Standard (HST) UTC-10:00'},
+];
 
-    // Password reveal toggle
-    function togglePassword(){
-      const input = document.getElementById('password');
-      const btn = document.getElementById('password_toggle');
-      const willShow = input.type === 'password';
-      input.type = willShow ? 'text' : 'password';
-      // update icon and aria
-      btn.textContent = willShow ? '👁️' : '🙈';
-      btn.setAttribute('aria-label', willShow ? 'Hide password' : 'Show password');
-    }
+function populateTzSelect(list) {
+  const sel = document.getElementById('tz_select');
+  const items = list || TZ_OPTIONS;
+  sel.innerHTML = items.map(tz =>
+    `<option value="${tz.name}" data-offset="${tz.offset}">${tz.label}</option>`
+  ).join('');
+  if (!list) {
+    const idx = TZ_OPTIONS.findIndex(z => z.name === 'IST');
+    sel.selectedIndex = idx >= 0 ? idx : 0;
+    applyTzSelect();
+  }
+}
 
-    // Collapsible sections
-    function setupCollapsibles(){
-      document.querySelectorAll('fieldset').forEach(fs => {
-        const btn = fs.querySelector('.collapse-toggle');
-        if (!btn) return;
-        btn.addEventListener('click', () => {
-          fs.classList.toggle('collapsed');
-          btn.textContent = fs.classList.contains('collapsed') ? '▶' : '▼';
-        });
+function applyTzSelect() {
+  const sel = document.getElementById('tz_select');
+  document.getElementById('tz_name').value = sel.value;
+  document.getElementById('tz_offset').value = sel.options[sel.selectedIndex].getAttribute('data-offset');
+  scheduleRender();
+}
+
+document.getElementById('tz_select').addEventListener('change', applyTzSelect);
+document.getElementById('tz_search').addEventListener('input', () => {
+  const q = document.getElementById('tz_search').value.toLowerCase();
+  if (!q) { populateTzSelect(); return; }
+  const f = TZ_OPTIONS.filter(t => t.label.toLowerCase().includes(q) || t.name.toLowerCase().includes(q));
+  populateTzSelect(f);
+  if (f.length) applyTzSelect();
+});
+
+// ============================================================
+// Collapsibles
+// ============================================================
+document.querySelectorAll('fieldset').forEach(fs => {
+  const btn = fs.querySelector('.collapse-btn');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    fs.classList.toggle('collapsed');
+    btn.textContent = fs.classList.contains('collapsed') ? '▶' : '▼';
+  });
+});
+
+function togglePw() {
+  const inp = document.getElementById('w_password');
+  const btn = document.querySelector('.pw-toggle');
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.textContent = show ? '👁️' : '🙈';
+}
+
+// ============================================================
+// Dynamic state
+// ============================================================
+
+// PIR: 4 fixed sensors
+const PIR_DEFAULTS = [
+  {id:'pir1',name:'PIR 1',gpio_pin:6,enabled:false,vacancy_timeout_s:300,
+   on_motion:{action:'revert_to_schedule'},on_vacancy:{action:'revert_to_schedule'}},
+  {id:'pir2',name:'PIR 2',gpio_pin:7,enabled:false,vacancy_timeout_s:300,
+   on_motion:{action:'revert_to_schedule'},on_vacancy:{action:'revert_to_schedule'}},
+  {id:'pir3',name:'PIR 3',gpio_pin:8,enabled:false,vacancy_timeout_s:300,
+   on_motion:{action:'revert_to_schedule'},on_vacancy:{action:'revert_to_schedule'}},
+  {id:'pir4',name:'PIR 4',gpio_pin:9,enabled:false,vacancy_timeout_s:300,
+   on_motion:{action:'revert_to_schedule'},on_vacancy:{action:'revert_to_schedule'}},
+];
+let pirState = PIR_DEFAULTS.map(p => Object.assign({}, p,
+  {on_motion: Object.assign({}, p.on_motion),
+   on_vacancy: Object.assign({}, p.on_vacancy)}));
+
+// Relays: 2 fixed
+const RELAY_DEFAULTS = [
+  {id:'rly1',name:'Relay 1',gpio_pin:10,enabled:false,default_state:'off',time_windows:[]},
+  {id:'rly2',name:'Relay 2',gpio_pin:11,enabled:false,default_state:'off',time_windows:[]},
+];
+let relayState = RELAY_DEFAULTS.map(r => Object.assign({}, r, {time_windows:[]}));
+
+// LED channels: 8 fixed
+const LED_GPIOS = [16,17,18,19,22,15,14,13];
+const LED_NAMES = ['Ch 1','Ch 2','Ch 3','Ch 4','Ch 5','Ch 6','Ch 7','Ch 8'];
+let ledState = LED_GPIOS.map((gpio, i) => ({
+  id: `ch${i+1}`, name: LED_NAMES[i], gpio_pin: gpio,
+  enabled: false, default_duty_percent: 0, time_windows: []
+}));
+
+// LDR cap rules
+let ldrCapRules = [
+  {above_percent:70, cap_percent:20},
+  {above_percent:90, cap_percent:5},
+];
+
+// Scenes
+let scenes = [];
+
+// ============================================================
+// LDR Rules UI
+// ============================================================
+function renderLdrRules() {
+  const c = document.getElementById('ldr_rules_container');
+  c.innerHTML = '';
+  ldrCapRules.forEach((r, i) => {
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.style.padding = '10px';
+    d.style.marginBottom = '6px';
+    d.innerHTML = `
+      <div class="row" style="align-items:center">
+        <label><span class="lbl">Above % (ambient)</span>
+          <input type="number" min="0" max="100" value="${r.above_percent}" data-ldr-i="${i}" data-ldr-f="above_percent" />
+        </label>
+        <label><span class="lbl">Cap %</span>
+          <input type="number" min="0" max="100" value="${r.cap_percent}" data-ldr-i="${i}" data-ldr-f="cap_percent" />
+        </label>
+        <div style="display:flex;align-items:flex-end;padding-bottom:2px">
+          <button type="button" class="btn btn-sm btn-danger" onclick="removeCapRule(${i})">Remove</button>
+        </div>
+      </div>`;
+    d.querySelectorAll('input').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const idx = +inp.getAttribute('data-ldr-i');
+        const field = inp.getAttribute('data-ldr-f');
+        ldrCapRules[idx][field] = parseInt(inp.value) || 0;
+        scheduleRender();
       });
-    }
+    });
+    c.appendChild(d);
+  });
+}
 
-    // --- Timezone selector ---
-    const TZ_OPTIONS = [
-      { name: 'UTC', offset: 0, label: 'UTC (±0:00)' },
-      { name: 'GMT', offset: 0, label: 'Greenwich Mean Time (GMT) UTC±0:00' },
-      { name: 'WET', offset: 0, label: 'Western European Time (WET) UTC±0:00' },
-      { name: 'CET', offset: 1, label: 'Central European Time (CET) UTC+1:00' },
-      { name: 'CEST', offset: 2, label: 'Central European Summer (CEST) UTC+2:00' },
-      { name: 'EET', offset: 2, label: 'Eastern European Time (EET) UTC+2:00' },
-      { name: 'EEST', offset: 3, label: 'Eastern European Summer (EEST) UTC+3:00' },
-      { name: 'MSK', offset: 3, label: 'Moscow Time (MSK) UTC+3:00' },
-      { name: 'GST', offset: 4, label: 'Gulf Standard Time (GST) UTC+4:00' },
-      { name: 'PKT', offset: 5, label: 'Pakistan Standard Time (PKT) UTC+5:00' },
-      { name: 'IST', offset: 5.5, label: 'India Standard Time (IST) UTC+5:30' },
-      { name: 'NPT', offset: 5.75, label: 'Nepal Time (NPT) UTC+5:45' },
-      { name: 'BST_BD', offset: 6, label: 'Bangladesh Standard (BST) UTC+6:00' },
-      { name: 'MMT', offset: 6.5, label: 'Myanmar Time (MMT) UTC+6:30' },
-      { name: 'ICT', offset: 7, label: 'Indochina Time (ICT) UTC+7:00' },
-      { name: 'CST_China', offset: 8, label: 'China Standard Time (CST) UTC+8:00' },
-      { name: 'AWST', offset: 8, label: 'Australian Western (AWST) UTC+8:00' },
-      { name: 'JST', offset: 9, label: 'Japan Standard Time (JST) UTC+9:00' },
-      { name: 'KST', offset: 9, label: 'Korea Standard Time (KST) UTC+9:00' },
-      { name: 'ACST', offset: 9.5, label: 'Australian Central (ACST) UTC+9:30' },
-      { name: 'AEST', offset: 10, label: 'Australian Eastern (AEST) UTC+10:00' },
-      { name: 'AEDT', offset: 11, label: 'Australian Eastern Daylight (AEDT) UTC+11:00' },
-      { name: 'NZST', offset: 12, label: 'New Zealand Standard (NZST) UTC+12:00' },
-      { name: 'NZDT', offset: 13, label: 'New Zealand Daylight (NZDT) UTC+13:00' },
-      { name: 'AST', offset: -4, label: 'Atlantic Standard Time (AST) UTC-4:00' },
-      { name: 'ADT', offset: -3, label: 'Atlantic Daylight Time (ADT) UTC-3:00' },
-      { name: 'BRST', offset: -2, label: 'Brazil Summer (BRST) UTC-2:00' },
-      { name: 'BRT', offset: -3, label: 'Brasília Time (BRT) UTC-3:00' },
-      { name: 'ART', offset: -3, label: 'Argentina Time (ART) UTC-3:00' },
-      { name: 'EST', offset: -5, label: 'Eastern Standard (EST) UTC-5:00' },
-      { name: 'EDT', offset: -4, label: 'Eastern Daylight (EDT) UTC-4:00' },
-      { name: 'CST', offset: -6, label: 'Central Standard (CST) UTC-6:00' },
-      { name: 'CDT', offset: -5, label: 'Central Daylight (CDT) UTC-5:00' },
-      { name: 'MST', offset: -7, label: 'Mountain Standard (MST) UTC-7:00' },
-      { name: 'MDT', offset: -6, label: 'Mountain Daylight (MDT) UTC-6:00' },
-      { name: 'PST', offset: -8, label: 'Pacific Standard (PST) UTC-8:00' },
-      { name: 'PDT', offset: -7, label: 'Pacific Daylight (PDT) UTC-7:00' },
-      { name: 'AKST', offset: -9, label: 'Alaska Standard (AKST) UTC-9:00' },
-      { name: 'AKDT', offset: -8, label: 'Alaska Daylight (AKDT) UTC-8:00' },
-      { name: 'HST', offset: -10, label: 'Hawaii Standard (HST) UTC-10:00' }
-    ];
+function addCapRule() { ldrCapRules.push({above_percent:50,cap_percent:50}); renderLdrRules(); scheduleRender(); }
+function removeCapRule(i) { ldrCapRules.splice(i,1); renderLdrRules(); scheduleRender(); }
 
-    function populateTimezoneSelect(list){
-      const sel = document.getElementById('tz_select');
-      const items = list || TZ_OPTIONS;
-      sel.innerHTML = items.map(tz => `<option value="${tz.name}" data-offset="${tz.offset}">${tz.label}</option>`).join('');
-      if (!list) {
-        const def = TZ_OPTIONS.findIndex(z => z.name === 'IST');
-        sel.selectedIndex = def >= 0 ? def : 0;
-        applyTimezoneFromSelect();
-      }
-    }
+// ============================================================
+// PIR UI
+// ============================================================
+const PIR_ACTIONS = ['revert_to_schedule','set_scene','set_led_channels','set_relay'];
 
-    function applyTimezoneFromSelect(){
-      const sel = document.getElementById('tz_select');
-      const name = sel.value;
-      const offset = parseFloat(sel.options[sel.selectedIndex].getAttribute('data-offset'));
-      document.getElementById('tz_name').value = name;
-      document.getElementById('tz_offset').value = String(offset);
-      render();
-    }
+function renderPIR() {
+  const c = document.getElementById('pir_container');
+  c.innerHTML = '';
+  pirState.forEach((p, i) => {
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.innerHTML = `
+      <div class="card-head">PIR ${i+1} — ${p.name}</div>
+      <div class="row">
+        <label><span class="lbl">Name</span>
+          <input type="text" value="${p.name}" data-pir="${i}" data-f="name" />
+        </label>
+        <label><span class="lbl">Enabled</span>
+          <select data-pir="${i}" data-f="enabled">
+            <option value="false" ${!p.enabled?'selected':''}>false</option>
+            <option value="true"  ${p.enabled?'selected':''}>true</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label><span class="lbl">GPIO Pin (fixed)</span>
+          <input type="number" value="${p.gpio_pin}" data-pir="${i}" data-f="gpio_pin" min="0" max="28" />
+        </label>
+        <label><span class="lbl">Vacancy Timeout (s)</span>
+          <input type="number" value="${p.vacancy_timeout_s}" data-pir="${i}" data-f="vacancy_timeout_s" />
+        </label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div>
+          <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:4px">On Motion</div>
+          ${pirActionUI(i,'on_motion',p.on_motion)}
+        </div>
+        <div>
+          <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:4px">On Vacancy</div>
+          ${pirActionUI(i,'on_vacancy',p.on_vacancy)}
+        </div>
+      </div>`;
+    d.querySelectorAll('[data-pir]').forEach(el => {
+      el.addEventListener('change', () => syncPIRField(el));
+      el.addEventListener('input',  () => syncPIRField(el));
+    });
+    c.appendChild(d);
+  });
+}
 
-    function filterTimezones(){
-      const q = (document.getElementById('tz_search').value || '').toLowerCase();
-      if (!q) { populateTimezoneSelect(); applyTimezoneFromSelect(); return; }
-      const filtered = TZ_OPTIONS.filter(tz =>
-        tz.name.toLowerCase().includes(q) ||
-        tz.label.toLowerCase().includes(q) ||
-        String(tz.offset).includes(q)
-      );
-      populateTimezoneSelect(filtered);
-      // keep first match selected if any
-      if (filtered.length) { document.getElementById('tz_select').selectedIndex = 0; applyTimezoneFromSelect(); }
-    }
+function pirActionUI(pirIdx, actionKey, actionObj) {
+  const sel = PIR_ACTIONS.map(a =>
+    `<option value="${a}" ${a===actionObj.action?'selected':''}>${a}</option>`
+  ).join('');
+  const extra = actionKey === 'on_motion' && actionObj.action === 'set_scene'
+    ? `<label><span class="lbl">Scene Name</span>
+       <input type="text" value="${actionObj.scene_name||''}"
+              data-pir="${pirIdx}" data-f="${actionKey}_scene_name" /></label>`
+    : actionKey === 'on_motion' && actionObj.action === 'set_led_channels'
+    ? `<label><span class="lbl">Channels (e.g. ch1,ch2)</span>
+       <input type="text" value="${(actionObj.channels||[]).join(',')}"
+              data-pir="${pirIdx}" data-f="${actionKey}_channels" /></label>
+       <label><span class="lbl">Duty %</span>
+       <input type="number" value="${actionObj.duty_percent||100}" min="0" max="100"
+              data-pir="${pirIdx}" data-f="${actionKey}_duty_percent" /></label>`
+    : '';
+  return `<select data-pir="${pirIdx}" data-f="${actionKey}_action">${sel}</select>${extra}`;
+}
 
-    function setupTimezoneSearch(){
-      const s = document.getElementById('tz_search');
-      s.addEventListener('input', filterTimezones);
-    }
-    function newWindow(name){ return { name: name || '', start: 'sunrise', end: 'sunset', duty_cycle: 0 }; }
+function syncPIRField(el) {
+  const i = +el.getAttribute('data-pir');
+  const f = el.getAttribute('data-f');
+  const v = el.type === 'number' ? (parseFloat(el.value)||0) : el.value;
+  if (f === 'enabled') { pirState[i].enabled = (v === 'true'); }
+  else if (f === 'name') { pirState[i].name = v; }
+  else if (f === 'gpio_pin') { pirState[i].gpio_pin = +v; }
+  else if (f === 'vacancy_timeout_s') { pirState[i].vacancy_timeout_s = +v; }
+  else if (f.startsWith('on_motion_action')) {
+    pirState[i].on_motion.action = v;
+    renderPIR(); // re-render to show/hide extra fields
+  } else if (f.startsWith('on_vacancy_action')) {
+    pirState[i].on_vacancy.action = v;
+    renderPIR();
+  } else if (f === 'on_motion_scene_name') { pirState[i].on_motion.scene_name = v; }
+  else if (f === 'on_motion_channels') { pirState[i].on_motion.channels = v.split(',').map(s=>s.trim()).filter(Boolean); }
+  else if (f === 'on_motion_duty_percent') { pirState[i].on_motion.duty_percent = +v; }
+  scheduleRender();
+}
 
-    function addPin(){ if (pins.length < MAX_PINS) { pins.push(newPin()); renderPinsUI(); render(); } }
-    function removePin(idx){ pins.splice(idx,1); renderPinsUI(); render(); }
-    function addWindowToPin(idx){ if (pins[idx].windows.length < MAX_WINDOWS){ pins[idx].windows.push(newWindow()); renderPinsUI(); render(); } }
-    function removeWindowFromPin(pidx, widx){ if (pins[pidx].windows.length > MIN_WINDOWS){ pins[pidx].windows.splice(widx,1); renderPinsUI(); render(); } }
+// ============================================================
+// Relay UI
+// ============================================================
+function renderRelays() {
+  const c = document.getElementById('relay_container');
+  c.innerHTML = '';
+  relayState.forEach((r, i) => {
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.innerHTML = `
+      <div class="card-head">Relay ${i+1}</div>
+      <div class="row">
+        <label><span class="lbl">Name</span>
+          <input type="text" value="${r.name}" data-rl="${i}" data-f="name" /></label>
+        <label><span class="lbl">Enabled</span>
+          <select data-rl="${i}" data-f="enabled">
+            <option value="false" ${!r.enabled?'selected':''}>false</option>
+            <option value="true"  ${r.enabled?'selected':''}>true</option>
+          </select></label>
+      </div>
+      <div class="row">
+        <label><span class="lbl">Default State</span>
+          <select data-rl="${i}" data-f="default_state">
+            <option ${r.default_state==='off'?'selected':''}>off</option>
+            <option ${r.default_state==='on'?'selected':''}>on</option>
+          </select></label>
+      </div>
+      <div style="margin-top:8px">
+        <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:4px">Time Windows</div>
+        <div class="rl-wins" data-rli="${i}">
+          ${r.time_windows.map((w,wi) => relayWinHTML(i,wi,w)).join('')}
+        </div>
+        <button type="button" class="btn btn-sm" onclick="addRelayWin(${i})">+ Window</button>
+      </div>`;
+    d.querySelectorAll('[data-rl]').forEach(el => {
+      el.addEventListener('change', () => syncRelayField(el));
+      el.addEventListener('input',  () => syncRelayField(el));
+    });
+    d.querySelectorAll('[data-rlw]').forEach(el => {
+      el.addEventListener('change', () => syncRelayWin(el));
+      el.addEventListener('input',  () => syncRelayWin(el));
+    });
+    c.appendChild(d);
+  });
+}
 
-    // Populate RTC SDA/SCL selects with valid GPIOs (0–22) and set defaults
-    const GOOD_GPIO = Array.from({length:23}, (_,i)=>i);
-    function populateHardwareGpioSelects(){
-      const fill = (sel, defVal) => {
-        if (!sel) return;
-        if (!sel.options.length){ sel.innerHTML = GOOD_GPIO.map(i=>`<option value="${i}">${i}</option>`).join(''); }
-        const v = String(parseInt(defVal));
-        if (v !== 'NaN'){ sel.value = v; if (sel.value !== v) sel.selectedIndex = 0; }
+function relayWinHTML(ri, wi, w) {
+  return `<div class="win-block" style="margin-bottom:6px">
+    <div class="row3" style="align-items:center">
+      <label><span class="lbl">Start</span>
+        <select data-rlw data-ri="${ri}" data-wi="${wi}" data-f="start_type">
+          <option ${w.start==='sunrise'?'selected':''}>sunrise</option>
+          <option ${w.start==='sunset'?'selected':''}>sunset</option>
+          <option value="custom" ${(w.start!=='sunrise'&&w.start!=='sunset')?'selected':''}>custom</option>
+        </select>
+        ${(w.start!=='sunrise'&&w.start!=='sunset')?`<input type="time" value="${w.start}" data-rlw data-ri="${ri}" data-wi="${wi}" data-f="start_time" />`:''}
+      </label>
+      <label><span class="lbl">End</span>
+        <select data-rlw data-ri="${ri}" data-wi="${wi}" data-f="end_type">
+          <option ${w.end==='sunrise'?'selected':''}>sunrise</option>
+          <option ${w.end==='sunset'?'selected':''}>sunset</option>
+          <option value="custom" ${(w.end!=='sunrise'&&w.end!=='sunset')?'selected':''}>custom</option>
+        </select>
+        ${(w.end!=='sunrise'&&w.end!=='sunset')?`<input type="time" value="${w.end}" data-rlw data-ri="${ri}" data-wi="${wi}" data-f="end_time" />`:''}
+      </label>
+      <label><span class="lbl">State</span>
+        <select data-rlw data-ri="${ri}" data-wi="${wi}" data-f="state">
+          <option ${w.state==='on'?'selected':''}>on</option>
+          <option ${w.state==='off'?'selected':''}>off</option>
+        </select>
+        <button type="button" class="btn btn-sm btn-danger" style="margin-top:4px"
+                onclick="removeRelayWin(${ri},${wi})">Remove</button>
+      </label>
+    </div>
+  </div>`;
+}
+
+function syncRelayField(el) {
+  const i = +el.getAttribute('data-rl');
+  const f = el.getAttribute('data-f');
+  const v = el.value;
+  if (f === 'enabled') relayState[i].enabled = (v === 'true');
+  else if (f === 'name') relayState[i].name = v;
+  else if (f === 'default_state') relayState[i].default_state = v;
+  scheduleRender();
+}
+function syncRelayWin(el) {
+  const ri = +el.getAttribute('data-ri');
+  const wi = +el.getAttribute('data-wi');
+  const f  = el.getAttribute('data-f');
+  const v  = el.value;
+  const w  = relayState[ri].time_windows[wi];
+  if (f === 'start_type') { if (v !== 'custom') w.start = v; else w.start = '06:00'; renderRelays(); }
+  else if (f === 'start_time') w.start = v;
+  else if (f === 'end_type')   { if (v !== 'custom') w.end = v; else w.end = '22:00'; renderRelays(); }
+  else if (f === 'end_time')   w.end = v;
+  else if (f === 'state')      w.state = v;
+  scheduleRender();
+}
+function addRelayWin(i) { relayState[i].time_windows.push({start:'06:00',end:'22:00',state:'on'}); renderRelays(); scheduleRender(); }
+function removeRelayWin(ri,wi) { relayState[ri].time_windows.splice(wi,1); renderRelays(); scheduleRender(); }
+
+// ============================================================
+// LED Channel UI
+// ============================================================
+function renderLEDs() {
+  const c = document.getElementById('led_container');
+  c.innerHTML = '';
+  ledState.forEach((ch, i) => {
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.innerHTML = `
+      <div class="card-head">ch${i+1} — GP${ch.gpio_pin}</div>
+      <div class="row">
+        <label><span class="lbl">Name</span>
+          <input type="text" value="${ch.name}" data-led="${i}" data-f="name" /></label>
+        <label><span class="lbl">Enabled</span>
+          <select data-led="${i}" data-f="enabled">
+            <option value="false" ${!ch.enabled?'selected':''}>false</option>
+            <option value="true"  ${ch.enabled?'selected':''}>true</option>
+          </select></label>
+      </div>
+      <label><span class="lbl">Default Duty % (when no window matches)</span>
+        <div class="range-row">
+          <input type="range" min="0" max="100" value="${ch.default_duty_percent}"
+                 data-led="${i}" data-f="default_duty_percent" />
+          <span class="range-val">${ch.default_duty_percent}%</span>
+        </div>
+      </label>
+      <div style="margin-top:8px">
+        <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:4px">Time Windows</div>
+        <div class="led-wins" data-li="${i}">
+          ${ch.time_windows.map((w,wi) => ledWinHTML(i,wi,w)).join('')}
+        </div>
+        <button type="button" class="btn btn-sm" onclick="addLedWin(${i})">+ Window</button>
+      </div>`;
+    d.querySelectorAll('[data-led]').forEach(el => {
+      el.addEventListener('change', () => syncLedField(el));
+      el.addEventListener('input',  () => syncLedField(el));
+    });
+    d.querySelectorAll('[data-lw]').forEach(el => {
+      el.addEventListener('change', () => syncLedWin(el));
+      el.addEventListener('input',  () => syncLedWin(el));
+    });
+    c.appendChild(d);
+  });
+}
+
+function ledWinHTML(li, wi, w) {
+  const sIsCustom = (w.start !== 'sunrise' && w.start !== 'sunset');
+  const eIsCustom = (w.end   !== 'sunrise' && w.end   !== 'sunset');
+  return `<div class="win-block" style="margin-bottom:6px">
+    <div class="row" style="align-items:start">
+      <label><span class="lbl">Start</span>
+        <select data-lw data-li="${li}" data-wi="${wi}" data-f="start_type">
+          <option ${w.start==='sunrise'?'selected':''}>sunrise</option>
+          <option ${w.start==='sunset'?'selected':''}>sunset</option>
+          <option value="custom" ${sIsCustom?'selected':''}>custom</option>
+        </select>
+        ${sIsCustom?`<input type="time" value="${w.start}" data-lw data-li="${li}" data-wi="${wi}" data-f="start_time" />`:''}
+      </label>
+      <label><span class="lbl">End</span>
+        <select data-lw data-li="${li}" data-wi="${wi}" data-f="end_type">
+          <option ${w.end==='sunrise'?'selected':''}>sunrise</option>
+          <option ${w.end==='sunset'?'selected':''}>sunset</option>
+          <option value="custom" ${eIsCustom?'selected':''}>custom</option>
+        </select>
+        ${eIsCustom?`<input type="time" value="${w.end}" data-lw data-li="${li}" data-wi="${wi}" data-f="end_time" />`:''}
+      </label>
+    </div>
+    <label style="margin-top:6px"><span class="lbl">Duty %</span>
+      <div class="range-row">
+        <input type="range" min="0" max="100" value="${w.duty_percent||0}"
+               data-lw data-li="${li}" data-wi="${wi}" data-f="duty_percent" />
+        <span class="range-val">${w.duty_percent||0}%</span>
+      </div>
+    </label>
+    <label><span class="lbl">Fade (ms, 0 = instant)</span>
+      <input type="number" min="0" value="${w.fade_ms||0}"
+             data-lw data-li="${li}" data-wi="${wi}" data-f="fade_ms" />
+    </label>
+    <button type="button" class="btn btn-sm btn-danger" style="margin-top:4px"
+            onclick="removeLedWin(${li},${wi})">Remove Window</button>
+  </div>`;
+}
+
+function syncLedField(el) {
+  const i = +el.getAttribute('data-led');
+  const f = el.getAttribute('data-f');
+  const v = el.value;
+  if (f === 'name') ledState[i].name = v;
+  else if (f === 'enabled') ledState[i].enabled = (v === 'true');
+  else if (f === 'default_duty_percent') {
+    ledState[i].default_duty_percent = +v;
+    const span = el.closest('label').querySelector('.range-val');
+    if (span) span.textContent = v + '%';
+  }
+  scheduleRender();
+}
+
+function syncLedWin(el) {
+  const li = +el.getAttribute('data-li');
+  const wi = +el.getAttribute('data-wi');
+  const f  = el.getAttribute('data-f');
+  const v  = el.value;
+  const w  = ledState[li].time_windows[wi];
+  if (f === 'start_type') { if (v !== 'custom') w.start = v; else w.start = '06:00'; renderLEDs(); }
+  else if (f === 'start_time') w.start = v;
+  else if (f === 'end_type') { if (v !== 'custom') w.end = v; else w.end = '22:00'; renderLEDs(); }
+  else if (f === 'end_time') w.end = v;
+  else if (f === 'duty_percent') {
+    w.duty_percent = +v;
+    const span = el.closest('label').querySelector('.range-val');
+    if (span) span.textContent = v + '%';
+  }
+  else if (f === 'fade_ms') w.fade_ms = +v;
+  scheduleRender();
+}
+
+function addLedWin(i) {
+  ledState[i].time_windows.push({start:'sunset',end:'22:00',duty_percent:50,fade_ms:5000});
+  renderLEDs(); scheduleRender();
+}
+function removeLedWin(li, wi) { ledState[li].time_windows.splice(wi,1); renderLEDs(); scheduleRender(); }
+
+// ============================================================
+// Scene UI
+// ============================================================
+function renderScenes() {
+  const c = document.getElementById('scene_container');
+  c.innerHTML = '';
+  scenes.forEach((sc, i) => {
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.innerHTML = `
+      <div class="card-head" style="justify-content:space-between">
+        <span>Scene: ${sc.name || '(unnamed)'}</span>
+        <button type="button" class="btn btn-sm btn-danger" onclick="removeScene(${i})">Remove</button>
+      </div>
+      <label><span class="lbl">Scene Name</span>
+        <input type="text" value="${sc.name}" data-sc="${i}" data-f="name" /></label>
+      <div style="font-size:.82em;font-weight:600;margin:8px 0 4px;color:#374151">LED Channels</div>
+      <div class="tip">Only listed channels will change when scene is applied.</div>
+      ${ledState.map((ch, ci) => {
+        const entry = (sc.led_channels||[]).find(x=>x.id===ch.id);
+        const checked = !!entry;
+        const duty = entry ? entry.duty_percent : 0;
+        const fade = entry ? (entry.fade_ms||0) : 0;
+        return `<label style="display:flex;align-items:center;gap:8px;margin:4px 0">
+          <input type="checkbox" ${checked?'checked':''} data-sc="${i}" data-f="led_check" data-ci="${ci}" />
+          <span>${ch.id} — ${ch.name}</span>
+          ${checked?`<input type="number" min="0" max="100" value="${duty}" style="width:60px" data-sc="${i}" data-f="led_duty" data-ci="${ci}" />%
+          <input type="number" min="0" value="${fade}" style="width:70px" data-sc="${i}" data-f="led_fade" data-ci="${ci}" />ms`:''}
+        </label>`;
+      }).join('')}
+      <div style="font-size:.82em;font-weight:600;margin:8px 0 4px;color:#374151">Relays</div>
+      ${relayState.map((r, ri) => {
+        const entry = (sc.relays||[]).find(x=>x.id===r.id);
+        const checked = !!entry;
+        const state = entry ? entry.state : 'off';
+        return `<label style="display:flex;align-items:center;gap:8px;margin:4px 0">
+          <input type="checkbox" ${checked?'checked':''} data-sc="${i}" data-f="rl_check" data-ri="${ri}" />
+          <span>${r.id} — ${r.name}</span>
+          ${checked?`<select data-sc="${i}" data-f="rl_state" data-ri="${ri}">
+            <option ${state==='on'?'selected':''}>on</option>
+            <option ${state==='off'?'selected':''}>off</option>
+          </select>`:''}
+        </label>`;
+      }).join('')}`;
+    d.querySelectorAll('[data-sc]').forEach(el => {
+      el.addEventListener('change', () => syncScene(el));
+      el.addEventListener('input',  () => syncScene(el));
+    });
+    c.appendChild(d);
+  });
+}
+
+function syncScene(el) {
+  const i  = +el.getAttribute('data-sc');
+  const f  = el.getAttribute('data-f');
+  const sc = scenes[i];
+  if (f === 'name') { sc.name = el.value; renderScenes(); return; }
+  if (f === 'led_check') {
+    const ci = +el.getAttribute('data-ci');
+    if (el.checked) { sc.led_channels.push({id: ledState[ci].id, duty_percent:50, fade_ms:0}); }
+    else { sc.led_channels = sc.led_channels.filter(x => x.id !== ledState[ci].id); }
+    renderScenes(); return;
+  }
+  if (f === 'led_duty') {
+    const ci = +el.getAttribute('data-ci');
+    const entry = sc.led_channels.find(x => x.id === ledState[ci].id);
+    if (entry) entry.duty_percent = +el.value;
+  }
+  if (f === 'led_fade') {
+    const ci = +el.getAttribute('data-ci');
+    const entry = sc.led_channels.find(x => x.id === ledState[ci].id);
+    if (entry) entry.fade_ms = +el.value;
+  }
+  if (f === 'rl_check') {
+    const ri = +el.getAttribute('data-ri');
+    if (el.checked) { sc.relays.push({id: relayState[ri].id, state:'off'}); }
+    else { sc.relays = sc.relays.filter(x => x.id !== relayState[ri].id); }
+    renderScenes(); return;
+  }
+  if (f === 'rl_state') {
+    const ri = +el.getAttribute('data-ri');
+    const entry = sc.relays.find(x => x.id === relayState[ri].id);
+    if (entry) entry.state = el.value;
+  }
+  scheduleRender();
+}
+
+function addScene() {
+  scenes.push({name:`scene_${scenes.length+1}`, led_channels:[], relays:[]});
+  renderScenes(); scheduleRender();
+}
+function removeScene(i) { scenes.splice(i,1); renderScenes(); scheduleRender(); }
+
+// ============================================================
+// Build config JSON
+// ============================================================
+function buildConfig() {
+  const peers = (document.getElementById('s_peers').value || '')
+    .split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+
+  return {
+    version: "1.0",
+    system: {
+      role:                  document.getElementById('s_role').value,
+      unit_id:               parseInt(document.getElementById('s_unit_id').value) || 0,
+      unit_name:             document.getElementById('s_unit_name').value.trim() || 'Lokki',
+      peers,
+      log_level:             document.getElementById('s_log_level').value,
+      heartbeat_interval_s:  parseInt(document.getElementById('s_hb_interval').value) || 30,
+      heartbeat_timeout_s:   parseInt(document.getElementById('s_hb_timeout').value) || 120,
+      pwm_update_interval_ms:parseInt(document.getElementById('s_pwm_interval').value) || 500,
+    },
+    wifi: {
+      ssid:     document.getElementById('w_ssid').value,
+      password: document.getElementById('w_password').value,
+      hostname: document.getElementById('w_hostname').value.trim() || 'lokki',
+    },
+    lora: {
+      enabled:         true,
+      frequency_mhz:   parseFloat(document.getElementById('l_freq').value) || 868,
+      air_data_rate:   parseInt(document.getElementById('l_adr').value) || 2400,
+      tx_power_dbm:    parseInt(document.getElementById('l_power').value) || 22,
+      channel:         parseInt(document.getElementById('l_channel').value) || 0,
+    },
+    timezone: {
+      name:             document.getElementById('tz_name').value || 'UTC',
+      utc_offset_hours: parseFloat(document.getElementById('tz_offset').value) || 0,
+    },
+    hardware: {
+      i2c_sda_pin:   parseInt(document.getElementById('h_sda').value) || 20,
+      i2c_scl_pin:   parseInt(document.getElementById('h_scl').value) || 21,
+      i2c_freq_hz:   parseInt(document.getElementById('h_i2c_freq').value) || 400000,
+      pwm_freq_hz:   parseInt(document.getElementById('h_pwm_freq').value) || 1000,
+      ldr_adc_pin:   parseInt(document.getElementById('h_ldr_pin').value) || 26,
+      status_led_pin:parseInt(document.getElementById('h_status_led').value) || 5,
+      reset_btn_pin: 12,
+      lora_uart_id:  parseInt(document.getElementById('h_lora_uart').value) || 0,
+      lora_tx_pin:   parseInt(document.getElementById('h_lora_tx').value) || 0,
+      lora_rx_pin:   parseInt(document.getElementById('h_lora_rx').value) || 1,
+      lora_m0_pin:   parseInt(document.getElementById('h_lora_m0').value) || 2,
+      lora_m1_pin:   parseInt(document.getElementById('h_lora_m1').value) || 3,
+      lora_aux_pin:  parseInt(document.getElementById('h_lora_aux').value) || 4,
+    },
+    ldr: {
+      enabled:           document.getElementById('ldr_enabled').value === 'true',
+      smoothing_window_s:parseInt(document.getElementById('ldr_smooth').value) || 60,
+      cap_rules:         ldrCapRules.map(r => ({...r})),
+    },
+    pir: pirState.map(p => {
+      const out = {
+        id: p.id, name: p.name, gpio_pin: p.gpio_pin,
+        enabled: p.enabled, vacancy_timeout_s: p.vacancy_timeout_s,
+        on_motion:  {action: p.on_motion.action},
+        on_vacancy: {action: p.on_vacancy.action},
       };
-      fill(document.getElementById('rtc_sda'), (document.getElementById('rtc_sda').value || 20));
-      fill(document.getElementById('rtc_scl'), (document.getElementById('rtc_scl').value || 21));
-    }
-
-    // Helpers to read RTC pins and compute cross-pin validation
-    function readRTC(){
-      const sdaEl = document.getElementById('rtc_sda');
-      const sclEl = document.getElementById('rtc_scl');
-      const sda = parseInt(sdaEl && sdaEl.value || '20');
-      const scl = parseInt(sclEl && sclEl.value || '21');
-      return { sda, scl };
-    }
-
-    function computeGPIOValidation(){
-      const errs = [];
-      const { sda, scl } = readRTC();
-      // Basic validity
-      if (!GOOD_GPIO.includes(sda)) errs.push(`RTC SDA (${sda}) is not a valid GPIO`);
-      if (!GOOD_GPIO.includes(scl)) errs.push(`RTC SCL (${scl}) is not a valid GPIO`);
-
-      // Build usage map
-      const usage = new Map();
-      const addUse = (pin, role) => {
-        if (!Number.isFinite(pin)) return;
-        if (!usage.has(pin)) usage.set(pin, []);
-        usage.get(pin).push(role);
-      };
-      addUse(sda, 'RTC SDA');
-      addUse(scl, 'RTC SCL');
-      pins.forEach((p, idx) => addUse(p.gpio_pin, `PWM pin ${idx+1}`));
-
-      // Detect clashes (same GPIO used by multiple roles)
-      usage.forEach((roles, pin) => {
-        if (roles.length > 1) errs.push(`GPIO ${pin} is used by: ${roles.join(', ')}`);
-      });
-
-      return errs;
-    }
-
-    function gpioSelect(current){
-      const opts = Array.from({length:23}, (_,i)=>`<option value="${i}" ${i===current? 'selected':''}>${i}</option>`).join('');
-      return `<select data-type="gpio">${opts}</select>`;
-    }
-    function boolSelect(val){ return `<select data-type="enabled"><option value="true" ${val? 'selected':''}>true</option><option value="false" ${!val? 'selected':''}>false</option></select>`; }
-    function timeSelector(val, which){
-      const isKeyword = (val === 'sunrise' || val === 'sunset');
-      const keyword = isKeyword ? val : 'custom';
-      const time = isKeyword ? '' : (val || '18:00');
-      const disp = keyword==='custom' ? '' : 'display:none;';
-      const dis = keyword==='custom' ? '' : 'disabled';
-      return `
-        <div class="row">
-          <label style="grid-column: span 1;">${which} type
-            <select data-type="${which}-type">
-              <option value="sunrise" ${keyword==='sunrise'?'selected':''}>sunrise</option>
-              <option value="sunset" ${keyword==='sunset'?'selected':''}>sunset</option>
-              <option value="custom" ${keyword==='custom'?'selected':''}>custom</option>
-            </select>
-          </label>
-          <label data-time-label="${which}" style="grid-column: span 1; ${disp}">${which} time
-            <input type="time" value="${time}" data-type="${which}-time" ${dis} />
-          </label>
-        </div>`;
-    }
-
-    function renderPinsUI(){
-      const container = document.getElementById('pinsContainer');
-      container.innerHTML = '';
-      pins.forEach((p, idx) => {
-        const card = document.createElement('div');
-        card.className = 'pin-card';
-        card.style.border = '1px solid #e5e7eb';
-        card.style.borderRadius = '8px';
-        card.style.padding = '12px';
-        card.style.marginBottom = '12px';
-        card.innerHTML = `
-          <div class="gpio-head"><button type="button" class="sub-toggle" data-action="toggle-gpio">▼</button> GPIO Pin ${p.gpio_pin}</div>
-          <div class="gpio-body">
-            <div class="row">
-              <label>GPIO ${gpioSelect(p.gpio_pin)}</label>
-              <label>Name <input type="text" value="${p.name}" data-type="name" /></label>
-            </div>
-            <div class="row">
-              <label>Enabled ${boolSelect(p.enabled)}</label>
-              <div style="display:flex; align-items:flex-end; gap:8px;">
-                <button type="button" ${pins.length<=1?'disabled':''} data-action="remove-pin">Remove Pin</button>
-                <button type="button" ${p.windows.length>=MAX_WINDOWS?'disabled':''} data-action="add-window">Add Window</button>
-              </div>
-            </div>
-            <div class="tip">Windows (min ${MIN_WINDOWS}, max ${MAX_WINDOWS}). Note: device requires at least a 'day' window and 2–5 windows when the pin is enabled.</div>
-            <div class="windows"></div>
-            <div class="validation" data-role="validation"></div>
-          </div>
-        `;
-
-        const winWrap = card.querySelector('.windows');
-        p.windows.forEach((w, widx) => {
-          const block = document.createElement('div');
-          block.className = 'window-block';
-          block.style.border = '1px dashed #ddd';
-          block.style.borderRadius = '6px';
-          block.style.padding = '8px';
-          block.style.margin = '8px 0';
-          block.style.background = '#e8f2ff';
-          block.innerHTML = `
-            <div class="window-head"><button type="button" class="sub-toggle" data-action="toggle-window" data-widx="${widx}">▼</button> ⏱️ Window ${widx+1}</div>
-            <div class="window-body">
-            <div class="row">
-              <label>Window title
-                <input type="text" value="${w.name ?? (widx===0?'day':`w${widx+1}`)}" data-type="win-name" />
-              </label>
-            </div>
-            ${timeSelector(w.start,'start')}
-            ${timeSelector(w.end,'end')}
-            <div class="row">
-              <label>Duty cycle (0-100)
-                <input type="range" min="0" max="100" value="${w.duty_cycle}" data-type="duty" />
-                <span data-type="duty-val">${w.duty_cycle}</span>
-              </label>
-              <div style="display:flex; align-items:flex-end;">
-                <button type="button" ${p.windows.length<=MIN_WINDOWS?'disabled':''} data-action="remove-window" data-widx="${widx}">Remove Window</button>
-              </div>
-            </div>
-            </div>`;
-          // attach events for this window
-          block.addEventListener('input', (e) => {
-            const t = e.target.getAttribute('data-type');
-            if (t === 'win-name') { w.name = e.target.value; }
-            if (t === 'start-type') { w.start = e.target.value === 'custom' ? (w.start.match(/^\d{2}:\d{2}$/) ? w.start : '18:00') : e.target.value; }
-            if (t === 'start-time') { w.start = e.target.value.trim(); }
-            if (t === 'end-type') { w.end = e.target.value === 'custom' ? (w.end.match(/^\d{2}:\d{2}$/) ? w.end : '22:00') : e.target.value; }
-            if (t === 'end-time') { w.end = e.target.value.trim(); }
-            if (t === 'start-type' || t === 'end-type') {
-              // toggle visibility of time inputs for the specific which
-              const which = t.startsWith('start') ? 'start' : 'end';
-              const lbl = block.querySelector(`label[data-time-label="${which}"]`);
-              if (lbl) {
-                const isCustom = e.target.value === 'custom';
-                const input = lbl.querySelector('input');
-                if (isCustom) { lbl.style.display=''; input.removeAttribute('disabled'); }
-                else { lbl.style.display='none'; input.setAttribute('disabled',''); }
-              }
-            }
-            if (t === 'duty') { let v = parseInt(e.target.value||'0'); if (isNaN(v)) v=0; v=Math.max(0,Math.min(100,v)); w.duty_cycle = v; const span = block.querySelector('span[data-type="duty-val"]'); if (span) span.textContent = v; }
-            // Update validation for this pin without full re-render
-            const vd = computePinValidation(p);
-            const vEl = card.querySelector('[data-role="validation"]');
-            if (vEl) { vEl.textContent = vd.msg; vEl.className = `validation ${vd.ok ? 'ok' : 'err'}`; }
-            render();
-          });
-          block.addEventListener('click', (e) => {
-            if (e.target.getAttribute('data-action') === 'remove-window') { removeWindowFromPin(idx, parseInt(e.target.getAttribute('data-widx'))); }
-          });
-          winWrap.appendChild(block);
-        });
-
-        card.addEventListener('input', (e) => {
-          const t = e.target.getAttribute('data-type');
-          if (t === 'name') p.name = e.target.value;
-          if (t === 'gpio') p.gpio_pin = parseInt(e.target.value);
-          if (t === 'enabled') p.enabled = (e.target.value === 'true');
-          render();
-        });
-        card.addEventListener('click', (e) => {
-          const act = e.target.getAttribute('data-action');
-          if (act === 'remove-pin') removePin(idx);
-          if (act === 'add-window') addWindowToPin(idx);
-          if (act === 'toggle-gpio') {
-            const body = card.querySelector('.gpio-body');
-            e.target.textContent = body.classList.contains('collapsed') ? '▼' : '▶';
-            body.classList.toggle('collapsed');
-          }
-          if (act === 'toggle-window') {
-            const wTarget = e.target.closest('.window-block');
-            const nowCollapsed = !wTarget.classList.contains('collapsed');
-            e.target.textContent = nowCollapsed ? '▶' : '▼';
-            wTarget.classList.toggle('collapsed');
-          }
-        });
-
-        // Set initial validation message for this pin
-        const vd = computePinValidation(p);
-        const vEl = card.querySelector('[data-role="validation"]');
-        if (vEl) { vEl.textContent = vd.msg; vEl.className = `validation ${vd.ok ? 'ok' : 'err'}`; }
-        container.appendChild(card);
-      });
-    }
-
-    function validateTimeString(s){
-      return s === 'sunrise' || s === 'sunset' || /^\d{2}:\d{2}$/.test(s);
-    }
-
-    // Compute continuity + wrap-around validation for a pin's windows
-    function computePinValidation(p){
-      const wins = (p && p.windows) ? p.windows : [];
-      if (!wins.length) return { ok: false, msg: 'No windows configured' };
-      for (let i=0; i<wins.length-1; i++){
-        const endPrev = String(wins[i].end||'').trim();
-        const startNext = String(wins[i+1].start||'').trim();
-        if (endPrev !== startNext){
-          return { ok: false, msg: `Window ${i+1} end must equal Window ${i+2} start` };
-        }
+      if (p.on_motion.action === 'set_scene') out.on_motion.scene_name = p.on_motion.scene_name || '';
+      if (p.on_motion.action === 'set_led_channels') {
+        out.on_motion.channels    = p.on_motion.channels || [];
+        out.on_motion.duty_percent= p.on_motion.duty_percent || 100;
+        out.on_motion.fade_ms     = p.on_motion.fade_ms || 0;
       }
-      const firstStart = String(wins[0].start||'').trim();
-      const lastEnd = String(wins[wins.length-1].end||'').trim();
-      if (firstStart !== lastEnd){
-        return { ok: false, msg: `First start (${firstStart}) must equal last end (${lastEnd}) for 24h coverage` };
-      }
-      return { ok: true, msg: 'Windows cover 24h continuously' };
-    }
+      return out;
+    }),
+    relays: relayState.map(r => ({
+      id: r.id, name: r.name, gpio_pin: r.gpio_pin,
+      enabled: r.enabled, default_state: r.default_state,
+      time_windows: r.time_windows.map(w => ({...w})),
+    })),
+    led_channels: ledState.map(ch => ({
+      id: ch.id, name: ch.name, gpio_pin: ch.gpio_pin,
+      enabled: ch.enabled, default_duty_percent: ch.default_duty_percent,
+      time_windows: ch.time_windows.map(w => {
+        const out = {start: w.start, end: w.end, duty_percent: w.duty_percent || 0};
+        if (w.fade_ms) out.fade_ms = w.fade_ms;
+        return out;
+      }),
+    })),
+    scenes: scenes.map(sc => ({
+      name: sc.name,
+      led_channels: (sc.led_channels || []).map(x => ({...x})),
+      relays:       (sc.relays || []).map(x => ({...x})),
+    })),
+    notifications: {
+      mqtt_enabled: document.getElementById('n_enabled').value === 'true',
+      broker:       document.getElementById('n_broker').value || 'broker.hivemq.com',
+      port:         parseInt(document.getElementById('n_port').value) || 1883,
+      topic_prefix: document.getElementById('n_topic').value || 'lokki',
+      client_id:    document.getElementById('n_client_id').value || 'lokki',
+    },
+  };
+}
 
-    // (deprecated) earlier global validation kept for context; superseded by enhanced version below
-    function updateGlobalValidation_old(){ /* superseded by enhanced version */ }
-
-    function windowsFromObject(time_windows){
-      if (!time_windows || typeof time_windows !== 'object') return [ newWindow() ];
-      const arr = [];
-      // Determine the intended order: prefer explicit _order, else rely on object insertion order
-      let keys = [];
-      if (Array.isArray(time_windows._order) && time_windows._order.length){
-        keys = time_windows._order.filter(k => k in time_windows);
-        // append any extra non-internal keys not listed in _order, preserving insertion order
-        Object.keys(time_windows).forEach(k => {
-          if (!k.startsWith('_') && !keys.includes(k)) keys.push(k);
-        });
-      } else {
-        keys = Object.keys(time_windows).filter(k => !k.startsWith('_'));
-      }
-      keys.forEach(k => {
-        const w = time_windows[k] || {};
-        arr.push({
-          name: k,
-          start: validateTimeString(w.start) ? w.start : 'sunset',
-          end: validateTimeString(w.end) ? w.end : 'sunrise',
-          duty_cycle: Math.max(0, Math.min(100, parseInt(w.duty_cycle||0)))
-        });
-      });
-      if (arr.length === 0) arr.push(newWindow());
-      return arr.slice(0, MAX_WINDOWS);
-    }
-
-    async function loadSamplePins(){
-      try {
-        const resp = await fetch('./config.json.sample', { cache: 'no-store' });
-        if (!resp.ok) throw new Error('fetch failed');
-        const sample = await resp.json();
-        const pwm = sample && sample.pwm_pins || {};
-        const list = Object.values(pwm)
-          .filter(x => x && typeof x === 'object')
-          .map(x => ({
-            gpio_pin: parseInt(x.gpio_pin),
-            name: (x.name || `Pin ${x.gpio_pin}`),
-            enabled: !!x.enabled,
-            windows: windowsFromObject(x.time_windows || {})
-          }))
-          .filter(x => !isNaN(x.gpio_pin));
-        // Sort by gpio_pin ascending to have deterministic order
-        list.sort((a,b)=>a.gpio_pin-b.gpio_pin);
-        pins.splice(0, pins.length, ...list.slice(0, MAX_PINS));
-      } catch (e) {
-        // ignore; fallback will add a default pin
-      }
-    }
-
-    // --- existing builder ---
-    function buildConfig(){
-      const getBool = (el) => (document.getElementById(el).value === 'true');
-      const cfg = {
-        version: document.getElementById('version').value.trim() || '0.4.1',
-        wifi: {
-          ssid: document.getElementById('ssid').value,
-          password: document.getElementById('password').value
-        },
-        hostname: document.getElementById('hostname').value || 'PagodaLightPico',
-        timezone: {
-          name: document.getElementById('tz_name').value || 'IST',
-          offset: parseFloat(document.getElementById('tz_offset').value || '0')
-        },
-        hardware: {
-          rtc_i2c_sda_pin: parseInt(document.getElementById('rtc_sda').value||'20'),
-          rtc_i2c_scl_pin: parseInt(document.getElementById('rtc_scl').value||'21'),
-          pwm_frequency: parseInt(document.getElementById('pwm_freq').value||'1000')
-        },
-        system: {
-          log_level: document.getElementById('log_level').value,
-          update_interval: parseInt(document.getElementById('update_interval').value||'120'),
-          server_idle_sleep_ms: parseInt(document.getElementById('server_idle_sleep_ms').value||'300'),
-          client_read_sleep_ms: parseInt(document.getElementById('client_read_sleep_ms').value||'50'),
-          network_check_interval: parseInt(document.getElementById('network_check_interval').value||'120'),
-          ram_telemetry_enabled: getBool('ram_telemetry_enabled'),
-          ram_telemetry_interval: parseInt(document.getElementById('ram_telemetry_interval').value||'300'),
-          web_title: document.getElementById('web_title').value || 'PagodaLightPico'
-        },
-        notifications: {
-          enabled: getBool('notif_enabled'),
-          mqtt_broker: document.getElementById('mqtt_broker').value || 'broker.hivemq.com',
-          mqtt_port: parseInt(document.getElementById('mqtt_port').value||'1883'),
-          mqtt_topic: document.getElementById('mqtt_topic').value || 'PagodaLightPico/notifications',
-          mqtt_client_id: document.getElementById('mqtt_client_id').value || 'PagodaLightPico',
-          notify_on_window_change: document.getElementById('notify_window').value === 'true',
-          notify_on_errors: document.getElementById('notify_errors').value === 'true'
-        },
-        pwm_pins: {}
-      };
-
-      // Build pwm_pins from dynamic pins[] state
-      pins.forEach((p, idx) => {
-        const key = `pin_${p.gpio_pin}`;
-        const tw = {};
-        const orderKeys = [];
-        p.windows.forEach((w, widx) => {
-          // sanitize times and determine key name
-          const s = validateTimeString(w.start) ? w.start : 'sunset';
-          const e = validateTimeString(w.end) ? w.end : 'sunrise';
-          const provided = (w.name || '').trim();
-          const keyName = (widx === 0 && provided === '') ? 'day' : (provided || `w${widx+1}`);
-          tw[keyName] = { start: s, end: e, duty_cycle: Math.max(0, Math.min(100, parseInt(w.duty_cycle||0))) };
-          orderKeys.push(keyName);
-        });
-        // Persist the intended order so re-uploads preserve UI ordering
-        tw._order = orderKeys;
-        cfg.pwm_pins[key] = {
-          name: p.name || key,
-          gpio_pin: p.gpio_pin,
-          enabled: !!p.enabled,
-          time_windows: tw
-        };
-      });
-
-      return cfg;
-    }
-
-    function render(){
-      const cfg = buildConfig();
-      document.getElementById('preview').textContent = JSON.stringify(cfg, null, 2);
-      // Update global validation (window continuity + GPIO clashes)
-      if (typeof updateGlobalValidation === 'function') updateGlobalValidation();
-    }
-
-    function downloadJSON(){
-  // Re-check validation before allowing download
-  const errs = [];
-  // Per-pin window validations
-  pins.forEach((p) => { const vd = computePinValidation(p); if (!vd.ok) errs.push(`GPIO ${p.gpio_pin}: ${vd.msg}`); });
-  // Cross-pin GPIO clashes
-  errs.push(...computeGPIOValidation());
-  // Schema validation
+// ============================================================
+// Render / validation
+// ============================================================
+let renderTimer = null;
+function scheduleRender() {
+  if (renderTimer) clearTimeout(renderTimer);
+  renderTimer = setTimeout(doRender, 80);
+}
+function doRender() {
   const cfg = buildConfig();
-  const sv = schemaValidate(cfg);
-  if (!sv.valid) {
-    const errText = (window.ajvErrorsText ? window.ajvErrorsText(sv.errors) : '');
-    errs.push('Schema invalid' + (errText ? `: ${errText}` : ''));
-  }
+  document.getElementById('preview').textContent = JSON.stringify(cfg, null, 2);
+  validateAndShow(cfg);
+}
+
+function validateAndShow(cfg) {
+  const errs = [];
+  if (!cfg.wifi.ssid) errs.push('WiFi SSID is empty');
+  if (cfg.system.role === 'coordinator' && !cfg.system.peers.length)
+    errs.push('Coordinator has no peers configured');
+  cfg.pir.forEach((p,i) => {
+    if (p.on_motion.action === 'set_scene' && !p.on_motion.scene_name)
+      errs.push(`PIR ${i+1} on_motion: scene_name is empty`);
+  });
+
+  const el = document.getElementById('val_msg');
+  const btn = document.getElementById('dl_btn');
   if (errs.length) {
-    const out = document.getElementById('global_validation');
-    if (out && out.textContent.trim() === '') { out.textContent = errs.join(' | '); out.className = 'validation err'; }
-    return; // Block download on errors
+    el.innerHTML = `<div class="val-msg val-err">${errs.join('<br>')}</div>`;
+    btn.setAttribute('disabled', '');
+    btn.style.opacity = '.5';
+  } else {
+    el.innerHTML = '<div class="val-msg val-ok">Config looks good ✓</div>';
+    btn.removeAttribute('disabled');
+    btn.style.opacity = '';
   }
-  const blob = new Blob([JSON.stringify(cfg, null, 2)], {type:'application/json'});
+}
+
+// ============================================================
+// Download
+// ============================================================
+function downloadJSON() {
+  const cfg = buildConfig();
+  const blob = new Blob([JSON.stringify(cfg, null, 2)], {type: 'application/json'});
   const now = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-  const timeStr = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
-  const ver = String(cfg.version || '0.0.0').replace(/[^0-9A-Za-z_.-]/g, '-');
-  const filename = `config_${dateStr}_${timeStr}_${ver}.json`;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
+  const pad = n => String(n).padStart(2,'0');
+  const ts  = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const a   = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `config_${ts}_${cfg.system.unit_name.toLowerCase().replace(/\s+/g,'_')}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
 }
 
+// ============================================================
+// Upload & prefill
+// ============================================================
+function applyConfigToForm(cfg) {
+  const sys = cfg.system || {};
+  const s = k => sys[k] !== undefined;
+  if (s('role'))                  document.getElementById('s_role').value = sys.role;
+  if (s('unit_id'))               document.getElementById('s_unit_id').value = sys.unit_id;
+  if (s('unit_name'))             document.getElementById('s_unit_name').value = sys.unit_name;
+  if (s('peers'))                 document.getElementById('s_peers').value = (sys.peers||[]).join(', ');
+  if (s('log_level'))             document.getElementById('s_log_level').value = sys.log_level;
+  if (s('heartbeat_interval_s'))  document.getElementById('s_hb_interval').value = sys.heartbeat_interval_s;
+  if (s('heartbeat_timeout_s'))   document.getElementById('s_hb_timeout').value = sys.heartbeat_timeout_s;
+  if (s('pwm_update_interval_ms'))document.getElementById('s_pwm_interval').value = sys.pwm_update_interval_ms;
 
-    // --- Upload + Prefill helpers ---
-    let sampleMajorMinor = null;
+  const w = cfg.wifi || {};
+  if (w.ssid)     document.getElementById('w_ssid').value = w.ssid;
+  if (w.password) document.getElementById('w_password').value = w.password;
+  if (w.hostname) document.getElementById('w_hostname').value = w.hostname;
 
-    function majorMinor(v){
-      if (!v || typeof v !== 'string') return null;
-      const parts = v.split('.');
-      if (parts.length < 2) return null;
-      return `${parts[0]}.${parts[1]}`;
-    }
+  const l = cfg.lora || {};
+  if (l.frequency_mhz !== undefined) document.getElementById('l_freq').value  = l.frequency_mhz;
+  if (l.tx_power_dbm  !== undefined) document.getElementById('l_power').value = l.tx_power_dbm;
+  if (l.channel       !== undefined) document.getElementById('l_channel').value = l.channel;
+  if (l.air_data_rate !== undefined) document.getElementById('l_adr').value   = l.air_data_rate;
 
-    // Compatibility shim: some older generated versions call schemaValidate(cfg)
-    // Provide a safe no-op to avoid ReferenceError if present in cached builds.
-    // Later, this can be wired to a real JSON Schema validator in the browser.
-    if (typeof window.schemaValidate !== 'function') {
-      window.schemaValidate = function(cfg){ return { valid: true, errors: [] }; };
-    }
+  const tz = cfg.timezone || {};
+  if (tz.name)             document.getElementById('tz_name').value   = tz.name;
+  if (tz.utc_offset_hours !== undefined) document.getElementById('tz_offset').value = tz.utc_offset_hours;
 
-    async function fetchSampleVersion(){
-      try {
-        const resp = await fetch('./config.json.sample', { cache: 'no-store' });
-        if (!resp.ok) return;
-        const sample = await resp.json();
-        sampleMajorMinor = majorMinor(sample.version || '');
-      } catch {}
-    }
+  const hw = cfg.hardware || {};
+  ['sda:i2c_sda_pin','scl:i2c_scl_pin','ldr_pin:ldr_adc_pin','status_led:status_led_pin',
+   'lora_uart:lora_uart_id','lora_tx:lora_tx_pin','lora_rx:lora_rx_pin',
+   'lora_m0:lora_m0_pin','lora_m1:lora_m1_pin','lora_aux:lora_aux_pin',
+   'i2c_freq:i2c_freq_hz','pwm_freq:pwm_freq_hz'].forEach(pair => {
+    const [id, key] = pair.split(':');
+    if (hw[key] !== undefined) document.getElementById(`h_${id}`).value = hw[key];
+  });
 
-    // Aggregate validation and reflect near the Download button
-    function updateGlobalValidation(){
-  const msgs = [];
-  // GPIO conflicts and continuity
-  const gpioErrs = computeGPIOValidation();
-  if (gpioErrs && gpioErrs.length) msgs.push('GPIO: ' + gpioErrs.join('; '));
-  // Schema validation
-  const cfg = buildConfig();
-  const sv = schemaValidate(cfg);
-  if (!sv.valid) {
-    const errText = (window.ajvErrorsText ? window.ajvErrorsText(sv.errors) : (sv.errors||[]).map(e => `${e.instancePath||'/'} ${e.message||''}`.trim()).join('; '));
-    msgs.push('Schema: ' + (errText || 'invalid'));
+  const ldr = cfg.ldr || {};
+  if (ldr.enabled !== undefined) document.getElementById('ldr_enabled').value = String(ldr.enabled);
+  if (ldr.smoothing_window_s) document.getElementById('ldr_smooth').value = ldr.smoothing_window_s;
+  if (ldr.cap_rules) { ldrCapRules = ldr.cap_rules.map(r => ({...r})); renderLdrRules(); }
+
+  if (cfg.pir) {
+    cfg.pir.forEach((p, i) => {
+      if (i >= pirState.length) return;
+      Object.assign(pirState[i], p,
+        {on_motion: Object.assign({}, p.on_motion),
+         on_vacancy: Object.assign({}, p.on_vacancy)});
+    });
+    renderPIR();
   }
-  const el = document.getElementById('global_validation');
-  const btn = document.getElementById('download_btn');
-  if (el) {
-    el.textContent = msgs.length ? msgs.join(' | ') : 'Looks good ✓';
-    el.className = msgs.length ? 'validation err' : 'validation ok';
+
+  if (cfg.relays) {
+    cfg.relays.forEach((r, i) => {
+      if (i >= relayState.length) return;
+      relayState[i] = Object.assign({}, relayState[i], r,
+        {time_windows: (r.time_windows||[]).map(w => ({...w}))});
+    });
+    renderRelays();
   }
-  if (btn) {
-    if (msgs.length) { btn.setAttribute('disabled',''); btn.style.opacity = '0.5'; btn.style.cursor = 'not-allowed'; }
-    else { btn.removeAttribute('disabled'); btn.style.opacity = ''; btn.style.cursor = ''; }
+
+  if (cfg.led_channels) {
+    cfg.led_channels.forEach((ch, i) => {
+      if (i >= ledState.length) return;
+      ledState[i] = Object.assign({}, ledState[i], ch,
+        {time_windows: (ch.time_windows||[]).map(w => ({...w}))});
+    });
+    renderLEDs();
   }
+
+  if (cfg.scenes) {
+    scenes = cfg.scenes.map(sc => ({
+      name: sc.name || '',
+      led_channels: (sc.led_channels||[]).map(x=>({...x})),
+      relays:       (sc.relays||[]).map(x=>({...x})),
+    }));
+    renderScenes();
+  }
+
+  const n = cfg.notifications || {};
+  if (n.mqtt_enabled !== undefined) document.getElementById('n_enabled').value = String(n.mqtt_enabled);
+  if (n.broker)       document.getElementById('n_broker').value    = n.broker;
+  if (n.port)         document.getElementById('n_port').value      = n.port;
+  if (n.topic_prefix) document.getElementById('n_topic').value     = n.topic_prefix;
+  if (n.client_id)    document.getElementById('n_client_id').value = n.client_id;
+
+  scheduleRender();
+  document.getElementById('upload_msg').textContent = 'Prefilled from uploaded config.';
 }
 
-
-    function setMsg(html, isError){
-      const el = document.getElementById('upload_msg');
-      if (!el) return;
-      el.innerHTML = html || '';
-      el.style.color = isError ? '#b91c1c' : '#374151';
+document.getElementById('upload_btn').addEventListener('click', () =>
+  document.getElementById('upload_input').click());
+document.getElementById('upload_input').addEventListener('change', async ev => {
+  const f = ev.target.files && ev.target.files[0];
+  if (!f) return;
+  try {
+    const cfg = JSON.parse(await f.text());
+    if (!cfg.version || !cfg.version.startsWith('1.')) {
+      document.getElementById('upload_msg').textContent =
+        `Warning: config version is "${cfg.version}" — expected 1.x. Proceeding anyway.`;
     }
+    applyConfigToForm(cfg);
+  } catch (e) {
+    document.getElementById('upload_msg').textContent = 'Invalid JSON file.';
+  } finally {
+    ev.target.value = '';
+  }
+});
 
-    function applyConfigToForm(cfg){
-      try {
-        if (cfg.version) document.getElementById('version').value = cfg.version;
-        if (cfg.hostname) document.getElementById('hostname').value = cfg.hostname;
-
-        if (cfg.wifi){
-          if (cfg.wifi.ssid !== undefined) document.getElementById('ssid').value = cfg.wifi.ssid;
-          if (cfg.wifi.password !== undefined) document.getElementById('password').value = cfg.wifi.password;
-        }
-
-        if (cfg.timezone){
-          if (cfg.timezone.name !== undefined) document.getElementById('tz_name').value = cfg.timezone.name;
-          if (cfg.timezone.offset !== undefined) document.getElementById('tz_offset').value = String(cfg.timezone.offset);
-          const sel = document.getElementById('tz_select');
-          if (sel){
-            const idx = Array.from(sel.options).findIndex(o => o.value === (cfg.timezone.name||''));
-            if (idx >= 0) sel.selectedIndex = idx;
-          }
-        }
-
-        if (cfg.hardware){
-          // Ensure dropdowns are populated, then set values from config
-          populateHardwareGpioSelects();
-          if (cfg.hardware.rtc_sda !== undefined) document.getElementById('rtc_sda').value = String(cfg.hardware.rtc_sda);
-          if (cfg.hardware.rtc_i2c_sda_pin !== undefined) document.getElementById('rtc_sda').value = String(cfg.hardware.rtc_i2c_sda_pin);
-          if (cfg.hardware.rtc_scl !== undefined) document.getElementById('rtc_scl').value = String(cfg.hardware.rtc_scl);
-          if (cfg.hardware.rtc_i2c_scl_pin !== undefined) document.getElementById('rtc_scl').value = String(cfg.hardware.rtc_i2c_scl_pin);
-          if (cfg.hardware.pwm_freq !== undefined) document.getElementById('pwm_freq').value = cfg.hardware.pwm_freq;
-          if (cfg.hardware.pwm_frequency !== undefined) document.getElementById('pwm_freq').value = cfg.hardware.pwm_frequency;
-        }
-
-        if (cfg.system){
-          if (cfg.system.log_level) document.getElementById('log_level').value = cfg.system.log_level;
-          if (cfg.system.update_interval !== undefined) document.getElementById('update_interval').value = cfg.system.update_interval;
-          if (cfg.system.server_idle_sleep_ms !== undefined) document.getElementById('server_idle_sleep_ms').value = cfg.system.server_idle_sleep_ms;
-          if (cfg.system.client_read_sleep_ms !== undefined) document.getElementById('client_read_sleep_ms').value = cfg.system.client_read_sleep_ms;
-          if (cfg.system.network_check_interval !== undefined) document.getElementById('network_check_interval').value = cfg.system.network_check_interval;
-          if (cfg.system.ram_telemetry_enabled !== undefined) document.getElementById('ram_telemetry_enabled').value = String(!!cfg.system.ram_telemetry_enabled);
-          if (cfg.system.ram_telemetry_interval !== undefined) document.getElementById('ram_telemetry_interval').value = cfg.system.ram_telemetry_interval;
-          if (cfg.system.web_title) document.getElementById('web_title').value = cfg.system.web_title;
-        }
-
-        if (cfg.notifications){
-          if (cfg.notifications.enabled !== undefined) document.getElementById('notif_enabled').value = String(!!cfg.notifications.enabled);
-          if (cfg.notifications.broker !== undefined) document.getElementById('mqtt_broker').value = cfg.notifications.broker;
-          if (cfg.notifications.mqtt_broker !== undefined) document.getElementById('mqtt_broker').value = cfg.notifications.mqtt_broker;
-          if (cfg.notifications.port !== undefined) document.getElementById('mqtt_port').value = cfg.notifications.port;
-          if (cfg.notifications.mqtt_port !== undefined) document.getElementById('mqtt_port').value = cfg.notifications.mqtt_port;
-          if (cfg.notifications.username !== undefined) document.getElementById('mqtt_username').value = cfg.notifications.username;
-          if (cfg.notifications.password !== undefined) document.getElementById('mqtt_password').value = cfg.notifications.password;
-          if (cfg.notifications.topic !== undefined) document.getElementById('mqtt_topic').value = cfg.notifications.topic;
-          if (cfg.notifications.mqtt_topic !== undefined) document.getElementById('mqtt_topic').value = cfg.notifications.mqtt_topic;
-          if (cfg.notifications.client_id !== undefined) document.getElementById('mqtt_client_id').value = cfg.notifications.client_id;
-          if (cfg.notifications.mqtt_client_id !== undefined) document.getElementById('mqtt_client_id').value = cfg.notifications.mqtt_client_id;
-          if (cfg.notifications.notify_window !== undefined) document.getElementById('notify_window').value = String(!!cfg.notifications.notify_window);
-          if (cfg.notifications.notify_on_window_change !== undefined) document.getElementById('notify_window').value = String(!!cfg.notifications.notify_on_window_change);
-          if (cfg.notifications.notify_errors !== undefined) document.getElementById('notify_errors').value = String(!!cfg.notifications.notify_errors);
-          if (cfg.notifications.notify_on_errors !== undefined) document.getElementById('notify_errors').value = String(!!cfg.notifications.notify_on_errors);
-        }
-
-        if (cfg.pwm_pins && typeof cfg.pwm_pins === 'object'){
-          const list = Object.values(cfg.pwm_pins)
-            .filter(x => x && typeof x === 'object')
-            .map(x => ({
-              gpio_pin: parseInt(x.gpio_pin),
-              name: (x.name || `Pin ${x.gpio_pin}`),
-              enabled: !!x.enabled,
-              windows: windowsFromObject(x.time_windows || {})
-            }))
-            .filter(x => !isNaN(x.gpio_pin));
-          list.sort((a,b)=>a.gpio_pin-b.gpio_pin);
-          pins.splice(0, pins.length, ...list.slice(0, MAX_PINS));
-          renderPinsUI();
-        }
-
-        render();
-        setMsg('Prefilled from uploaded file.');
-      } catch (e) {
-        setMsg('Failed to apply uploaded config.', true);
-      }
-    }
-
-    function setupUpload(){
-      const inp = document.getElementById('upload_config');
-      const btn = document.getElementById('upload_btn');
-      if (!inp) return;
-      if (btn) btn.addEventListener('click', () => inp.click());
-      inp.addEventListener('change', async (ev) => {
-        const f = ev.target.files && ev.target.files[0];
-        if (!f) return;
-        try {
-          const text = await f.text();
-          const cfg = JSON.parse(text);
-          const upMM = majorMinor(cfg.version || '');
-          if (sampleMajorMinor && upMM && sampleMajorMinor !== upMM){
-            setMsg(`Version mismatch: expected ${sampleMajorMinor}.x but got ${cfg.version}. Upload aborted.`, true);
-            return;
-          }
-          applyConfigToForm(cfg);
-        } catch (e) {
-          setMsg('Invalid JSON file.', true);
-        } finally {
-          ev.target.value = '';
-        }
-      });
-    }
-
-    // initialize from sample, fallback to one default pin
-    (async function init(){
-      await fetchSampleVersion();
-      await loadSamplePins();
-      if (pins.length === 0) { pins.push(newPin()); }
-      populateTimezoneSelect();
-      setupTimezoneSearch();
-      populateHardwareGpioSelects();
-      setupCollapsibles();
-      setupUpload();
-      renderPinsUI();
-      render();
-    })();
-  </script>
-
-  <script type="module">
-    // In-browser JSON Schema validation using Ajv v8 (2020) + formats
-    // Force ESM via jsDelivr's +esm transformer to avoid CJS `exports` errors
-    import Ajv2020 from 'https://cdn.jsdelivr.net/npm/ajv@8/dist/2020.js/+esm';
-    import addFormats from 'https://cdn.jsdelivr.net/npm/ajv-formats@2/dist/index.js/+esm';
-
-    const SCHEMA_URL = './config.schema.json';
-
-    async function loadSchema() {
-      const resp = await fetch(SCHEMA_URL, { cache: 'no-store' });
-      if (!resp.ok) throw new Error('Schema fetch failed');
-      return await resp.json();
-    }
-
-    (async () => {
-      try {
-        const schema = await loadSchema();
-        const ajv = new Ajv2020({
-          allErrors: true,
-          strict: false,
-          allowUnionTypes: true
-        });
-        addFormats(ajv);
-        const validate = ajv.compile(schema);
-
-        // Helper to stringify Ajv errors for non-module code
-        window.ajvErrorsText = function(errors){
-          try { return ajv.errorsText(errors, { separator: '; ' }); }
-          catch { return (errors||[]).map(e => `${e.instancePath||'/'} ${e.message||''}`.trim()).join('; '); }
-        };
-
-        // Expose global function expected by the builder
-        window.schemaValidate = function(cfg){
-          const valid = validate(cfg);
-          return { valid, errors: valid ? [] : (validate.errors || []) };
-        };
-      } catch (e) {
-        // Keep the fallback no-op if schema cannot be loaded
-        console.warn('Schema validation unavailable:', e);
-      }
-    })();
-  </script>
-  </body>
-  </html>
+// ============================================================
+// Boot
+// ============================================================
+(function init() {
+  populateTzSelect();
+  renderLdrRules();
+  renderPIR();
+  renderRelays();
+  renderLEDs();
+  renderScenes();
+  doRender();
+})();
+</script>
+</body>
+</html>

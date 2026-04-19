@@ -1,124 +1,249 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/m-anish/PagodaLightPico/schemas/config.schema.json",
-  "title": "PagodaLightPico Configuration",
+  "$id": "https://github.com/m-anish/PagodaLightPico/schemas/config.schema.v1.json",
+  "title": "Lokki v1 Configuration",
   "type": "object",
+  "required": ["version", "system", "wifi", "lora", "timezone", "hardware", "ldr", "pir", "relays", "led_channels", "scenes", "notifications"],
   "additionalProperties": false,
-  "required": ["wifi", "timezone", "hardware", "system", "pwm_pins"],
   "properties": {
-    "version": { "type": "string" },
-    "hostname": { "type": "string" },
+
+    "version": { "type": "string", "pattern": "^1\\." },
+
+    "system": {
+      "type": "object",
+      "required": ["role", "unit_id", "unit_name"],
+      "additionalProperties": false,
+      "properties": {
+        "role":                   { "type": "string", "enum": ["coordinator", "leaf"] },
+        "unit_id":                { "type": "integer", "minimum": 0, "maximum": 8 },
+        "unit_name":              { "type": "string", "minLength": 1 },
+        "peers":                  { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 8 } },
+        "log_level":              { "type": "string", "enum": ["DEBUG", "INFO", "WARN", "WARNING", "ERROR"] },
+        "heartbeat_interval_s":   { "type": "integer", "minimum": 5, "maximum": 300 },
+        "heartbeat_timeout_s":    { "type": "integer", "minimum": 30, "maximum": 600 },
+        "pwm_update_interval_ms": { "type": "integer", "minimum": 100, "maximum": 5000 }
+      }
+    },
+
     "wifi": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["ssid", "password"],
+      "additionalProperties": false,
       "properties": {
-        "ssid": { "type": "string", "minLength": 1 },
-        "password": { "type": "string", "minLength": 1 }
+        "ssid":     { "type": "string", "minLength": 1 },
+        "password": { "type": "string" },
+        "hostname": { "type": "string" }
       }
     },
-    "timezone": {
+
+    "lora": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "offset"],
       "properties": {
-        "name": { "type": "string", "minLength": 1 },
-        "offset": { "type": "number", "minimum": -12, "maximum": 14 }
+        "enabled":               { "type": "boolean" },
+        "frequency_mhz":         { "type": "number", "minimum": 862, "maximum": 920 },
+        "air_data_rate":         { "type": "integer", "enum": [300, 1200, 2400, 4800, 9600] },
+        "tx_power_dbm":          { "type": "integer", "minimum": 0, "maximum": 22 },
+        "channel":               { "type": "integer", "minimum": 0, "maximum": 83 },
+        "heartbeat_interval_s":  { "type": "integer" },
+        "heartbeat_timeout_s":   { "type": "integer" }
       }
     },
+
+    "timezone": {
+      "type": "object",
+      "required": ["name", "utc_offset_hours"],
+      "additionalProperties": false,
+      "properties": {
+        "name":             { "type": "string", "minLength": 1 },
+        "utc_offset_hours": { "type": "number", "minimum": -12, "maximum": 14 }
+      }
+    },
+
     "hardware": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["rtc_i2c_sda_pin", "rtc_i2c_scl_pin"],
       "properties": {
-        "rtc_i2c_sda_pin": { "type": "integer", "minimum": 0, "maximum": 28 },
-        "rtc_i2c_scl_pin": { "type": "integer", "minimum": 0, "maximum": 28 },
-        "pwm_frequency": { "type": "integer", "minimum": 1, "maximum": 40000000 }
+        "i2c_sda_pin":    { "type": "integer", "minimum": 0, "maximum": 28 },
+        "i2c_scl_pin":    { "type": "integer", "minimum": 0, "maximum": 28 },
+        "i2c_freq_hz":    { "type": "integer" },
+        "pwm_freq_hz":    { "type": "integer", "minimum": 1, "maximum": 40000000 },
+        "ldr_adc_pin":    { "type": "integer", "minimum": 26, "maximum": 28 },
+        "status_led_pin": { "type": "integer", "minimum": 0, "maximum": 28 },
+        "reset_btn_pin":  { "type": "integer", "minimum": 0, "maximum": 28 },
+        "lora_uart_id":   { "type": "integer", "minimum": 0, "maximum": 1 },
+        "lora_tx_pin":    { "type": "integer", "minimum": 0, "maximum": 28 },
+        "lora_rx_pin":    { "type": "integer", "minimum": 0, "maximum": 28 },
+        "lora_m0_pin":    { "type": "integer", "minimum": 0, "maximum": 28 },
+        "lora_m1_pin":    { "type": "integer", "minimum": 0, "maximum": 28 },
+        "lora_aux_pin":   { "type": "integer", "minimum": 0, "maximum": 28 }
       }
     },
-    "system": {
+
+    "ldr": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["log_level", "update_interval"],
       "properties": {
-        "log_level": { "type": "string", "enum": ["FATAL", "ERROR", "WARN", "INFO", "DEBUG"] },
-        "update_interval": { "type": "integer", "minimum": 1 },
-        "network_check_interval": { "type": "integer", "minimum": 10, "maximum": 3600 },
-        "server_idle_sleep_ms": { "type": "integer", "minimum": 50, "maximum": 5000 },
-        "client_read_sleep_ms": { "type": "integer", "minimum": 10, "maximum": 2000 },
-        "ram_telemetry_enabled": { "type": "boolean" },
-        "ram_telemetry_interval": { "type": "integer", "minimum": 10, "maximum": 86400 },
-        "web_title": { "type": "string" }
+        "enabled":            { "type": "boolean" },
+        "smoothing_window_s": { "type": "integer", "minimum": 1 },
+        "cap_rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["above_percent", "cap_percent"],
+            "additionalProperties": false,
+            "properties": {
+              "above_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+              "cap_percent":   { "type": "number", "minimum": 0, "maximum": 100 }
+            }
+          }
+        }
       }
     },
+
+    "pir": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "required": ["id", "gpio_pin"],
+        "additionalProperties": false,
+        "properties": {
+          "id":                { "type": "string" },
+          "name":              { "type": "string" },
+          "gpio_pin":          { "type": "integer", "minimum": 0, "maximum": 28 },
+          "enabled":           { "type": "boolean" },
+          "vacancy_timeout_s": { "type": "integer", "minimum": 0 },
+          "on_motion": {
+            "type": "object",
+            "properties": {
+              "action":       { "type": "string", "enum": ["revert_to_schedule","set_scene","set_led_channels","set_relay"] },
+              "scene_name":   { "type": "string" },
+              "channels":     { "type": "array", "items": { "type": "string" } },
+              "duty_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+              "fade_ms":      { "type": "integer", "minimum": 0 },
+              "relay_id":     { "type": "string" },
+              "state":        { "type": "string", "enum": ["on","off"] }
+            }
+          },
+          "on_vacancy": {
+            "type": "object",
+            "properties": {
+              "action": { "type": "string", "enum": ["revert_to_schedule","set_scene","set_led_channels","set_relay"] }
+            }
+          }
+        }
+      }
+    },
+
+    "relays": {
+      "type": "array",
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "required": ["id", "gpio_pin"],
+        "additionalProperties": false,
+        "properties": {
+          "id":            { "type": "string" },
+          "name":          { "type": "string" },
+          "gpio_pin":      { "type": "integer", "minimum": 0, "maximum": 28 },
+          "enabled":       { "type": "boolean" },
+          "default_state": { "type": "string", "enum": ["on","off"] },
+          "time_windows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["start","end","state"],
+              "additionalProperties": false,
+              "properties": {
+                "start": { "type": "string" },
+                "end":   { "type": "string" },
+                "state": { "type": "string", "enum": ["on","off"] }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "led_channels": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["id","gpio_pin"],
+        "additionalProperties": false,
+        "properties": {
+          "id":                   { "type": "string" },
+          "name":                 { "type": "string" },
+          "gpio_pin":             { "type": "integer", "minimum": 0, "maximum": 28 },
+          "enabled":              { "type": "boolean" },
+          "default_duty_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+          "time_windows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["start","end","duty_percent"],
+              "additionalProperties": false,
+              "properties": {
+                "start":        { "type": "string" },
+                "end":          { "type": "string" },
+                "duty_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+                "fade_ms":      { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "led_channels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id","duty_percent"],
+              "additionalProperties": false,
+              "properties": {
+                "id":           { "type": "string" },
+                "duty_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+                "fade_ms":      { "type": "integer", "minimum": 0 }
+              }
+            }
+          },
+          "relays": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id","state"],
+              "additionalProperties": false,
+              "properties": {
+                "id":    { "type": "string" },
+                "state": { "type": "string", "enum": ["on","off"] }
+              }
+            }
+          }
+        }
+      }
+    },
+
     "notifications": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled": { "type": "boolean" },
-        "mqtt_broker": { "type": "string" },
-        "mqtt_port": { "type": "integer" },
-        "mqtt_topic": { "type": "string" },
-        "mqtt_client_id": { "type": "string" },
-        "notify_on_window_change": { "type": "boolean" },
-        "notify_on_errors": { "type": "boolean" }
-      }
-    },
-    "pwm_pins": {
-      "type": "object",
-      "minProperties": 1,
-      "additionalProperties": false,
-      "patternProperties": {
-        "^_": { "description": "Helper/comment keys ignored by firmware", "type": ["string", "number", "boolean", "object", "array", "null"] },
-        "^[^_].*$": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["gpio_pin", "name"],
-          "properties": {
-            "gpio_pin": { "type": "integer", "minimum": 0, "maximum": 28 },
-            "name": { "type": "string", "minLength": 1 },
-            "enabled": { "type": "boolean" },
-            "time_windows": {
-              "type": "object",
-              "minProperties": 2,
-              "maxProperties": 5,
-              "additionalProperties": false,
-              "patternProperties": {
-                "^_": { "description": "Helper/comment keys", "type": ["string", "number", "boolean", "object", "array", "null"] },
-                "^[^_].*$": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": ["start", "end", "duty_cycle"],
-                  "properties": {
-                    "start": { "$ref": "#/$defs/timeString" },
-                    "end": { "$ref": "#/$defs/timeString" },
-                    "duty_cycle": { "type": "integer", "minimum": 0, "maximum": 100 }
-                  }
-                }
-              },
-              "allOf": [
-                { "required": ["day"] }
-              ]
-            }
-          },
-          "allOf": [
-            {
-              "if": { "properties": { "enabled": { "const": true } }, "required": ["enabled"] },
-              "then": { "required": ["time_windows"] }
-            }
-          ]
-        }
+        "mqtt_enabled": { "type": "boolean" },
+        "broker":       { "type": "string" },
+        "port":         { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "topic_prefix": { "type": "string" },
+        "client_id":    { "type": "string" }
       }
     }
-  },
-  "$defs": {
-    "timeString": {
-      "description": "Either 'sunrise'/'sunset' or HH:MM 24-hour format",
-      "oneOf": [
-        { "type": "string", "enum": ["sunrise", "sunset"] },
-        { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" }
-      ]
-    }
-  },
-  "description": "Note: Some constraints (unique GPIOs, 1-5 enabled pins, avoiding I2C pin conflicts) are enforced by firmware at runtime and may not be fully expressible in JSON Schema."
+  }
 }

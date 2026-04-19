@@ -236,6 +236,9 @@ async def main():
     pir_manager.init_from_config(cfg.get("pir"))
     ldr_monitor.init_from_config(cfg.get("ldr"), hw)
 
+    from hardware.i2c_sensors import i2c_sensors
+    i2c_sensors.init()
+
     # Wire LDR cap changes into arbiter
     ldr_monitor.on_cap_change(priority_arbiter.set_ldr_cap)
 
@@ -291,6 +294,9 @@ async def main():
     tasks.append(asyncio.create_task(pir_manager.run_all()))
     tasks.append(asyncio.create_task(ldr_monitor.run()))
     tasks.append(asyncio.create_task(lora_protocol.listen_task()))
+
+    if i2c_sensors.has_sensors:
+        tasks.append(asyncio.create_task(i2c_sensors.run()))
 
     if sys.get("log_level") == "DEBUG":
         tasks.append(asyncio.create_task(ram_telemetry_task(60)))
