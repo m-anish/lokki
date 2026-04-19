@@ -34,8 +34,7 @@
     .expert-toggle { display: flex; align-items: center; gap: 7px; font-size: .8em;
                       color: var(--muted); cursor: pointer; user-select: none; }
     .expert-toggle input { width: 32px; height: 18px; appearance: none; background: #cbd5e1;
-                            border-radius: 9px; cursor: pointer; transition: background .2s;
-                            position: relative; }
+                            border-radius: 9px; cursor: pointer; transition: background .2s; position: relative; }
     .expert-toggle input:checked { background: var(--brand); }
     .expert-toggle input::after { content: ''; position: absolute; top: 2px; left: 2px;
                                    width: 14px; height: 14px; border-radius: 50%;
@@ -73,9 +72,13 @@
     .section-body { padding: 16px; display: none; }
     .section.open .section-body { display: block; }
 
-    /* EXPERT-ONLY sections */
+    /* EXPERT VISIBILITY */
     .expert-only { display: none; }
     body.expert .expert-only { display: block; }
+    .expert-only-inline { display: none; }
+    body.expert .expert-only-inline { display: inline; }
+    .expert-only-flex { display: none; }
+    body.expert .expert-only-flex { display: flex; }
 
     /* FORM ELEMENTS */
     .field { margin-bottom: 14px; }
@@ -129,13 +132,31 @@
     .btn:hover { background: #f1f5f9; border-color: #94a3b8; }
     .btn-primary { background: var(--brand); color: #fff; border-color: var(--brand); }
     .btn-primary:hover { background: var(--brand-d); border-color: var(--brand-d); }
+    .btn-success { background: var(--green); color: #fff; border-color: var(--green); }
+    .btn-success:hover { background: #047857; border-color: #047857; }
     .btn-danger  { color: var(--red); border-color: #fca5a5; }
     .btn-danger:hover  { background: #fef2f2; }
     .btn-sm { padding: 4px 10px; font-size: .78em; }
     .btn:disabled { opacity: .45; cursor: not-allowed; }
 
-    /* CARDS (nested) */
-    .card { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+    /* OUTPUT CARDS (LED / Relay / PIR) */
+    .out-card { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+                 margin-bottom: 10px; overflow: hidden; }
+    .out-card-head { display: flex; align-items: center; gap: 10px;
+                      padding: 10px 14px; background: #f1f5f9; border-bottom: 1px solid var(--border); }
+    .out-card-name { flex: 1; font-weight: 600; font-size: .88em; }
+    .out-card-gp { font-size: .73em; color: var(--muted); font-family: 'SF Mono', monospace;
+                    background: #e2e8f0; padding: 1px 6px; border-radius: 4px; }
+    .out-card-body { padding: 14px; }
+    .out-card.inactive { opacity: .6; }
+    .out-card.inactive .out-card-body { display: none; }
+
+    /* CHANNEL ACTIVE TOGGLE LABEL */
+    .ch-toggle-label { font-size: .8em; font-weight: 600; color: var(--muted); white-space: nowrap; }
+    .ch-toggle-label.active { color: var(--green); }
+
+    /* NESTED CARDS */
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 8px;
              padding: 14px; margin-bottom: 10px; }
     .card-title { font-weight: 600; font-size: .85em; color: #374151;
                    margin-bottom: 12px; display: flex; align-items: center;
@@ -175,10 +196,6 @@
     .preview-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     pre { flex: 1; margin: 0; font-size: .76em; line-height: 1.6; overflow: auto;
            color: #94a3b8; font-family: 'Menlo', 'Monaco', 'Consolas', monospace; }
-    pre .key    { color: #7dd3fc; }
-    pre .str    { color: #86efac; }
-    pre .num    { color: #fda4af; }
-    pre .bool   { color: #fbbf24; }
 
     /* DOWNLOAD AREA */
     .dl-area { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
@@ -192,11 +209,13 @@
                 display: flex; align-items: center; gap: 10px; }
     .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
-    /* TIMEZONE */
-    select[size] { height: auto; }
-
-    /* TOOLTIP */
-    [title] { cursor: help; }
+    /* TOAST */
+    .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
+              border-radius: 8px; font-size: .88em; font-weight: 600; z-index: 999;
+              box-shadow: 0 4px 12px rgba(0,0,0,.15); animation: slideUp .25s ease; }
+    @keyframes slideUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+    .toast-ok  { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .toast-err { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
   </style>
 </head>
 <body>
@@ -219,12 +238,13 @@
     <!-- VALIDATION -->
     <div id="valBanner" class="val-banner"></div>
 
-    <!-- DOWNLOAD -->
+    <!-- ACTIONS -->
     <div class="dl-area">
-      <div class="dl-area-title">Ready to download</div>
+      <div class="dl-area-title">Config actions</div>
       <div class="dl-actions">
         <button class="btn btn-primary" id="dlBtn" onclick="downloadJSON()">⬇ Download config.json</button>
-        <button class="btn" id="uploadBtn">↑ Upload &amp; prefill</button>
+        <button class="btn btn-success" id="saveDeviceBtn" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
+        <button class="btn" id="uploadBtn">↑ Load existing config</button>
         <input id="uploadInput" type="file" accept=".json,application/json"
                style="position:absolute;width:1px;height:1px;clip:rect(0,0,0,0)" />
         <a class="btn" href="./index.html">← Home</a>
@@ -245,27 +265,27 @@
           <div class="field">
             <label class="field-label">Role</label>
             <select id="s_role">
-              <option value="coordinator">Coordinator (has WiFi + web UI)</option>
-              <option value="leaf">Leaf (LoRa only)</option>
+              <option value="coordinator">Coordinator — has WiFi &amp; web dashboard</option>
+              <option value="leaf">Leaf — LoRa only, no WiFi needed</option>
             </select>
-            <div class="field-hint">One coordinator per network, up to 8 leaves.</div>
+            <div class="field-hint">One coordinator per network, up to 8 leaf units.</div>
           </div>
           <div class="field">
             <label class="field-label">Unit ID</label>
             <input id="s_unit_id" type="number" min="0" max="8" value="0" />
-            <div class="field-hint">0 = coordinator, 1–8 = leaves.</div>
+            <div class="field-hint">0 = this coordinator, 1–8 = leaf units.</div>
           </div>
         </div>
         <div class="field">
           <label class="field-label">Unit Name</label>
           <input id="s_unit_name" type="text" value="Pagoda" placeholder="e.g. Pagoda, Hall, Garden" />
+          <div class="field-hint">A friendly label shown in the dashboard and saved in the config.</div>
         </div>
         <div class="field" id="peersField">
-          <label class="field-label">Peer Unit IDs <span class="card-sub">(coordinator only)</span></label>
+          <label class="field-label">Leaf Unit IDs <span class="card-sub">(coordinator only)</span></label>
           <input id="s_peers" type="text" placeholder="1, 2, 3" value="1, 2" />
-          <div class="field-hint">Comma-separated IDs of leaf units this coordinator manages.</div>
+          <div class="field-hint">Comma-separated IDs of the leaf units this coordinator manages.</div>
         </div>
-        <!-- EXPERT ONLY -->
         <div class="expert-only">
           <div class="divider">Advanced</div>
           <div class="grid3">
@@ -317,7 +337,7 @@
         <div class="field expert-only">
           <label class="field-label">Hostname</label>
           <input id="w_hostname" type="text" value="lokki-pagoda" />
-          <div class="field-hint">Device hostname on the network.</div>
+          <div class="field-hint">Device hostname on the local network (e.g. lokki-pagoda.local).</div>
         </div>
       </div>
     </div>
@@ -359,9 +379,9 @@
       </div>
       <div class="section-body">
         <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
-          Each channel controls one circuit of LEDs via PWM dimming.
-          Add time windows to define when and how bright each channel should be.
-          Channels without a matching window fall back to the default brightness.
+          Each channel independently dims one LED circuit.
+          Toggle a channel <strong>Active</strong> to configure it, then set a default brightness
+          and optional schedule windows for time-based control.
         </p>
         <div id="led_container"></div>
       </div>
@@ -377,7 +397,7 @@
       </div>
       <div class="section-body">
         <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
-          Relay outputs for switching non-dimmable loads (fans, UV lamps, power rails, etc.).
+          Relay outputs for switching non-dimmable loads — fans, UV lamps, power rails, etc.
           Set time windows for scheduled on/off.
         </p>
         <div id="relay_container"></div>
@@ -394,9 +414,9 @@
       </div>
       <div class="section-body">
         <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
-          Up to 4 PIR motion sensors. When motion is detected, the chosen action runs
-          at higher priority than the schedule. When the area becomes vacant again, the
-          vacancy action runs (usually reverting to schedule).
+          Up to 4 PIR motion sensors. When motion is detected the chosen action
+          overrides the schedule. When the area goes quiet the vacancy action runs —
+          usually reverting back to the schedule.
         </p>
         <div id="pir_container"></div>
       </div>
@@ -412,9 +432,9 @@
       </div>
       <div class="section-body">
         <p style="font-size:.82em;color:var(--muted);margin:0 0 10px">
-          A scene is a named lighting snapshot. Scenes are <strong>partial</strong> — only the
-          outputs you list are affected; others keep their current state.
-          Scenes can be triggered by motion sensors, the web dashboard, or LoRa commands.
+          A scene is a named lighting snapshot — e.g. <em>motion_bright</em>, <em>evening</em>, <em>meditation</em>.
+          Scenes are <strong>partial</strong>: only the outputs you tick are changed; everything else keeps its current state.
+          Triggered by motion sensors, the web dashboard, or LoRa remote commands.
         </p>
         <div id="scene_container"></div>
         <button class="btn btn-sm" onclick="addScene()" style="margin-top:4px">+ Add Scene</button>
@@ -425,19 +445,20 @@
     <div class="section" data-section="ldr">
       <div class="section-head" onclick="toggleSection(this)">
         <span class="section-icon">☀️</span>
-        <span class="section-title">Ambient Light (LDR)</span>
+        <span class="section-title">Ambient Light Sensor (LDR)</span>
         <span class="section-badge badge-optional">Optional</span>
         <span class="chevron">›</span>
       </div>
       <div class="section-body">
         <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
-          The LDR sensor continuously measures ambient light and applies a brightness cap to all
-          LED channels. Useful to prevent lights from being brighter than the ambient environment.
-          This is a <em>cap</em>, not a trigger — it only reduces brightness, never increases it.
+          The light sensor measures ambient brightness and automatically caps LED output.
+          Useful outdoors — if it's still bright outside, LEDs won't blare at full power.
+          This is a <em>cap</em> only: it reduces brightness, never increases it.
         </p>
         <div class="toggle-row">
           <div>
-            <div class="toggle-label">Enable LDR cap</div>
+            <div class="toggle-label">Enable ambient light cap</div>
+            <div class="toggle-hint">Sensor reads continuously and adjusts the brightness ceiling.</div>
           </div>
           <div class="toggle-switch">
             <input type="checkbox" class="sw" id="ldr_enabled" checked />
@@ -448,13 +469,13 @@
             <label class="field-label">Smoothing Window</label>
             <div style="display:flex;align-items:center;gap:10px">
               <input id="ldr_smooth" type="number" value="60" min="5" max="300" style="width:100px" />
-              <span style="font-size:.82em;color:var(--muted)">seconds rolling average (reduces flicker from passing clouds)</span>
+              <span style="font-size:.82em;color:var(--muted)">seconds rolling average — reduces flicker from passing clouds</span>
             </div>
           </div>
-          <div style="font-weight:600;font-size:.82em;margin:10px 0 8px;color:#374151">Cap Rules</div>
+          <div style="font-weight:600;font-size:.82em;margin:10px 0 4px;color:#374151">Brightness Cap Rules</div>
           <div style="font-size:.78em;color:var(--muted);margin-bottom:10px">
-            When ambient brightness exceeds the threshold, LED output is capped.
-            Rules are checked highest-threshold-first.
+            When ambient light exceeds the threshold, LED output is capped at the level you set.
+            Rules are evaluated from highest threshold first.
           </div>
           <div id="ldr_rules_container"></div>
           <button class="btn btn-sm" onclick="addCapRule()">+ Add Rule</button>
@@ -475,12 +496,12 @@
           <div class="field">
             <label class="field-label">Frequency (MHz)</label>
             <input id="l_freq" type="number" step="0.1" value="868" />
-            <div class="field-hint">868 MHz for EU/India. 915 MHz for North America. Check local regulations.</div>
+            <div class="field-hint">868 MHz for EU/India · 915 MHz for North America. Check local regulations.</div>
           </div>
           <div class="field">
             <label class="field-label">TX Power (dBm)</label>
             <input id="l_power" type="number" value="22" min="0" max="22" />
-            <div class="field-hint">Max 22 dBm. Reduce for shorter range + lower power draw.</div>
+            <div class="field-hint">Max 22 dBm. Reduce for shorter range and lower power draw.</div>
           </div>
         </div>
         <div class="grid2">
@@ -512,7 +533,7 @@
       </div>
       <div class="section-body">
         <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
-          These are fixed by the PCB layout. Only change if you are using a custom board.
+          Fixed by the PCB layout. Only change if you're using a custom board.
         </p>
         <div class="divider">I2C (RTC + sensors)</div>
         <div class="grid3">
@@ -523,8 +544,8 @@
         <div class="divider">PWM + ADC</div>
         <div class="grid3">
           <div class="field"><label class="field-label">PWM Freq (Hz)</label><input id="h_pwm_freq" type="number" value="1000" /></div>
-          <div class="field"><label class="field-label">LDR (ADC Pin)</label><input id="h_ldr_pin" type="number" value="26" /></div>
-          <div class="field"><label class="field-label">Status LED</label><input id="h_status_led" type="number" value="5" /></div>
+          <div class="field"><label class="field-label">LDR ADC Pin</label><input id="h_ldr_pin" type="number" value="26" /></div>
+          <div class="field"><label class="field-label">Status LED Pin</label><input id="h_status_led" type="number" value="5" /></div>
         </div>
         <div class="divider">LoRa (E220 Module)</div>
         <div class="grid3">
@@ -572,7 +593,8 @@
   <div class="preview-col">
     <div class="preview-title">config.json preview</div>
     <div class="preview-actions">
-      <button class="btn btn-primary btn-sm" id="dlBtn2" onclick="downloadJSON()">⬇ Download</button>
+      <button class="btn btn-primary btn-sm" onclick="downloadJSON()">⬇ Download</button>
+      <button class="btn btn-success btn-sm" id="saveDeviceBtn2" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
     </div>
     <pre id="preview"></pre>
   </div>
@@ -580,11 +602,24 @@
 
 <script>
 // ============================================================
-// Expert mode toggle
+// Device detection — show "Save to device" when served from Pico
+// ============================================================
+const ON_DEVICE = (() => {
+  const h = window.location.hostname;
+  return h && h !== 'localhost' && h !== '127.0.0.1' && window.location.protocol !== 'file:';
+})();
+if (ON_DEVICE) {
+  document.getElementById('saveDeviceBtn').style.display = '';
+  document.getElementById('saveDeviceBtn2').style.display = '';
+}
+
+// ============================================================
+// Expert mode
 // ============================================================
 const expertToggle = document.getElementById('expertToggle');
 expertToggle.addEventListener('change', () => {
   document.body.classList.toggle('expert', expertToggle.checked);
+  scheduleRender();
 });
 
 // ============================================================
@@ -592,6 +627,17 @@ expertToggle.addEventListener('change', () => {
 // ============================================================
 function toggleSection(head) {
   head.closest('.section').classList.toggle('open');
+}
+
+// ============================================================
+// Toast notifications
+// ============================================================
+function showToast(msg, type) {
+  const t = document.createElement('div');
+  t.className = `toast toast-${type === 'ok' ? 'ok' : 'err'}`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
 }
 
 // ============================================================
@@ -625,7 +671,6 @@ const TZ_OPTIONS = [
   {name:'PDT',offset:-7,label:'Pacific Daylight (PDT) UTC-7:00'},
   {name:'HST',offset:-10,label:'Hawaii Standard (HST) UTC-10:00'},
 ];
-
 function populateTzSelect(list) {
   const sel = document.getElementById('tz_select');
   const items = list || TZ_OPTIONS;
@@ -658,7 +703,7 @@ document.getElementById('tz_search').addEventListener('input', () => {
 });
 
 // ============================================================
-// Shared helpers
+// Helpers
 // ============================================================
 function togglePw() {
   const inp = document.getElementById('w_password');
@@ -668,55 +713,40 @@ function togglePw() {
   btn.textContent = show ? '👁️' : '🙈';
 }
 
-function timeTypeSelect(val, prefix, li, wi, isRelay) {
-  const isKey = (val === 'sunrise' || val === 'sunset');
-  const isCustom = !isKey;
-  const entity = isRelay ? 'rl' : 'led';
-  return `<select data-${entity}w data-li="${li}" data-wi="${wi}" data-f="${prefix}_type">
-    <option ${val==='sunrise'?'selected':''}>sunrise</option>
-    <option ${val==='sunset'?'selected':''}>sunset</option>
-    <option value="custom" ${isCustom?'selected':''}>fixed time</option>
-  </select>
-  ${isCustom ? `<input type="time" value="${val}"
-    data-${entity}w data-li="${li}" data-wi="${wi}" data-f="${prefix}_time"
-    style="margin-top:4px" />` : ''}`;
-}
-
 // ============================================================
 // State
 // ============================================================
-const PIR_GPIO = [6,7,8,9];
+const PIR_GPIO  = [6, 7, 8, 9];
+const RELAY_GPIO = [10, 11];
+const LED_GPIOS  = [16, 17, 18, 19, 22, 15, 14, 13];
+
 let pirState = PIR_GPIO.map((gpio, i) => ({
-  id:`pir${i+1}`, name:`PIR ${i+1}`, gpio_pin:gpio, enabled:false,
-  vacancy_timeout_s:300,
-  on_motion:{action:'revert_to_schedule'},
-  on_vacancy:{action:'revert_to_schedule'},
+  id: `pir${i+1}`, name: `Motion Sensor ${i+1}`, gpio_pin: gpio,
+  enabled: false, vacancy_timeout_s: 300,
+  on_motion: {action: 'revert_to_schedule'},
+  on_vacancy: {action: 'revert_to_schedule'},
 }));
 
-const RELAY_GPIO = [10,11];
-let relayState = RELAY_GPIO.map((gpio,i) => ({
-  id:`rly${i+1}`, name:`Relay ${i+1}`, gpio_pin:gpio,
-  enabled:false, default_state:'off', time_windows:[],
+let relayState = RELAY_GPIO.map((gpio, i) => ({
+  id: `rly${i+1}`, name: `Relay ${i+1}`, gpio_pin: gpio,
+  enabled: false, default_state: 'off', time_windows: [],
 }));
 
-const LED_GPIOS = [16,17,18,19,22,15,14,13];
-let ledState = LED_GPIOS.map((gpio,i) => ({
-  id:`ch${i+1}`, name:`Channel ${i+1}`, gpio_pin:gpio,
-  enabled:false, default_duty_percent:0, time_windows:[],
+let ledState = LED_GPIOS.map((gpio, i) => ({
+  id: `ch${i+1}`, name: `Channel ${i+1}`, gpio_pin: gpio,
+  enabled: false, default_duty_percent: 0, time_windows: [],
 }));
 
 let ldrCapRules = [
-  {above_percent:70, cap_percent:20},
-  {above_percent:90, cap_percent:5},
+  {above_percent: 70, cap_percent: 20},
+  {above_percent: 90, cap_percent: 5},
 ];
 let scenes = [];
 
 // ============================================================
 // LDR
 // ============================================================
-document.getElementById('ldr_enabled').addEventListener('change', function(){
-  scheduleRender();
-});
+document.getElementById('ldr_enabled').addEventListener('change', scheduleRender);
 
 function renderLdrRules() {
   const c = document.getElementById('ldr_rules_container');
@@ -724,49 +754,47 @@ function renderLdrRules() {
   ldrCapRules.forEach((r, i) => {
     const d = document.createElement('div');
     d.className = 'card';
-    d.style.cssText = 'padding:10px;margin-bottom:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap';
+    d.style.cssText = 'padding:10px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap';
     d.innerHTML = `
-      <div style="flex:1;min-width:200px">
-        <label style="font-size:.78em;color:var(--muted);display:block;margin-bottom:2px">
-          When ambient brightness is above</label>
+      <div style="flex:1;min-width:180px">
+        <label style="font-size:.78em;color:var(--muted);display:block;margin-bottom:4px">
+          When ambient light is above</label>
         <div style="display:flex;align-items:center;gap:6px">
           <input type="number" min="0" max="100" value="${r.above_percent}"
-                 data-ldr-i="${i}" data-ldr-f="above_percent"
-                 style="width:70px" />
-          <span style="font-size:.82em;color:var(--muted)">%</span>
+                 data-ldr-i="${i}" data-ldr-f="above_percent" style="width:70px" />
+          <span style="font-size:.82em;color:var(--muted)">% ambient brightness</span>
         </div>
       </div>
-      <div style="flex:1;min-width:200px">
-        <label style="font-size:.78em;color:var(--muted);display:block;margin-bottom:2px">
-          Cap LED brightness at</label>
+      <div style="flex:1;min-width:180px">
+        <label style="font-size:.78em;color:var(--muted);display:block;margin-bottom:4px">
+          Cap LED output at</label>
         <div style="display:flex;align-items:center;gap:6px">
           <input type="number" min="0" max="100" value="${r.cap_percent}"
-                 data-ldr-i="${i}" data-ldr-f="cap_percent"
-                 style="width:70px" />
-          <span style="font-size:.82em;color:var(--muted)">%</span>
+                 data-ldr-i="${i}" data-ldr-f="cap_percent" style="width:70px" />
+          <span style="font-size:.82em;color:var(--muted)">% max brightness</span>
         </div>
       </div>
-      <button class="btn btn-sm btn-danger" onclick="removeCapRule(${i})">Remove</button>`;
+      <button class="btn btn-sm btn-danger" style="align-self:flex-end" onclick="removeCapRule(${i})">Remove</button>`;
     d.querySelectorAll('input[data-ldr-i]').forEach(inp => {
       inp.addEventListener('input', () => {
-        ldrCapRules[+inp.getAttribute('data-ldr-i')][inp.getAttribute('data-ldr-f')] = parseInt(inp.value)||0;
+        ldrCapRules[+inp.getAttribute('data-ldr-i')][inp.getAttribute('data-ldr-f')] = parseInt(inp.value) || 0;
         scheduleRender();
       });
     });
     c.appendChild(d);
   });
 }
-function addCapRule() { ldrCapRules.push({above_percent:50,cap_percent:50}); renderLdrRules(); scheduleRender(); }
-function removeCapRule(i) { ldrCapRules.splice(i,1); renderLdrRules(); scheduleRender(); }
+function addCapRule() { ldrCapRules.push({above_percent:50, cap_percent:50}); renderLdrRules(); scheduleRender(); }
+function removeCapRule(i) { ldrCapRules.splice(i, 1); renderLdrRules(); scheduleRender(); }
 
 // ============================================================
 // PIR
 // ============================================================
 const PIR_ACTIONS = [
-  {v:'revert_to_schedule', l:'Revert to schedule'},
-  {v:'set_scene',          l:'Activate a scene'},
-  {v:'set_led_channels',   l:'Set specific LED channels'},
-  {v:'set_relay',          l:'Set a relay'},
+  {v:'revert_to_schedule', l:'Resume the schedule (recommended)'},
+  {v:'set_scene',          l:'Activate a named scene'},
+  {v:'set_led_channels',   l:'Set specific LED channels to a brightness'},
+  {v:'set_relay',          l:'Switch a relay on or off'},
 ];
 
 function renderPIR() {
@@ -774,45 +802,48 @@ function renderPIR() {
   c.innerHTML = '';
   pirState.forEach((p, i) => {
     const d = document.createElement('div');
-    d.className = 'card';
+    d.className = `out-card${p.enabled ? '' : ' inactive'}`;
     d.innerHTML = `
-      <div class="card-title">
-        <span>PIR ${i+1} <span class="pill ${p.enabled?'pill-green':'pill-blue'}">${p.enabled?'enabled':'disabled'}</span></span>
+      <div class="out-card-head">
+        <span class="out-card-name">${p.name}</span>
+        <span class="expert-only-inline out-card-gp">GP${p.gpio_pin}</span>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" class="sw" ${p.enabled?'checked':''} data-pir="${i}" data-f="enabled" />
+          <span class="ch-toggle-label${p.enabled?' active':''}">
+            ${p.enabled ? 'Active' : 'Not used'}
+          </span>
+        </label>
       </div>
-      <div class="grid2">
-        <div class="field">
-          <label class="field-label">Name</label>
-          <input type="text" value="${p.name}" data-pir="${i}" data-f="name" />
-        </div>
-        <div class="field">
-          <label class="field-label">Enabled</label>
-          <select data-pir="${i}" data-f="enabled">
-            <option value="false" ${!p.enabled?'selected':''}>No — sensor ignored</option>
-            <option value="true"  ${p.enabled?'selected':''}>Yes — active</option>
-          </select>
-        </div>
-      </div>
-      <div class="grid2" style="margin-top:6px">
-        <div class="field expert-only">
-          <label class="field-label">GPIO Pin</label>
-          <input type="number" value="${p.gpio_pin}" data-pir="${i}" data-f="gpio_pin" />
-        </div>
-        <div class="field">
-          <label class="field-label">Vacancy Timeout</label>
-          <div style="display:flex;align-items:center;gap:8px">
-            <input type="number" value="${p.vacancy_timeout_s}" data-pir="${i}" data-f="vacancy_timeout_s" style="width:90px" />
-            <span style="font-size:.82em;color:var(--muted)">seconds after last motion</span>
+      <div class="out-card-body">
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Sensor label</label>
+            <input type="text" value="${p.name}" data-pir="${i}" data-f="name"
+                   placeholder="e.g. Main entrance, Corridor" />
+          </div>
+          <div class="field">
+            <label class="field-label">Consider vacant after</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="number" value="${p.vacancy_timeout_s}" data-pir="${i}" data-f="vacancy_timeout_s"
+                     style="width:90px" min="0" />
+              <span style="font-size:.82em;color:var(--muted)">seconds of no motion</span>
+            </div>
+            <div class="field-hint">e.g. 300 = 5 minutes</div>
           </div>
         </div>
-      </div>
-      <div class="grid2" style="margin-top:6px">
-        <div>
-          <div style="font-size:.78em;font-weight:600;color:#374151;margin-bottom:6px">On Motion Detected</div>
-          ${pirActionUI(i,'on_motion',p.on_motion)}
+        <div class="field expert-only">
+          <label class="field-label">GPIO Pin</label>
+          <input type="number" value="${p.gpio_pin}" data-pir="${i}" data-f="gpio_pin" style="width:90px" />
         </div>
-        <div>
-          <div style="font-size:.78em;font-weight:600;color:#374151;margin-bottom:6px">On Area Vacant</div>
-          ${pirActionUI(i,'on_vacancy',p.on_vacancy)}
+        <div class="grid2" style="margin-top:6px">
+          <div>
+            <div style="font-size:.78em;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">When motion detected</div>
+            ${pirActionUI(i,'on_motion',p.on_motion)}
+          </div>
+          <div>
+            <div style="font-size:.78em;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em">When area goes quiet</div>
+            ${pirActionUI(i,'on_vacancy',p.on_vacancy)}
+          </div>
         </div>
       </div>`;
     d.querySelectorAll('[data-pir]').forEach(el => {
@@ -838,17 +869,18 @@ function pirActionUI(pirIdx, key, actionObj) {
     } else if (actionObj.action === 'set_led_channels') {
       extra = `<div style="margin-top:6px">
         <div class="field">
-          <label class="field-label">Channel IDs</label>
+          <label class="field-label">Which channels</label>
           <input type="text" value="${(actionObj.channels||[]).join(', ')}"
                  data-pir="${pirIdx}" data-f="${key}_channels" placeholder="ch1, ch2" />
+          <div class="field-hint">Comma-separated channel IDs (e.g. ch1, ch3)</div>
         </div>
         <div class="grid2">
           <div class="field">
             <label class="field-label">Brightness</label>
-            <div style="display:flex;align-items:center;gap:6px">
-              <input type="number" min="0" max="100" value="${actionObj.duty_percent||100}"
-                     data-pir="${pirIdx}" data-f="${key}_duty_percent" style="width:70px" />
-              <span style="font-size:.82em;color:var(--muted)">%</span>
+            <div class="range-field">
+              <input type="range" min="0" max="100" value="${actionObj.duty_percent||100}"
+                     data-pir="${pirIdx}" data-f="${key}_duty_percent" />
+              <span class="range-val">${actionObj.duty_percent||100}%</span>
             </div>
           </div>
           <div class="field">
@@ -870,7 +902,7 @@ function syncPIRField(el) {
   const i = +el.getAttribute('data-pir');
   const f = el.getAttribute('data-f');
   const v = el.value;
-  if (f === 'enabled') pirState[i].enabled = (v==='true');
+  if (f === 'enabled') { pirState[i].enabled = el.checked; renderPIR(); return; }
   else if (f === 'name') pirState[i].name = v;
   else if (f === 'gpio_pin') pirState[i].gpio_pin = +v;
   else if (f === 'vacancy_timeout_s') pirState[i].vacancy_timeout_s = +v;
@@ -891,38 +923,46 @@ function renderRelays() {
   c.innerHTML = '';
   relayState.forEach((r, i) => {
     const d = document.createElement('div');
-    d.className = 'card';
+    d.className = `out-card${r.enabled ? '' : ' inactive'}`;
     d.innerHTML = `
-      <div class="card-title">
-        <span>${r.name} <span class="pill ${r.enabled?'pill-green':'pill-blue'}">${r.enabled?'enabled':'disabled'}</span></span>
+      <div class="out-card-head">
+        <span class="out-card-name">${r.name}</span>
+        <span class="expert-only-inline out-card-gp">GP${r.gpio_pin}</span>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" class="sw" ${r.enabled?'checked':''} data-rl="${i}" data-f="enabled" />
+          <span class="ch-toggle-label${r.enabled?' active':''}">
+            ${r.enabled ? 'Active' : 'Not used'}
+          </span>
+        </label>
       </div>
-      <div class="grid2">
-        <div class="field"><label class="field-label">Name</label>
-          <input type="text" value="${r.name}" data-rl="${i}" data-f="name" /></div>
-        <div class="field"><label class="field-label">Enabled</label>
-          <select data-rl="${i}" data-f="enabled">
-            <option value="false" ${!r.enabled?'selected':''}>No</option>
-            <option value="true"  ${r.enabled?'selected':''}>Yes</option>
-          </select></div>
-      </div>
-      <div class="field expert-only">
-        <label class="field-label">GPIO Pin</label>
-        <input type="number" value="${r.gpio_pin}" data-rl="${i}" data-f="gpio_pin" style="width:90px" />
-      </div>
-      <div class="field">
-        <label class="field-label">Default State <span class="card-sub">(when no window matches)</span></label>
-        <select data-rl="${i}" data-f="default_state" style="width:160px">
-          <option ${r.default_state==='off'?'selected':''}>off</option>
-          <option ${r.default_state==='on'?'selected':''}>on</option>
-        </select>
-      </div>
-      <div style="margin-top:8px">
-        <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:6px">
-          Time Windows <span class="card-sub">(relay is ON during these periods)</span></div>
-        <div class="rl-wins" data-rli="${i}">
-          ${r.time_windows.map((w,wi) => relayWinHTML(i,wi,w)).join('')}
+      <div class="out-card-body">
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Relay label</label>
+            <input type="text" value="${r.name}" data-rl="${i}" data-f="name"
+                   placeholder="e.g. UV lamp, Fan, Power rail" />
+          </div>
+          <div class="field">
+            <label class="field-label">Default state <span class="card-sub">(outside schedule windows)</span></label>
+            <select data-rl="${i}" data-f="default_state" style="width:auto">
+              <option ${r.default_state==='off'?'selected':''} value="off">Off</option>
+              <option ${r.default_state==='on'?'selected':''} value="on">On</option>
+            </select>
+          </div>
         </div>
-        <button class="btn btn-sm" onclick="addRelayWin(${i})" style="margin-top:4px">+ Add Window</button>
+        <div class="field expert-only">
+          <label class="field-label">GPIO Pin</label>
+          <input type="number" value="${r.gpio_pin}" data-rl="${i}" data-f="gpio_pin" style="width:90px" />
+        </div>
+        <div style="margin-top:8px">
+          <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:6px">
+            Schedule Windows <span class="card-sub">— relay switches ON during these periods</span>
+          </div>
+          <div class="rl-wins" data-rli="${i}">
+            ${r.time_windows.map((w,wi) => relayWinHTML(i,wi,w)).join('')}
+          </div>
+          <button class="btn btn-sm" onclick="addRelayWin(${i})" style="margin-top:4px">+ Add Window</button>
+        </div>
       </div>`;
     d.querySelectorAll('[data-rl]').forEach(el => {
       el.addEventListener('change', () => syncRelayField(el));
@@ -977,7 +1017,7 @@ function relayWinHTML(ri, wi, w) {
 function syncRelayField(el) {
   const i = +el.getAttribute('data-rl');
   const f = el.getAttribute('data-f');
-  if (f==='enabled') relayState[i].enabled = (el.value==='true');
+  if (f==='enabled') { relayState[i].enabled = el.checked; renderRelays(); return; }
   else if (f==='name') relayState[i].name = el.value;
   else if (f==='gpio_pin') relayState[i].gpio_pin = +el.value;
   else if (f==='default_state') relayState[i].default_state = el.value;
@@ -1005,40 +1045,53 @@ function renderLEDs() {
   c.innerHTML = '';
   ledState.forEach((ch, i) => {
     const d = document.createElement('div');
-    d.className = 'card';
+    d.className = `out-card${ch.enabled ? '' : ' inactive'}`;
     d.innerHTML = `
-      <div class="card-title">
-        <span>${ch.name} <span class="pill pill-blue">GP${ch.gpio_pin}</span>
-          <span class="pill ${ch.enabled?'pill-green':'pill-blue'}">${ch.enabled?'on':'off'}</span></span>
+      <div class="out-card-head">
+        <span class="out-card-name">${ch.name}</span>
+        <span class="expert-only-inline out-card-gp">GP${ch.gpio_pin}</span>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" class="sw" ${ch.enabled?'checked':''} data-led="${i}" data-f="enabled" />
+          <span class="ch-toggle-label${ch.enabled?' active':''}">
+            ${ch.enabled ? 'Active' : 'Not used'}
+          </span>
+        </label>
       </div>
-      <div class="grid2">
-        <div class="field"><label class="field-label">Name</label>
-          <input type="text" value="${ch.name}" data-led="${i}" data-f="name" /></div>
-        <div class="field"><label class="field-label">Enabled</label>
-          <select data-led="${i}" data-f="enabled">
-            <option value="false" ${!ch.enabled?'selected':''}>No — channel off</option>
-            <option value="true"  ${ch.enabled?'selected':''}>Yes — active</option>
-          </select></div>
-      </div>
-      <div class="field">
-        <label class="field-label">Default Brightness
-          <span class="card-sub">(when no schedule window matches)</span></label>
-        <div class="range-field">
-          <input type="range" min="0" max="100" value="${ch.default_duty_percent}"
-                 data-led="${i}" data-f="default_duty" />
-          <span class="range-val" data-led-val="${i}">${ch.default_duty_percent}%</span>
+      <div class="out-card-body">
+        <div class="field">
+          <label class="field-label">Channel label</label>
+          <input type="text" value="${ch.name}" data-led="${i}" data-f="name"
+                 placeholder="e.g. Outer ring, Ceiling fill, Uplights" style="max-width:280px" />
+          <div class="field-hint">Give it a meaningful name — this appears in scenes and the dashboard.</div>
         </div>
-      </div>
-      <div style="margin-top:8px">
-        <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:2px">Schedule Windows</div>
-        <div style="font-size:.76em;color:var(--muted);margin-bottom:8px">
-          Each window sets the brightness for a time period. Tip: use "sunrise" and "sunset" for automatic solar-based timing
-          (requires <a href="./sun-times-builder.html" style="color:var(--brand)">sun_times.json</a> on the device).
+        <div class="field">
+          <label class="field-label">
+            Default brightness
+            <span class="card-sub">(used when no schedule window is active)</span>
+          </label>
+          <div class="range-field">
+            <input type="range" min="0" max="100" value="${ch.default_duty_percent}"
+                   data-led="${i}" data-f="default_duty" />
+            <span class="range-val" data-led-val="${i}">${ch.default_duty_percent}%</span>
+          </div>
+          <div class="field-hint">Set to 0% to keep the lights off by default outside schedule windows.</div>
         </div>
-        <div class="led-wins" data-li="${i}">
-          ${ch.time_windows.map((w,wi) => ledWinHTML(i,wi,w)).join('')}
+        <div class="field expert-only">
+          <label class="field-label">GPIO Pin</label>
+          <input type="number" value="${ch.gpio_pin}" data-led="${i}" data-f="gpio_pin" style="width:90px" />
         </div>
-        <button class="btn btn-sm" onclick="addLedWin(${i})" style="margin-top:4px">+ Add Window</button>
+        <div style="margin-top:8px">
+          <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:2px">Schedule Windows</div>
+          <div style="font-size:.76em;color:var(--muted);margin-bottom:8px">
+            Each window sets the brightness for a time period.
+            Use <em>sunrise</em> or <em>sunset</em> for solar-based timing
+            (requires <a href="./sun-times-builder.html" style="color:var(--brand)">sun_times.json</a> on the device).
+          </div>
+          <div class="led-wins" data-li="${i}">
+            ${ch.time_windows.map((w,wi) => ledWinHTML(i,wi,w)).join('')}
+          </div>
+          <button class="btn btn-sm" onclick="addLedWin(${i})" style="margin-top:4px">+ Add Window</button>
+        </div>
       </div>`;
     d.querySelectorAll('[data-led]').forEach(el => {
       el.addEventListener('change', () => syncLedField(el));
@@ -1062,7 +1115,7 @@ function ledWinHTML(li, wi, w) {
     </div>
     <div class="grid2">
       <div class="field">
-        <label class="field-label">Start time</label>
+        <label class="field-label">Start</label>
         <select data-lw data-li="${li}" data-wi="${wi}" data-f="start_type">
           <option ${w.start==='sunrise'?'selected':''}>sunrise</option>
           <option ${w.start==='sunset'?'selected':''}>sunset</option>
@@ -1071,7 +1124,7 @@ function ledWinHTML(li, wi, w) {
         ${!sKey?`<input type="time" value="${w.start}" data-lw data-li="${li}" data-wi="${wi}" data-f="start_time" style="margin-top:4px" />`:''}
       </div>
       <div class="field">
-        <label class="field-label">End time</label>
+        <label class="field-label">End</label>
         <select data-lw data-li="${li}" data-wi="${wi}" data-f="end_type">
           <option ${w.end==='sunrise'?'selected':''}>sunrise</option>
           <option ${w.end==='sunset'?'selected':''}>sunset</option>
@@ -1090,11 +1143,11 @@ function ledWinHTML(li, wi, w) {
       </div>
     </div>
     <div class="field">
-      <label class="field-label">Fade duration <span class="card-sub">(how long to transition to this brightness)</span></label>
+      <label class="field-label">Fade duration <span class="card-sub">(transition time into this brightness)</span></label>
       <div style="display:flex;align-items:center;gap:8px">
         <input type="number" min="0" value="${w.fade_ms||0}"
                data-lw data-li="${li}" data-wi="${wi}" data-f="fade_ms" style="width:100px" />
-        <span style="font-size:.82em;color:var(--muted)">milliseconds &nbsp;·&nbsp; 0 = instant, 5000 = 5 sec fade</span>
+        <span style="font-size:.82em;color:var(--muted)">milliseconds &nbsp;·&nbsp; 0 = instant &nbsp;·&nbsp; 5000 = 5 s fade</span>
       </div>
     </div>
   </div>`;
@@ -1103,7 +1156,8 @@ function ledWinHTML(li, wi, w) {
 function syncLedField(el) {
   const i=+el.getAttribute('data-led'), f=el.getAttribute('data-f'), v=el.value;
   if (f==='name') ledState[i].name = v;
-  else if (f==='enabled') ledState[i].enabled = (v==='true');
+  else if (f==='enabled') { ledState[i].enabled = el.checked; renderLEDs(); return; }
+  else if (f==='gpio_pin') ledState[i].gpio_pin = +v;
   else if (f==='default_duty') {
     ledState[i].default_duty_percent = +v;
     const sp = document.querySelector(`[data-led-val="${i}"]`);
@@ -1137,7 +1191,7 @@ function renderScenes() {
   const c = document.getElementById('scene_container');
   c.innerHTML = '';
   if (!scenes.length) {
-    c.innerHTML = '<p style="font-size:.82em;color:var(--muted);margin:0 0 10px">No scenes defined yet. Add one below.</p>';
+    c.innerHTML = '<p style="font-size:.82em;color:var(--muted);margin:0 0 10px">No scenes yet. Add one below.</p>';
     return;
   }
   scenes.forEach((sc, i) => {
@@ -1149,23 +1203,26 @@ function renderScenes() {
         <button class="btn btn-sm btn-danger" onclick="removeScene(${i})">Remove</button>
       </div>
       <div class="field">
-        <label class="field-label">Scene Name</label>
+        <label class="field-label">Scene name <span class="card-sub">(used in PIR config and LoRa commands)</span></label>
         <input type="text" value="${sc.name}" data-sc="${i}" data-f="name"
-               placeholder="e.g. motion_bright, evening, all_off" style="max-width:280px" />
+               placeholder="e.g. motion_bright, evening, meditation" style="max-width:280px" />
       </div>
       <div class="win-sep"></div>
       <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:8px">
-        LED Channels <span class="card-sub">— tick to include in this scene</span></div>
+        LED Channels — <span class="card-sub">tick to include in this scene</span></div>
       ${ledState.map((ch, ci) => {
         const entry = (sc.led_channels||[]).find(x=>x.id===ch.id);
         const checked = !!entry;
-        return `<div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+        return `<div style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
           <input type="checkbox" ${checked?'checked':''} data-sc="${i}" data-f="led_check" data-ci="${ci}"
-                 style="margin-top:3px;width:16px;height:16px;cursor:pointer" />
+                 style="margin-top:3px;width:16px;height:16px;cursor:pointer;flex-shrink:0" />
           <div style="flex:1">
-            <div style="font-size:.85em;font-weight:500">${ch.name} <span style="font-size:.78em;color:var(--muted)">ch${ci+1} · GP${ch.gpio_pin}</span></div>
-            ${checked?`<div style="display:flex;align-items:center;gap:16px;margin-top:6px;flex-wrap:wrap">
-              <label style="display:flex;align-items:center;gap:6px;font-size:.8em;color:#374151">
+            <div style="font-size:.85em;font-weight:500">
+              ${ch.name}
+              <span class="expert-only-inline" style="font-size:.75em;color:var(--muted)">· GP${ch.gpio_pin}</span>
+            </div>
+            ${checked?`<div style="display:flex;align-items:center;gap:16px;margin-top:8px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:8px;font-size:.8em;color:#374151">
                 Brightness
                 <div class="range-field" style="width:140px">
                   <input type="range" min="0" max="100" value="${entry.duty_percent||0}"
@@ -1183,15 +1240,15 @@ function renderScenes() {
           </div>
         </div>`;
       }).join('')}
-      <div style="font-size:.82em;font-weight:600;color:#374151;margin:10px 0 8px">
-        Relays <span class="card-sub">— tick to include in this scene</span></div>
+      <div style="font-size:.82em;font-weight:600;color:#374151;margin:12px 0 8px">
+        Relays — <span class="card-sub">tick to include in this scene</span></div>
       ${relayState.map((r, ri) => {
         const entry = (sc.relays||[]).find(x=>x.id===r.id);
         const checked = !!entry;
-        return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+        return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
           <input type="checkbox" ${checked?'checked':''} data-sc="${i}" data-f="rl_check" data-ri="${ri}"
-                 style="width:16px;height:16px;cursor:pointer" />
-          <span style="font-size:.85em;font-weight:500;flex:1">${r.name} <span style="font-size:.78em;color:var(--muted)">${r.id}</span></span>
+                 style="width:16px;height:16px;cursor:pointer;flex-shrink:0" />
+          <span style="font-size:.85em;font-weight:500;flex:1">${r.name}</span>
           ${checked?`<select data-sc="${i}" data-f="rl_state" data-ri="${ri}" style="width:80px">
             <option ${(entry.state||'off')==='on'?'selected':''}>on</option>
             <option ${(entry.state||'off')==='off'?'selected':''}>off</option>
@@ -1347,7 +1404,7 @@ function buildConfig() {
 let renderTimer = null;
 function scheduleRender() {
   clearTimeout(renderTimer);
-  renderTimer = setTimeout(doRender, 100);
+  renderTimer = setTimeout(doRender, 80);
 }
 function doRender() {
   const cfg = buildConfig();
@@ -1361,19 +1418,19 @@ function validate(cfg) {
     errs.push('Coordinator has no peers — add leaf unit IDs in Unit Identity');
   cfg.pir.forEach((p,i) => {
     if (p.enabled && p.on_motion.action==='set_scene' && !p.on_motion.scene_name)
-      errs.push(`PIR ${i+1}: on_motion is set to "activate a scene" but no scene name is set`);
+      errs.push(`Motion sensor ${i+1}: action is "activate a scene" but no scene name is set`);
   });
   const banner = document.getElementById('valBanner');
-  const dlBtn  = document.getElementById('dlBtn');
-  const dlBtn2 = document.getElementById('dlBtn2');
+  const btns   = [document.getElementById('dlBtn'), document.getElementById('saveDeviceBtn'),
+                  document.getElementById('saveDeviceBtn2')];
   if (errs.length) {
     banner.className='val-banner val-err show';
-    banner.innerHTML = '<strong>Fix before downloading:</strong><br>' + errs.join('<br>');
-    [dlBtn,dlBtn2].forEach(b=>{ b.disabled=true; });
+    banner.innerHTML = '<strong>Fix before saving:</strong><br>' + errs.join('<br>');
+    btns.forEach(b=>{ if(b) b.disabled=true; });
   } else {
     banner.className='val-banner val-ok show';
     banner.textContent = 'Config looks good ✓';
-    [dlBtn,dlBtn2].forEach(b=>{ b.disabled=false; });
+    btns.forEach(b=>{ if(b) b.disabled=false; });
   }
 }
 
@@ -1392,6 +1449,33 @@ function downloadJSON() {
   a.download = `config_${name}_${ts}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+// ============================================================
+// Save to device
+// ============================================================
+async function saveToDevice() {
+  const cfg = buildConfig();
+  const unitId = cfg.system.unit_id;
+  const btns = [document.getElementById('saveDeviceBtn'), document.getElementById('saveDeviceBtn2')];
+  btns.forEach(b=>{ if(b){ b.disabled=true; b.textContent='Saving…'; } });
+  try {
+    const r = await fetch(`/api/units/${unitId}/config`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(cfg, null, 2),
+    });
+    const data = await r.json().catch(()=>({}));
+    if (r.ok && data.ok !== false) {
+      showToast('Saved to device ✓', 'ok');
+    } else {
+      showToast('Save failed: ' + (data.error || `HTTP ${r.status}`), 'err');
+    }
+  } catch (e) {
+    showToast('Could not reach device: ' + e.message, 'err');
+  } finally {
+    btns.forEach(b=>{ if(b){ b.disabled=false; b.textContent='↑ Save to device'; } });
+  }
 }
 
 // ============================================================
@@ -1466,8 +1550,6 @@ document.getElementById('uploadInput').addEventListener('change', async ev => {
   } finally { ev.target.value = ''; }
 });
 
-// auto-trigger render on all inputs
-document.getElementById('expertToggle').addEventListener('change', scheduleRender);
 document.querySelectorAll('input,select').forEach(el => {
   if (el.id === 'expertToggle' || el.id === 'uploadInput') return;
   el.addEventListener('input',  scheduleRender);

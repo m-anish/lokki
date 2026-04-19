@@ -1,6 +1,7 @@
 import asyncio
 import socket
 import json
+import os
 from core.config_manager import config_manager
 from shared.system_status import system_status
 from shared.simple_logger import Logger
@@ -12,6 +13,25 @@ _PORT       = 80
 _RECV_SIZE  = 512
 _RECV_LOOPS = 32          # max read iterations per request
 _BODY_MAX   = 8192        # max POST body bytes accepted
+_STATIC_DIR = "/www"      # static web files root on the filesystem
+_CHUNK_SIZE = 1024        # bytes per send chunk for static files
+
+_MIME = {
+    "html": "text/html; charset=utf-8",
+    "js":   "application/javascript",
+    "json": "application/json",
+    "css":  "text/css",
+    "ico":  "image/x-icon",
+    "png":  "image/png",
+    "svg":  "image/svg+xml",
+}
+
+_STATIC_PATHS = {
+    "/",
+    "/index.html",
+    "/config-builder.html",
+    "/sun-times-builder.html",
+}
 
 
 class WebServer:
@@ -69,6 +89,11 @@ class WebServer:
             method, path, headers, body = self._parse_request(raw)
             log.debug(f"[WEB] {method} {path} from {addr[0]}")
 
+            # Static file serving (GET only)
+            if method == "GET" and self._is_static(path):
+                await self._serve_static(conn, path)
+                return
+
             status, ctype, body_out = await self._route(method, path, headers, body)
             response = (
                 f"HTTP/1.1 {status}\r\n"
@@ -84,6 +109,43 @@ class WebServer:
                 pass
         finally:
             conn.close()
+
+    # ------------------------------------------------------------------
+    # Static file serving
+    # ------------------------------------------------------------------
+
+    def _is_static(self, path):
+        if path in _STATIC_PATHS:
+            return True
+        if path.startswith("/vendor/"):
+            return True
+        return False
+
+    async def _serve_static(self, conn, path):
+        file_path = _STATIC_DIR + ("/index.html" if path == "/" else path)
+        ext = path.rsplit(".", 1)[-1] if "." in path else ""
+        ctype = _MIME.get(ext, "application/octet-stream")
+        try:
+            os.stat(file_path)
+        except OSError:
+            conn.send(
+                b"HTTP/1.1 404 Not Found\r\n"
+                b"Content-Type: text/plain\r\n"
+                b"Connection: close\r\n\r\n"
+                b"Not found"
+            )
+            return
+        conn.send(
+            f"HTTP/1.1 200 OK\r\nContent-Type: {ctype}\r\nConnection: close\r\n\r\n"
+            .encode()
+        )
+        with open(file_path, "rb") as f:
+            while True:
+                chunk = f.read(_CHUNK_SIZE)
+                if not chunk:
+                    break
+                conn.send(chunk)
+                await asyncio.sleep_ms(0)
 
     # ------------------------------------------------------------------
     # Routing
@@ -226,7 +288,9 @@ class WebServer:
             "<p style='font-size:.8em;color:#999'>"
             "<a href='/api/status'>Status JSON</a> &middot; "
             "<a href='/api/fleet'>Fleet JSON</a> &middot; "
-            "<a href='/api/scenes'>Scenes JSON</a></p>"
+            "<a href='/api/scenes'>Scenes JSON</a> &middot; "
+            "<a href='/config-builder.html'>Config Builder</a> &middot; "
+            "<a href='/sun-times-builder.html'>Sun Times Builder</a></p>"
             "<script>"
             "async function load(){"
             " const f=await fetch('/api/fleet').then(r=>r.json());"
