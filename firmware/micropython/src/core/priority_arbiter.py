@@ -68,6 +68,15 @@ class PriorityArbiter:
             self._cancel_revert(output_id)
             self._apply(output_id)
 
+    def clear_all_manual(self):
+        for oid in self._state:
+            self._state[oid]["manual"] = None
+            self._cancel_revert(oid)
+        self._apply_all()
+
+    def has_manual(self):
+        return any(s["manual"] is not None for s in self._state.values())
+
     def _schedule_revert(self, output_id, revert_s):
         self._cancel_revert(output_id)
         self._revert_tasks[output_id] = asyncio.create_task(
