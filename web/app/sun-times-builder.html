@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Sun Times Builder — Lokki</title>
+  <meta name="color-scheme" content="light dark" />
   <meta name="description" content="Generate a sun_times.json lookup table for Lokki LED lighting controllers" />
   <style>
     *, *::before, *::after { box-sizing: border-box; }
@@ -140,6 +141,31 @@
                    background: #334155; margin-right: 5px; vertical-align: middle; }
     .status-dot.ready { background: var(--success); }
     .status-text { font-size: .75em; color: #64748b; }
+
+    /* DARK MODE */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:      #0f172a;
+        --card:    #1e293b;
+        --border:  #334155;
+        --text:    #f1f5f9;
+        --muted:   #94a3b8;
+        --brand:   #818cf8;
+        --brand-d: #6366f1;
+        --success: #34d399;
+      }
+      input[type=text], input[type=number], select {
+        background: #0f172a; color: var(--text); border-color: var(--border); }
+      input:focus, select:focus { background: #1e293b; }
+      .badge-required { background: #450a0a; color: #fca5a5; }
+      .badge-optional  { background: #052e16; color: #6ee7b7; }
+      .preview-card { background: #060d1a; }
+      .next-step-tip { background: #1e293b; }
+      .status-dot { background: #475569; }
+      .status-text { color: var(--muted); }
+      .btn-secondary { background: #1e293b; }
+      pre { color: #94a3b8; }
+    }
 
     /* FOOTER */
     footer { border-top: 1px solid var(--border); padding: 24px 20px; text-align: center;

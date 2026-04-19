@@ -69,6 +69,7 @@
         "i2c_freq_hz":    { "type": "integer" },
         "pwm_freq_hz":    { "type": "integer", "minimum": 1, "maximum": 40000000 },
         "ldr_adc_pin":    { "type": "integer", "minimum": 26, "maximum": 28 },
+        "gamma":          { "type": "number",  "minimum": 1.0, "maximum": 4.0 },
         "status_led_pin": { "type": "integer", "minimum": 0, "maximum": 28 },
         "reset_btn_pin":  { "type": "integer", "minimum": 0, "maximum": 28 },
         "lora_uart_id":   { "type": "integer", "minimum": 0, "maximum": 1 },

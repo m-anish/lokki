@@ -2,8 +2,19 @@ import asyncio
 from machine import PWM, Pin
 
 
+_GAMMA = 2.2  # perceptual correction — set via set_gamma() at boot
+
+
+def set_gamma(gamma):
+    global _GAMMA
+    _GAMMA = max(1.0, min(4.0, float(gamma)))
+
+
 def _duty_from_percent(pct):
-    return int(max(0, min(100, pct)) * 65535 / 100)
+    pct = max(0.0, min(100.0, float(pct)))
+    if pct <= 0:   return 0
+    if pct >= 100: return 65535
+    return int((pct / 100.0) ** _GAMMA * 65535)
 
 
 class PWMChannel:
@@ -58,7 +69,8 @@ class PWMController:
     def __init__(self):
         self._channels = {}
 
-    def init_from_config(self, led_channels_cfg, freq_hz=1000):
+    def init_from_config(self, led_channels_cfg, freq_hz=1000, gamma=2.2):
+        set_gamma(gamma)
         for ch in led_channels_cfg:
             cid = ch.get("id")
             pin = ch.get("gpio_pin")

@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Lokki — Config Builder</title>
+  <meta name="color-scheme" content="light dark" />
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     :root {
@@ -25,12 +26,15 @@
 
     /* NAV */
     nav { background: var(--card); border-bottom: 1px solid var(--border);
-          padding: 0 20px; display: flex; align-items: center; gap: 12px; height: 52px;
-          position: sticky; top: 0; z-index: 100; }
-    .nav-logo { font-size: 1em; font-weight: 700; color: var(--brand); text-decoration: none; }
-    .nav-sep  { color: var(--border); }
-    .nav-title { color: var(--muted); font-size: .9em; }
-    .nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+          padding: 0 24px; display: flex; align-items: center; gap: 12px; height: 56px;
+          position: sticky; top: 0; z-index: 100; font-size: 15px; }
+    .nav-logo { font-size: 1.1em; font-weight: 700; color: var(--brand);
+                letter-spacing: -.02em; text-decoration: none; }
+    .nav-logo span { color: var(--text); font-weight: 400; }
+    .nav-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+    .nav-back { font-size: .85em; color: var(--muted); text-decoration: none;
+                display: flex; align-items: center; gap: 4px; }
+    .nav-back:hover { color: var(--brand); }
     .expert-toggle { display: flex; align-items: center; gap: 7px; font-size: .8em;
                       color: var(--muted); cursor: pointer; user-select: none; }
     .expert-toggle input { width: 32px; height: 18px; appearance: none; background: #cbd5e1;
@@ -41,11 +45,22 @@
                                    background: #fff; transition: left .2s; }
     .expert-toggle input:checked::after { left: 16px; }
 
+    /* HERO */
+    .hero { background: linear-gradient(135deg, #312e81 0%, #4f46e5 60%, #7c3aed 100%);
+             color: #fff; text-align: center; padding: 40px 24px 36px; }
+    .hero h1 { margin: 0 0 10px; font-size: clamp(1.4em, 4vw, 2em);
+               font-weight: 800; letter-spacing: -.03em; }
+    .hero p  { margin: 0 auto; max-width: 500px; font-size: .95em; opacity: .85; }
+    .hero-badge { display: inline-block; background: rgba(255,255,255,.15);
+                  border: 1px solid rgba(255,255,255,.25); border-radius: 20px;
+                  padding: 4px 14px; font-size: .8em; letter-spacing: .04em;
+                  text-transform: uppercase; margin-bottom: 14px; }
+
     /* LAYOUT */
-    .layout { display: grid; grid-template-columns: 1fr 340px; gap: 0; min-height: calc(100vh - 52px); }
+    .layout { display: grid; grid-template-columns: 1fr 340px; gap: 0; min-height: calc(100vh - 56px); }
     .form-col { padding: 24px 20px; overflow-y: auto; }
     .preview-col { background: #0f172a; color: #94a3b8; padding: 20px;
-                   position: sticky; top: 52px; height: calc(100vh - 52px);
+                   position: sticky; top: 56px; height: calc(100vh - 56px);
                    display: flex; flex-direction: column; gap: 12px; }
     @media (max-width: 768px) {
       .layout { grid-template-columns: 1fr; }
@@ -72,6 +87,17 @@
     .section-body { padding: 16px; display: none; }
     .section.open .section-body { display: block; }
 
+    /* EMOJI PICKER */
+    .emoji-grid { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 7px; }
+    .emoji-chip { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+                  font-size: 1em; border-radius: 6px; cursor: pointer; line-height: 1;
+                  border: 1px solid var(--border); background: #f8fafc;
+                  transition: background .1s, transform .12s, border-color .1s; user-select: none; }
+    .emoji-chip:hover { background: #ede9fe; transform: scale(1.2); border-color: var(--brand); }
+    .emoji-chip.sm { width: 26px; height: 26px; font-size: .88em; border-radius: 5px; }
+    .emoji-grid-label { font-size: .72em; color: var(--muted); font-weight: 600;
+                         text-transform: uppercase; letter-spacing: .05em; margin-top: 8px; margin-bottom: 3px; }
+
     /* EXPERT VISIBILITY */
     .expert-only { display: none; }
     body.expert .expert-only { display: block; }
@@ -79,6 +105,13 @@
     body.expert .expert-only-inline { display: inline; }
     .expert-only-flex { display: none; }
     body.expert .expert-only-flex { display: flex; }
+
+    /* LEAF MODE — hide coordinator-only sections */
+    body.leaf .coordinator-only { display: none !important; }
+    .leaf-note { display: none; background: #fffbeb; border: 1px solid #fde68a;
+                  border-radius: 8px; padding: 10px 14px; font-size: .82em; color: #92400e;
+                  margin-bottom: 14px; }
+    body.leaf .leaf-note { display: block; }
 
     /* FORM ELEMENTS */
     .field { margin-bottom: 14px; }
@@ -112,6 +145,13 @@
     .sw::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
                   border-radius: 50%; background: #fff; transition: left .2s; }
     .sw:checked::after { left: 19px; }
+
+    /* BRIGHTNESS SWATCH */
+    .bswatch { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+                border: 1px solid #475569;
+                background: radial-gradient(circle at 38% 32%, #fff8e1, #d97706);
+                filter: brightness(0);
+                transition: filter .1s, box-shadow .1s, border-color .1s; }
 
     /* RANGE SLIDER */
     .range-field { display: flex; align-items: center; gap: 10px; }
@@ -209,6 +249,48 @@
                 display: flex; align-items: center; gap: 10px; }
     .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
+    /* DARK MODE */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:      #0f172a;
+        --card:    #1e293b;
+        --border:  #334155;
+        --text:    #f1f5f9;
+        --muted:   #94a3b8;
+        --brand:   #818cf8;
+        --brand-d: #6366f1;
+        --green:   #34d399;
+        --red:     #f87171;
+        --amber:   #fbbf24;
+      }
+      input[type=text], input[type=password], input[type=number], input[type=time],
+      select, textarea { background: #0f172a; color: var(--text); border-color: var(--border); }
+      input:focus, select:focus, textarea:focus { background: #1e293b; }
+      .section-head:hover { background: #263548; }
+      .out-card { background: #162032; }
+      .out-card-head { background: #1a2a3e; border-color: var(--border); }
+      .card { background: #1e293b; }
+      .win-block { background: #1a2d45; border-color: #2d4a6e; }
+      .win-block-head { color: #93c5fd; }
+      .win-sep { background: #2d4a6e; }
+      .dl-area { background: var(--card); }
+      .badge-required { background: #2e1065; color: #c4b5fd; }
+      .badge-advanced { background: #451a03; color: #fcd34d; }
+      .badge-optional { background: #052e16; color: #6ee7b7; }
+      .pill-blue   { background: #1e3a5f; color: #93c5fd; }
+      .pill-green  { background: #052e16; color: #6ee7b7; }
+      .pill-purple { background: #2e1065; color: #c4b5fd; }
+      .val-ok  { background: #052e16; color: #6ee7b7; border-color: #166534; }
+      .val-err { background: #450a0a; color: #fca5a5; border-color: #991b1b; }
+      .preview-col { background: #060d1a; }
+      .range-field input[type=range] { background: #334155; }
+      .expert-toggle input { background: #334155; }
+      .leaf-note { background: #422006; border-color: #a16207; color: #fde68a; }
+      .ch-toggle-label { color: var(--muted); }
+      .ch-toggle-label.active { color: var(--green); }
+      .ldr-rules-container .card { background: #1e293b; }
+    }
+
     /* TOAST */
     .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
               border-radius: 8px; font-size: .88em; font-weight: 600; z-index: 999;
@@ -216,21 +298,30 @@
     @keyframes slideUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
     .toast-ok  { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
     .toast-err { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    @media (prefers-color-scheme: dark) {
+      .toast-ok  { background: #052e16; color: #6ee7b7; border-color: #166534; }
+      .toast-err { background: #450a0a; color: #fca5a5; border-color: #991b1b; }
+    }
   </style>
 </head>
 <body>
 
 <nav>
-  <a class="nav-logo" href="./index.html">Lokki</a>
-  <span class="nav-sep">|</span>
-  <span class="nav-title">Config Builder</span>
+  <a class="nav-logo" href="./index.html">Lokki <span>Setup</span></a>
   <div class="nav-right">
     <label class="expert-toggle" title="Show advanced settings like GPIO pins, LoRa parameters and timing intervals">
       <input type="checkbox" id="expertToggle" />
       Expert mode
     </label>
+    <a class="nav-back" href="./index.html">← All tools</a>
   </div>
 </nav>
+
+<div class="hero">
+  <div class="hero-badge">Config Builder</div>
+  <h1>Build your Lokki config</h1>
+  <p>Configure LED schedules, motion sensors, scenes, and LoRa settings for any Lokki unit. Download the result and copy it to your device.</p>
+</div>
 
 <div class="layout">
   <div class="form-col">
@@ -238,16 +329,21 @@
     <!-- VALIDATION -->
     <div id="valBanner" class="val-banner"></div>
 
+    <!-- LEAF MODE NOTE -->
+    <div class="leaf-note">
+      🍃 <strong>Leaf mode:</strong> WiFi settings are hidden — leaf units connect via LoRa only.
+      Download this config and copy it to the leaf unit's filesystem via USB.
+    </div>
+
     <!-- ACTIONS -->
     <div class="dl-area">
       <div class="dl-area-title">Config actions</div>
       <div class="dl-actions">
         <button class="btn btn-primary" id="dlBtn" onclick="downloadJSON()">⬇ Download config.json</button>
-        <button class="btn btn-success" id="saveDeviceBtn" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
+        <button class="btn btn-success coordinator-only" id="saveDeviceBtn" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
         <button class="btn" id="uploadBtn">↑ Load existing config</button>
         <input id="uploadInput" type="file" accept=".json,application/json"
                style="position:absolute;width:1px;height:1px;clip:rect(0,0,0,0)" />
-        <a class="btn" href="./index.html">← Home</a>
       </div>
       <div id="uploadMsg" style="font-size:.78em;color:var(--muted);margin-top:6px"></div>
     </div>
@@ -273,15 +369,17 @@
           <div class="field">
             <label class="field-label">Unit ID</label>
             <input id="s_unit_id" type="number" min="0" max="8" value="0" />
-            <div class="field-hint">0 = this coordinator, 1–8 = leaf units.</div>
+            <div class="field-hint" id="unit_id_hint">Coordinator is always 0.</div>
           </div>
         </div>
         <div class="field">
           <label class="field-label">Unit Name</label>
           <input id="s_unit_name" type="text" value="Pagoda" placeholder="e.g. Pagoda, Hall, Garden" />
           <div class="field-hint">A friendly label shown in the dashboard and saved in the config.</div>
+          <div class="emoji-grid-label">Pick an icon</div>
+          <div class="emoji-grid" id="unit_emoji_grid"></div>
         </div>
-        <div class="field" id="peersField">
+        <div class="field coordinator-only" id="peersField">
           <label class="field-label">Leaf Unit IDs <span class="card-sub">(coordinator only)</span></label>
           <input id="s_peers" type="text" placeholder="1, 2, 3" value="1, 2" />
           <div class="field-hint">Comma-separated IDs of the leaf units this coordinator manages.</div>
@@ -313,7 +411,7 @@
     </div>
 
     <!-- ── WIFI ── -->
-    <div class="section open" data-section="wifi">
+    <div class="section open coordinator-only" data-section="wifi">
       <div class="section-head" onclick="toggleSection(this)">
         <span class="section-icon">📶</span>
         <span class="section-title">WiFi <span class="card-sub">(coordinator only)</span></span>
@@ -547,6 +645,11 @@
           <div class="field"><label class="field-label">LDR ADC Pin</label><input id="h_ldr_pin" type="number" value="26" /></div>
           <div class="field"><label class="field-label">Status LED Pin</label><input id="h_status_led" type="number" value="5" /></div>
         </div>
+        <div class="field" style="max-width:260px">
+          <label class="field-label">Brightness Gamma (γ)</label>
+          <input id="h_gamma" type="number" step="0.1" min="1.0" max="4.0" value="2.2" />
+          <div class="field-hint">Perceptual correction curve. 2.2 = standard. Higher = darker mid-range. 1.0 = linear (no correction).</div>
+        </div>
         <div class="divider">LoRa (E220 Module)</div>
         <div class="grid3">
           <div class="field"><label class="field-label">UART ID</label><input id="h_lora_uart" type="number" value="0" /></div>
@@ -594,7 +697,7 @@
     <div class="preview-title">config.json preview</div>
     <div class="preview-actions">
       <button class="btn btn-primary btn-sm" onclick="downloadJSON()">⬇ Download</button>
-      <button class="btn btn-success btn-sm" id="saveDeviceBtn2" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
+      <button class="btn btn-success btn-sm coordinator-only" id="saveDeviceBtn2" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
     </div>
     <pre id="preview"></pre>
   </div>
@@ -619,6 +722,33 @@ if (ON_DEVICE) {
 const expertToggle = document.getElementById('expertToggle');
 expertToggle.addEventListener('change', () => {
   document.body.classList.toggle('expert', expertToggle.checked);
+  scheduleRender();
+});
+
+// ============================================================
+// Leaf mode — driven by role dropdown
+// ============================================================
+function applyRoleMode() {
+  const isLeaf = document.getElementById('s_role').value === 'leaf';
+  document.body.classList.toggle('leaf', isLeaf);
+
+  const idField = document.getElementById('s_unit_id');
+  const idHint  = document.getElementById('unit_id_hint');
+  if (isLeaf) {
+    idField.min = 1; idField.max = 8;
+    if (!idField.value || parseInt(idField.value) < 1) idField.value = 1;
+    idField.disabled = false;
+    idField.style.background = '';
+    idHint.textContent = 'Leaf units are 1–8. Each must be unique across the network.';
+  } else {
+    idField.value = 0; idField.min = 0; idField.max = 0;
+    idField.disabled = true;
+    idField.style.background = '#f1f5f9';
+    idHint.textContent = 'Coordinator is always 0.';
+  }
+}
+document.getElementById('s_role').addEventListener('change', () => {
+  applyRoleMode();
   scheduleRender();
 });
 
@@ -701,6 +831,100 @@ document.getElementById('tz_search').addEventListener('input', () => {
   populateTzSelect(f);
   if (f.length) applyTzSelect();
 });
+
+// ============================================================
+// Gamma / perceptual brightness
+// ============================================================
+function gammaOpacity(pct) {
+  if (pct <= 0)   return 0;
+  if (pct >= 100) return 1;
+  const g = parseFloat(document.getElementById('h_gamma').value) || 2.2;
+  return Math.pow(pct / 100, g);
+}
+function swatchStyle(pct) {
+  // Use linear pct for the swatch — firmware gamma makes the LED output this perceived level,
+  // so 50% slider = half-bright preview is correct.
+  const g = pct / 100;
+  const br = (g * 1.15).toFixed(3);
+  if (g < 0.04) return 'filter:brightness(0);border-color:#475569';
+  const r = Math.round(g * 12);
+  const sp = Math.round(g * 6);
+  return `filter:brightness(${br});`
+    + `box-shadow:0 0 ${r}px ${sp}px rgba(251,191,36,${(g * 0.7).toFixed(2)});`
+    + `border-color:rgba(251,191,36,${(g * 0.9).toFixed(2)})`;
+}
+function swatchHTML(pct) {
+  return `<span class="bswatch" style="${swatchStyle(pct)}" title="Perceived brightness"></span>`;
+}
+function updateSwatch(rangeEl) {
+  const s = rangeEl.parentElement.querySelector('.bswatch');
+  if (!s) return;
+  const pct = +rangeEl.value;
+  const g = pct / 100;
+  s.style.filter = `brightness(${(g * 1.15).toFixed(3)})`;
+  if (g < 0.04) {
+    s.style.boxShadow = 'none';
+    s.style.borderColor = '#475569';
+  } else {
+    const r = Math.round(g * 12), sp = Math.round(g * 6);
+    s.style.boxShadow = `0 0 ${r}px ${sp}px rgba(251,191,36,${(g * 0.7).toFixed(2)})`;
+    s.style.borderColor = `rgba(251,191,36,${(g * 0.9).toFixed(2)})`;
+  }
+}
+
+// ============================================================
+// Emoji pickers
+// ============================================================
+const UNIT_EMOJIS = [
+  '🌿','🌸','🌺','🌻','🌼','🌷','🪷','🌹','🍃','🌾',
+  '🌴','🌳','🌲','🎋','🎍','🌵','🪴','🌱','🌊','🏔️',
+  '🏮','🏯','⛩️','🏛️','🕌','🏡','🛖','⛺','🏕️','🗼',
+  '🌙','⭐','🌟','✨','💫','🌅','🌄','🌠','🌃','🏞️',
+  '🌉','🎑','🏝️','🌋','🎪','🎠','🎡','🌐','🕍','🗽',
+];
+
+const LED_EMOJIS = [
+  {icon:'🕯️', label:'Warm / candlelight'},
+  {icon:'🟡', label:'Warm white'},
+  {icon:'🟠', label:'Amber'},
+  {icon:'💡', label:'Neutral white'},
+  {icon:'🔆', label:'Bright / daylight'},
+  {icon:'☀️', label:'Full spectrum / daylight'},
+  {icon:'🌤️', label:'Cool white'},
+  {icon:'🔵', label:'Cool / blue'},
+  {icon:'🏮', label:'Decorative lantern'},
+  {icon:'🌟', label:'Accent / sparkle'},
+  {icon:'✨', label:'Decorative / fairy lights'},
+  {icon:'💫', label:'Soft glow'},
+  {icon:'🔦', label:'Spot / directional'},
+  {icon:'🎯', label:'Focused beam'},
+  {icon:'🌈', label:'RGB / colour'},
+  {icon:'🔮', label:'UV / special'},
+  {icon:'💜', label:'Violet / purple'},
+  {icon:'🟢', label:'Green'},
+  {icon:'🔴', label:'Red'},
+  {icon:'🌃', label:'Street / outdoor'},
+  {icon:'⚡', label:'High power / flood'},
+  {icon:'🌙', label:'Night / dim'},
+];
+
+function pickEmoji(input, emoji) {
+  const v = input.value;
+  const stripped = v.charCodeAt(0) > 127 ? v.replace(/^[^\s]*\s*/, '') : v;
+  input.value = emoji + ' ' + stripped;
+  input.dispatchEvent(new Event('input'));
+}
+
+function buildUnitEmojiGrid() {
+  const grid = document.getElementById('unit_emoji_grid');
+  UNIT_EMOJIS.forEach(e => {
+    const s = document.createElement('span');
+    s.className = 'emoji-chip';
+    s.textContent = e;
+    s.onclick = () => pickEmoji(document.getElementById('s_unit_name'), e);
+    grid.appendChild(s);
+  });
+}
 
 // ============================================================
 // Helpers
@@ -1063,6 +1287,10 @@ function renderLEDs() {
           <input type="text" value="${ch.name}" data-led="${i}" data-f="name"
                  placeholder="e.g. Outer ring, Ceiling fill, Uplights" style="max-width:280px" />
           <div class="field-hint">Give it a meaningful name — this appears in scenes and the dashboard.</div>
+          <div class="emoji-grid" style="margin-top:6px">
+            ${LED_EMOJIS.map(e=>`<span class="emoji-chip sm" title="${e.label}"
+              onclick="pickEmoji(this.closest('.out-card-body').querySelector('[data-f=name]'),'${e.icon}')">${e.icon}</span>`).join('')}
+          </div>
         </div>
         <div class="field">
           <label class="field-label">
@@ -1073,6 +1301,7 @@ function renderLEDs() {
             <input type="range" min="0" max="100" value="${ch.default_duty_percent}"
                    data-led="${i}" data-f="default_duty" />
             <span class="range-val" data-led-val="${i}">${ch.default_duty_percent}%</span>
+            ${swatchHTML(ch.default_duty_percent)}
           </div>
           <div class="field-hint">Set to 0% to keep the lights off by default outside schedule windows.</div>
         </div>
@@ -1140,6 +1369,7 @@ function ledWinHTML(li, wi, w) {
         <input type="range" min="0" max="100" value="${w.duty_percent||0}"
                data-lw data-li="${li}" data-wi="${wi}" data-f="duty_percent" />
         <span class="range-val">${w.duty_percent||0}%</span>
+        ${swatchHTML(w.duty_percent||0)}
       </div>
     </div>
     <div class="field">
@@ -1162,6 +1392,7 @@ function syncLedField(el) {
     ledState[i].default_duty_percent = +v;
     const sp = document.querySelector(`[data-led-val="${i}"]`);
     if (sp) sp.textContent = v + '%';
+    updateSwatch(el);
   }
   scheduleRender();
 }
@@ -1177,6 +1408,7 @@ function syncLedWin(el) {
     w.duty_percent=+v;
     const sp = el.closest('.win-block').querySelector('.range-val');
     if (sp) sp.textContent=v+'%';
+    updateSwatch(el);
   }
   if (f==='fade_ms') w.fade_ms=+v;
   scheduleRender();
@@ -1228,6 +1460,7 @@ function renderScenes() {
                   <input type="range" min="0" max="100" value="${entry.duty_percent||0}"
                          data-sc="${i}" data-f="led_duty" data-ci="${ci}" />
                   <span class="range-val">${entry.duty_percent||0}%</span>
+                  ${swatchHTML(entry.duty_percent||0)}
                 </div>
               </label>
               <label style="display:flex;align-items:center;gap:6px;font-size:.8em;color:#374151">
@@ -1308,6 +1541,7 @@ function removeScene(i) { scenes.splice(i,1); renderScenes(); scheduleRender(); 
 // Build config
 // ============================================================
 function buildConfig() {
+  const isLeaf = document.getElementById('s_role').value === 'leaf';
   const peers = (document.getElementById('s_peers').value||'')
     .split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
   return {
@@ -1316,13 +1550,13 @@ function buildConfig() {
       role:                   document.getElementById('s_role').value,
       unit_id:                parseInt(document.getElementById('s_unit_id').value)||0,
       unit_name:              document.getElementById('s_unit_name').value.trim()||'Lokki',
-      peers,
+      peers: isLeaf ? [] : peers,
       log_level:              document.getElementById('s_log_level').value,
       heartbeat_interval_s:   parseInt(document.getElementById('s_hb_interval').value)||30,
       heartbeat_timeout_s:    parseInt(document.getElementById('s_hb_timeout').value)||120,
       pwm_update_interval_ms: parseInt(document.getElementById('s_pwm_interval').value)||500,
     },
-    wifi: {
+    wifi: isLeaf ? {ssid: 'N/A', password: ''} : {
       ssid:     document.getElementById('w_ssid').value,
       password: document.getElementById('w_password').value,
       hostname: document.getElementById('w_hostname').value.trim()||'lokki',
@@ -1343,6 +1577,7 @@ function buildConfig() {
       i2c_scl_pin:    parseInt(document.getElementById('h_scl').value)||21,
       i2c_freq_hz:    parseInt(document.getElementById('h_i2c_freq').value)||400000,
       pwm_freq_hz:    parseInt(document.getElementById('h_pwm_freq').value)||1000,
+      gamma:          parseFloat(document.getElementById('h_gamma').value)||2.2,
       ldr_adc_pin:    parseInt(document.getElementById('h_ldr_pin').value)||26,
       status_led_pin: parseInt(document.getElementById('h_status_led').value)||5,
       reset_btn_pin:  12,
@@ -1413,9 +1648,12 @@ function doRender() {
 }
 function validate(cfg) {
   const errs = [];
-  if (!cfg.wifi.ssid) errs.push('WiFi SSID is empty');
-  if (cfg.system.role==='coordinator' && !cfg.system.peers.length)
+  const isLeaf = cfg.system.role === 'leaf';
+  if (!isLeaf && !cfg.wifi.ssid) errs.push('WiFi SSID is empty');
+  if (!isLeaf && !cfg.system.peers.length)
     errs.push('Coordinator has no peers — add leaf unit IDs in Unit Identity');
+  if (isLeaf && (cfg.system.unit_id < 1 || cfg.system.unit_id > 8))
+    errs.push('Leaf unit ID must be 1–8');
   cfg.pir.forEach((p,i) => {
     if (p.enabled && p.on_motion.action==='set_scene' && !p.on_motion.scene_name)
       errs.push(`Motion sensor ${i+1}: action is "activate a scene" but no scene name is set`);
@@ -1486,6 +1724,7 @@ function applyConfigToForm(cfg) {
   const set = (id, v) => { const el=document.getElementById(id); if(el&&v!==undefined) el.value=v; };
   const setChk = (id, v) => { const el=document.getElementById(id); if(el&&v!==undefined) el.checked=!!v; };
   set('s_role', sys.role);
+  applyRoleMode();
   set('s_unit_id', sys.unit_id);
   set('s_unit_name', sys.unit_name);
   if (sys.peers) set('s_peers', sys.peers.join(', '));
@@ -1506,7 +1745,7 @@ function applyConfigToForm(cfg) {
 
   const hw=cfg.hardware||{};
   const hmap={'h_sda':'i2c_sda_pin','h_scl':'i2c_scl_pin','h_i2c_freq':'i2c_freq_hz',
-    'h_pwm_freq':'pwm_freq_hz','h_ldr_pin':'ldr_adc_pin','h_status_led':'status_led_pin',
+    'h_gamma':'gamma','h_pwm_freq':'pwm_freq_hz','h_ldr_pin':'ldr_adc_pin','h_status_led':'status_led_pin',
     'h_lora_uart':'lora_uart_id','h_lora_tx':'lora_tx_pin','h_lora_rx':'lora_rx_pin',
     'h_lora_m0':'lora_m0_pin','h_lora_m1':'lora_m1_pin','h_lora_aux':'lora_aux_pin'};
   Object.entries(hmap).forEach(([id,key]) => set(id, hw[key]));
@@ -1560,6 +1799,8 @@ document.querySelectorAll('input,select').forEach(el => {
 // Boot
 // ============================================================
 (function init() {
+  applyRoleMode();
+  buildUnitEmojiGrid();
   populateTzSelect();
   renderLdrRules();
   renderPIR();

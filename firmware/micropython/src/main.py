@@ -231,7 +231,8 @@ async def main():
 
     # --- Hardware init ---
     freq_hz = hw.get("pwm_freq_hz", 1000)
-    pwm_controller.init_from_config(cfg.get("led_channels"), freq_hz)
+    gamma   = hw.get("gamma", 2.2)
+    pwm_controller.init_from_config(cfg.get("led_channels"), freq_hz, gamma)
     relay_controller.init_from_config(cfg.get("relays"))
     pir_manager.init_from_config(cfg.get("pir"))
     ldr_monitor.init_from_config(cfg.get("ldr"), hw)
