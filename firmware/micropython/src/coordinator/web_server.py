@@ -30,7 +30,6 @@ _STATIC_PATHS = {
     "/",
     "/index.html",
     "/config-builder.html",
-    "/sun-times-builder.html",
 }
 
 
@@ -289,8 +288,7 @@ class WebServer:
             "<a href='/api/status'>Status JSON</a> &middot; "
             "<a href='/api/fleet'>Fleet JSON</a> &middot; "
             "<a href='/api/scenes'>Scenes JSON</a> &middot; "
-            "<a href='/config-builder.html'>Config Builder</a> &middot; "
-            "<a href='/sun-times-builder.html'>Sun Times Builder</a></p>"
+            "<a href='/config-builder.html'>Config Builder</a></p>"
             "<script>"
             "async function load(){"
             " const f=await fetch('/api/fleet').then(r=>r.json());"

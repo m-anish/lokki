@@ -63,7 +63,6 @@ firmware/micropython/src/   # MicroPython firmware
 
 hardware/kicad/             # KiCad PCB project (Rev0, in progress)
 web/app/                    # Static fleet management web UI (GitHub Pages)
-shared/json/                # Shared JSON schemas
 docs/                       # Architecture and design documentation
 ```
 
