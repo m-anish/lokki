@@ -226,13 +226,28 @@
     .pw-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
                background: none; border: none; cursor: pointer; font-size: 15px; padding: 2px; }
 
-    /* VALIDATION */
-    .val-banner { border-radius: 8px; padding: 10px 14px; font-size: .82em;
-                   margin-bottom: 14px; display: none; }
-    .val-banner.show { display: block; }
+    /* VALIDATION — moved to sticky strip between hero and layout */
+    .val-banner { display: none; font-size: .83em; padding: 0; }
+    .val-banner.show { display: block; position: sticky; top: 56px; z-index: 99;
+                        padding: 9px 24px; border-radius: 0; border-left: none; border-right: none;
+                        box-shadow: 0 2px 8px rgba(0,0,0,.12); }
     .val-ok   { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
     .val-warn { background: #fefce8; color: #854d0e; border: 1px solid #fde047; }
     .val-err  { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+    /* SUN TIMES SECTION */
+    .badge-suntimes { background: #d1fae5; color: #065f46; }
+    .st-suggest { position: absolute; left: 0; right: 0; top: 100%; background: var(--card);
+                   border: 1px solid var(--border); border-radius: 6px; z-index: 50;
+                   box-shadow: 0 4px 12px rgba(0,0,0,.1); max-height: 200px; overflow-y: auto; }
+    .st-suggest-item { padding: 8px 12px; font-size: .85em; cursor: pointer; }
+    .st-suggest-item:hover { background: #f1f5f9; }
+    .st-loc-wrap { position: relative; }
+    @media (prefers-color-scheme: dark) {
+      .badge-suntimes { background: #052e16; color: #6ee7b7; }
+      .st-suggest { background: #1e293b; }
+      .st-suggest-item:hover { background: #1a2a3e; }
+    }
 
     /* PREVIEW PANEL */
     .preview-title { font-size: .78em; text-transform: uppercase; letter-spacing: .08em;
@@ -328,11 +343,10 @@
   <p>Configure LED schedules, motion sensors, scenes, and LoRa settings for any Lokki unit. Download the result and copy it to your device.</p>
 </div>
 
+<div id="valBanner" class="val-banner"></div>
+
 <div class="layout">
   <div class="form-col">
-
-    <!-- VALIDATION -->
-    <div id="valBanner" class="val-banner"></div>
 
     <!-- LEAF MODE NOTE -->
     <div class="leaf-note">
@@ -346,6 +360,7 @@
       <div class="dl-actions">
         <button class="btn btn-primary" id="dlBtn" onclick="downloadJSON()">⬇ Download config.json</button>
         <button class="btn btn-success coordinator-only" id="saveDeviceBtn" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
+        <button class="btn" id="dlSunTimesBtn" onclick="downloadSunTimes()" style="display:none" disabled>⬇ Download sun_times.json</button>
         <button class="btn" id="uploadBtn">↑ Load existing config</button>
         <input id="uploadInput" type="file" accept=".json,application/json"
                style="position:absolute;width:1px;height:1px;clip:rect(0,0,0,0)" />
@@ -691,6 +706,38 @@
             <div class="field"><label class="field-label">Topic Prefix</label><input id="n_topic" type="text" value="lokki/pagoda" /></div>
             <div class="field"><label class="field-label">Client ID</label><input id="n_client_id" type="text" value="lokki-pagoda" /></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SUN TIMES (auto-shown when sunrise/sunset keywords used) ── -->
+    <div class="section open" id="sunTimesSection" style="display:none" data-section="suntimes">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">🌅</span>
+        <span class="section-title">Sun Times</span>
+        <span class="section-badge badge-suntimes">Required</span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
+          Your schedule uses <code>sunrise</code> or <code>sunset</code> keywords.
+          Generate a <code>sun_times.json</code> for your location and upload it
+          alongside <code>config.json</code>. Timezone is taken from the Timezone section above.
+        </p>
+        <div class="field">
+          <label class="field-label">Search location</label>
+          <div class="st-loc-wrap">
+            <div style="display:flex;gap:8px">
+              <input id="st_search" type="text" placeholder="City, landmark or address…" style="flex:1" />
+              <button class="btn btn-sm" onclick="stGeolocate()" title="Use device location">📍 My location</button>
+            </div>
+            <div id="st_suggest" class="st-suggest" style="display:none"></div>
+          </div>
+          <div id="st_loc_display" style="font-size:.8em;color:var(--muted);margin-top:5px"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px">
+          <button class="btn btn-primary btn-sm" id="stGenBtn" onclick="generateSunTimes()" disabled>Generate sun_times.json</button>
+          <span id="stGenStatus" style="font-size:.8em;color:var(--muted)">Set a location first</span>
         </div>
       </div>
     </div>
@@ -1698,6 +1745,7 @@ function doRender() {
   const cfg = buildConfig();
   document.getElementById('preview').textContent = JSON.stringify(cfg, null, 2);
   validate(cfg);
+  checkSunTimesSection();
 }
 function validate(cfg) {
   const errs = [], warns = [];
@@ -1868,6 +1916,129 @@ document.querySelectorAll('input,select').forEach(el => {
 });
 
 // ============================================================
+// Sun Times
+// ============================================================
+let _sunLat = null, _sunLon = null, _sunGenerated = null;
+
+function sunTimesNeeded() {
+  return ledState.some(ch =>
+    ch.time_windows.some(w =>
+      w.start==='sunrise'||w.start==='sunset'||w.end==='sunrise'||w.end==='sunset'));
+}
+
+function checkSunTimesSection() {
+  const needed = sunTimesNeeded();
+  const sec = document.getElementById('sunTimesSection');
+  const dlBtn = document.getElementById('dlSunTimesBtn');
+  if (!sec) return;
+  const wasHidden = sec.style.display === 'none';
+  sec.style.display = needed ? '' : 'none';
+  if (needed && wasHidden) sec.classList.add('open'); // auto-open on first show
+  if (dlBtn) dlBtn.style.display = needed ? '' : 'none';
+}
+
+let _stSearchTimer = null;
+document.addEventListener('DOMContentLoaded', () => {
+  const inp = document.getElementById('st_search');
+  if (!inp) return;
+  inp.addEventListener('input', () => {
+    clearTimeout(_stSearchTimer);
+    const q = inp.value.trim();
+    if (q.length < 3) { hideSuggest(); return; }
+    _stSearchTimer = setTimeout(() => stSearch(q), 400);
+  });
+  inp.addEventListener('blur', () => setTimeout(hideSuggest, 200));
+});
+
+async function stSearch(q) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(q)}`,
+      {headers:{'Accept-Language':'en'}});
+    const data = await r.json();
+    showSuggest(data);
+  } catch { hideSuggest(); }
+}
+
+function showSuggest(results) {
+  const box = document.getElementById('st_suggest');
+  if (!results.length) { hideSuggest(); return; }
+  box.innerHTML = results.map((r,i) =>
+    `<div class="st-suggest-item" onclick="stPickResult(${i})">${r.display_name}</div>`
+  ).join('');
+  box._results = results;
+  box.style.display = '';
+}
+function hideSuggest() {
+  const box = document.getElementById('st_suggest');
+  if (box) box.style.display = 'none';
+}
+function stPickResult(i) {
+  const r = document.getElementById('st_suggest')._results[i];
+  stSetLocation(parseFloat(r.lat), parseFloat(r.lon), r.display_name.split(',').slice(0,2).join(',').trim());
+  document.getElementById('st_search').value = r.display_name.split(',').slice(0,2).join(',').trim();
+  hideSuggest();
+}
+
+function stGeolocate() {
+  if (!navigator.geolocation) { alert('Geolocation not available in this browser.'); return; }
+  navigator.geolocation.getCurrentPosition(
+    p => stSetLocation(p.coords.latitude, p.coords.longitude, 'Device location'),
+    () => alert('Could not get location — check browser permissions.')
+  );
+}
+
+function stSetLocation(lat, lon, label) {
+  _sunLat = lat; _sunLon = lon;
+  const disp = document.getElementById('st_loc_display');
+  if (disp) disp.textContent = `📍 ${label} (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+  const btn = document.getElementById('stGenBtn');
+  if (btn) btn.disabled = false;
+  const status = document.getElementById('stGenStatus');
+  if (status) status.textContent = 'Ready to generate';
+}
+
+function generateSunTimes() {
+  if (_sunLat === null) return;
+  if (typeof SunCalc === 'undefined') { showToast('SunCalc library not loaded', 'err'); return; }
+  const offset = parseFloat(document.getElementById('tz_offset').value) || 0;
+  const year = new Date().getFullYear();
+  const pad = n => String(n).padStart(2, '0');
+  const toLocal = t => {
+    const utc = t.getTime() + t.getTimezoneOffset() * 60000;
+    const d = new Date(utc + offset * 3600000);
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const result = {};
+  for (let m = 1; m <= 12; m++) {
+    const days = new Date(year, m, 0).getDate();
+    for (let d = 1; d <= days; d++) {
+      const times = SunCalc.getTimes(new Date(year, m-1, d), _sunLat, _sunLon);
+      result[`${pad(m)}-${pad(d)}`] = {
+        sunrise: toLocal(times.sunrise),
+        sunset:  toLocal(times.sunsetStart),
+      };
+    }
+  }
+  _sunGenerated = result;
+  const count = Object.keys(result).length;
+  const status = document.getElementById('stGenStatus');
+  if (status) status.textContent = `✓ ${count} days generated for ${year}`;
+  const dlBtn = document.getElementById('dlSunTimesBtn');
+  if (dlBtn) { dlBtn.disabled = false; dlBtn.style.display = ''; }
+  showToast('sun_times.json ready — click Download', 'ok');
+}
+
+function downloadSunTimes() {
+  if (!_sunGenerated) return;
+  const blob = new Blob([JSON.stringify(_sunGenerated, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sun_times.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ============================================================
 // Boot
 // ============================================================
 (function init() {
@@ -1882,5 +2053,6 @@ document.querySelectorAll('input,select').forEach(el => {
   doRender();
 })();
 </script>
+<script src="./vendor/suncalc.min.js"></script>
 </body>
 </html>
