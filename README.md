@@ -43,6 +43,7 @@ Full GPIO map and hardware details: [docs/architecture.md](docs/architecture.md)
 
 | Document | Contents |
 |----------|----------|
+| [docs/user-guide.md](docs/user-guide.md) | Status LED meanings, day-to-day operation, troubleshooting |
 | [docs/architecture.md](docs/architecture.md) | System overview, topology, GPIO map, failure modes |
 | [docs/config-schema.md](docs/config-schema.md) | Complete `config.json` structure with examples |
 | [docs/lora-protocol.md](docs/lora-protocol.md) | LoRa message types, packet format, chunked transfer |
