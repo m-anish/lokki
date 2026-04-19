@@ -1418,7 +1418,7 @@ function renderLEDs() {
           <div style="font-size:.76em;color:var(--muted);margin-bottom:8px">
             Each window sets the brightness for a time period.
             Use <em>sunrise</em> or <em>sunset</em> for solar-based timing
-            (requires <a href="./sun-times-builder.html" style="color:var(--brand)">sun_times.json</a> on the device).
+            (requires <code>sun_times.json</code> on the device — generated in the Sun Times section below).
           </div>
           <div class="led-wins" data-li="${i}">
             ${ch.time_windows.map((w,wi) => ledWinHTML(i,wi,w)).join('')}

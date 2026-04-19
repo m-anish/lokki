@@ -9,8 +9,7 @@ No build step required — static HTML/CSS/JS only.
 | Page | Purpose |
 |------|---------|
 | `index.html` | Fleet dashboard — all units, all channels, live status |
-| `config-builder.html` | Generate and validate `config.json` |
-| `sun-times-builder.html` | Generate `sun_times.json` from location and date range |
+| `config-builder.html` | Generate and validate `config.json`; includes integrated sun times generator |
 
 ## Planned (Phase 3)
 
