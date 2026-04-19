@@ -91,9 +91,12 @@
     .emoji-grid { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 7px; }
     .emoji-chip { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
                   font-size: 1em; border-radius: 6px; cursor: pointer; line-height: 1;
-                  border: 1px solid var(--border); background: #f8fafc;
+                  border: 1px solid var(--border); background: var(--bg);
                   transition: background .1s, transform .12s, border-color .1s; user-select: none; }
     .emoji-chip:hover { background: #ede9fe; transform: scale(1.2); border-color: var(--brand); }
+    @media (prefers-color-scheme: dark) {
+      .emoji-chip:hover { background: #2e1065; }
+    }
     .emoji-chip.sm { width: 26px; height: 26px; font-size: .88em; border-radius: 5px; }
     .emoji-grid-label { font-size: .72em; color: var(--muted); font-weight: 600;
                          text-transform: uppercase; letter-spacing: .05em; margin-top: 8px; margin-bottom: 3px; }
