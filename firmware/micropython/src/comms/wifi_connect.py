@@ -78,6 +78,14 @@ def sync_time_ntp():
     dt_tuple  = urtc.seconds2tuple(local_sec)
     rtc.datetime(dt_tuple)
     log.info("[NTP] DS3231 updated with local time")
+
+    try:
+        from comms.lora_protocol import lora_protocol
+        lora_protocol.broadcast_time_sync(utc_sec, tz_offset)
+        log.info("[NTP] TIME_SYNC broadcast sent")
+    except Exception as e:
+        log.warn(f"[NTP] TIME_SYNC broadcast failed: {e}")
+
     return True
 
 
