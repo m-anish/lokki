@@ -227,8 +227,9 @@
     .val-banner { border-radius: 8px; padding: 10px 14px; font-size: .82em;
                    margin-bottom: 14px; display: none; }
     .val-banner.show { display: block; }
-    .val-ok  { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-    .val-err { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .val-ok   { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .val-warn { background: #fefce8; color: #854d0e; border: 1px solid #fde047; }
+    .val-err  { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
 
     /* PREVIEW PANEL */
     .preview-title { font-size: .78em; text-transform: uppercase; letter-spacing: .08em;
@@ -280,8 +281,9 @@
       .pill-blue   { background: #1e3a5f; color: #93c5fd; }
       .pill-green  { background: #052e16; color: #6ee7b7; }
       .pill-purple { background: #2e1065; color: #c4b5fd; }
-      .val-ok  { background: #052e16; color: #6ee7b7; border-color: #166534; }
-      .val-err { background: #450a0a; color: #fca5a5; border-color: #991b1b; }
+      .val-ok   { background: #052e16; color: #6ee7b7; border-color: #166534; }
+      .val-warn { background: #422006; color: #fde68a; border-color: #a16207; }
+      .val-err  { background: #450a0a; color: #fca5a5; border-color: #991b1b; }
       .preview-col { background: #060d1a; }
       .range-field input[type=range] { background: #334155; }
       .expert-toggle input { background: #334155; }
@@ -1413,7 +1415,31 @@ function syncLedWin(el) {
   if (f==='fade_ms') w.fade_ms=+v;
   scheduleRender();
 }
-function addLedWin(i) { ledState[i].time_windows.push({start:'sunset',end:'22:00',duty_percent:60,fade_ms:5000}); renderLEDs(); scheduleRender(); }
+function timeToMins(t) {
+  if (t === 'sunrise' || t === 'sunset') return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+function windowsOverlap(a, b) {
+  const as = timeToMins(a.start), ae = timeToMins(a.end);
+  const bs = timeToMins(b.start), be = timeToMins(b.end);
+  if (as === null || ae === null || bs === null || be === null) return 'solar';
+  if (ae <= as || be <= bs) return 'midnight'; // midnight-spanning — skip
+  return (as < be && bs < ae) ? 'overlap' : 'ok';
+}
+function addLedWin(i) {
+  const wins = ledState[i].time_windows;
+  const last = wins.length ? wins[wins.length - 1] : null;
+  const start = last ? last.end : 'sunset';
+  let end = '22:00';
+  if (start !== 'sunrise' && start !== 'sunset') {
+    const em = (timeToMins(start) + 120) % 1440;
+    end = `${String(Math.floor(em/60)).padStart(2,'0')}:${String(em%60).padStart(2,'0')}`;
+  }
+  wins.push({start, end, duty_percent: 60, fade_ms: 5000});
+  renderLEDs();
+  scheduleRender();
+}
 function removeLedWin(li,wi) { ledState[li].time_windows.splice(wi,1); renderLEDs(); scheduleRender(); }
 
 // ============================================================
@@ -1647,7 +1673,7 @@ function doRender() {
   validate(cfg);
 }
 function validate(cfg) {
-  const errs = [];
+  const errs = [], warns = [];
   const isLeaf = cfg.system.role === 'leaf';
   if (!isLeaf && !cfg.wifi.ssid) errs.push('WiFi SSID is empty');
   if (!isLeaf && !cfg.system.peers.length)
@@ -1658,6 +1684,21 @@ function validate(cfg) {
     if (p.enabled && p.on_motion.action==='set_scene' && !p.on_motion.scene_name)
       errs.push(`Motion sensor ${i+1}: action is "activate a scene" but no scene name is set`);
   });
+  // Window overlap checks per channel
+  ledState.forEach(ch => {
+    if (!ch.enabled || ch.time_windows.length < 2) return;
+    let hasSolar = false;
+    for (let a = 0; a < ch.time_windows.length; a++) {
+      for (let b = a + 1; b < ch.time_windows.length; b++) {
+        const r = windowsOverlap(ch.time_windows[a], ch.time_windows[b]);
+        if (r === 'overlap')
+          errs.push(`${ch.name}: windows ${a+1} and ${b+1} overlap — adjust their start/end times`);
+        if (r === 'solar') hasSolar = true;
+      }
+    }
+    if (hasSolar)
+      warns.push(`${ch.name}: has sunrise/sunset windows — overlap can't be checked automatically`);
+  });
   const banner = document.getElementById('valBanner');
   const btns   = [document.getElementById('dlBtn'), document.getElementById('saveDeviceBtn'),
                   document.getElementById('saveDeviceBtn2')];
@@ -1665,6 +1706,10 @@ function validate(cfg) {
     banner.className='val-banner val-err show';
     banner.innerHTML = '<strong>Fix before saving:</strong><br>' + errs.join('<br>');
     btns.forEach(b=>{ if(b) b.disabled=true; });
+  } else if (warns.length) {
+    banner.className='val-banner val-warn show';
+    banner.innerHTML = '<strong>Heads up:</strong><br>' + warns.join('<br>');
+    btns.forEach(b=>{ if(b) b.disabled=false; });
   } else {
     banner.className='val-banner val-ok show';
     banner.textContent = 'Config looks good ✓';
