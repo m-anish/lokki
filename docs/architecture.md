@@ -366,8 +366,7 @@ docs/
 
 web/app/               (helper app, extended for fleet management)
   index.html
-  config-builder.html
-  sun-times-builder.html
+  config-builder.html  (includes integrated sun times generator)
   scene-editor.html    (new)
   network-view.html    (new)
 
