@@ -1,63 +1,148 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PagodaLightPico Helper</title>
-    <meta name="description" content="Helper tools for PagodaLightPico" />
-    <link rel="icon" href="data:," />
-    <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, 'Noto Sans', 'Liberation Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji'; margin: 20px; background: #f5f5f5; }
-      .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
-      h1 { color: #2c3e50; text-align: center; }
-      h2 { color: #34495e; margin-top: 30px; text-align: center; }
-      .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
-      .online { background: #d4edda; border-left: 4px solid #28a745; }
-      .offline { background: #f8d7da; border-left: 4px solid #dc3545; }
-      .disabled { background: #fff3cd; border-left: 4px solid #ffc107; }
-      .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; }
-      .footer a { color: #007bff; text-decoration: none; }
-      .footer a:hover { text-decoration: underline; }
-      .footer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; align-items: start; padding: 0; margin: 8px 0 0 0; }
-      .footer-grid .col { display: flex; flex-direction: column; gap: 6px; }
-      .footer .col-title { font-size: 12px; color: #555; text-transform: uppercase; letter-spacing: 0.03em; }
-      .actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-      a.button { padding: 10px 14px; border: 1px solid #999; border-radius: 8px; background: #fff; text-decoration: none; color: #222; display:inline-flex; align-items:center; gap:6px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); transition: box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease; }
-      a.button:hover { background: #f9fafb; border-color: #666; box-shadow: 0 2px 6px rgba(0,0,0,0.12); text-decoration: none; }
-      a.button:active { transform: translateY(0.5px); }
-      a.button:focus { outline: none; }
-      a.button:focus-visible { box-shadow: 0 0 0 3px rgba(59,130,246,0.35); }
-      @media (max-width: 480px) { .container { padding: 12px; } }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>PagodaLightPico Helper</h1>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lokki — Setup Tools</title>
+  <meta name="description" content="Configuration and setup tools for Lokki lighting controllers" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :root {
+      --brand:   #4f46e5;
+      --brand-d: #3730a3;
+      --bg:      #f8fafc;
+      --card:    #ffffff;
+      --border:  #e2e8f0;
+      --text:    #0f172a;
+      --muted:   #64748b;
+      --radius:  10px;
+    }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           font-size: 15px; line-height: 1.5; }
 
-      <h2>Tools</h2>
-      <div class="actions">
-        <a class="button" href="./config-builder.html">⚙️ Create config.json</a>
-        <a class="button" href="./sun-times-builder.html">🌅 Create sun_times.json</a>
+    /* NAV */
+    nav { background: var(--card); border-bottom: 1px solid var(--border);
+          padding: 0 24px; display: flex; align-items: center; gap: 12px; height: 56px; }
+    .nav-logo { font-size: 1.1em; font-weight: 700; color: var(--brand);
+                letter-spacing: -.02em; text-decoration: none; }
+    .nav-logo span { color: var(--text); font-weight: 400; }
+
+    /* HERO */
+    .hero { background: linear-gradient(135deg, #312e81 0%, #4f46e5 60%, #7c3aed 100%);
+             color: #fff; text-align: center; padding: 64px 24px 56px; }
+    .hero h1 { margin: 0 0 12px; font-size: clamp(1.8em, 5vw, 2.8em);
+               font-weight: 800; letter-spacing: -.03em; }
+    .hero p  { margin: 0 auto; max-width: 480px; font-size: 1.05em; opacity: .85; }
+    .hero-badge { display: inline-block; background: rgba(255,255,255,.15);
+                  border: 1px solid rgba(255,255,255,.25); border-radius: 20px;
+                  padding: 4px 14px; font-size: .8em; letter-spacing: .04em;
+                  text-transform: uppercase; margin-bottom: 20px; }
+
+    /* MAIN */
+    main { max-width: 860px; margin: 0 auto; padding: 40px 20px 60px; }
+
+    /* TOOL CARDS */
+    .tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px;
+              margin-bottom: 48px; }
+    .tool-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+                  padding: 28px; text-decoration: none; color: var(--text);
+                  display: flex; flex-direction: column; gap: 10px;
+                  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+                  transition: box-shadow .15s, transform .15s, border-color .15s; }
+    .tool-card:hover { box-shadow: 0 8px 24px rgba(79,70,229,.12); border-color: var(--brand);
+                       transform: translateY(-2px); }
+    .tool-icon { font-size: 2em; line-height: 1; }
+    .tool-name { font-size: 1.1em; font-weight: 700; }
+    .tool-desc { font-size: .9em; color: var(--muted); flex: 1; }
+    .tool-action { display: inline-flex; align-items: center; gap: 6px;
+                   color: var(--brand); font-size: .85em; font-weight: 600;
+                   margin-top: 4px; }
+
+    /* WORKFLOW SECTION */
+    h2.section-title { font-size: 1em; font-weight: 700; text-transform: uppercase;
+                        letter-spacing: .06em; color: var(--muted); margin: 0 0 16px; }
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+    .step  { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+              padding: 20px 18px; }
+    .step-num { display: inline-flex; align-items: center; justify-content: center;
+                 width: 28px; height: 28px; border-radius: 50%;
+                 background: var(--brand); color: #fff; font-size: .8em; font-weight: 700;
+                 margin-bottom: 10px; }
+    .step-title { font-weight: 600; font-size: .9em; margin-bottom: 4px; }
+    .step-body  { font-size: .82em; color: var(--muted); }
+    .step-body code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px;
+                       font-size: .9em; color: #334155; }
+
+    /* FOOTER */
+    footer { border-top: 1px solid var(--border); padding: 24px 20px; text-align: center;
+              font-size: .82em; color: var(--muted); }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: var(--brand); }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="nav-logo" href="#">Lokki <span>Setup</span></a>
+  </nav>
+
+  <div class="hero">
+    <div class="hero-badge">v1.0</div>
+    <h1>Lokki Configuration Tools</h1>
+    <p>Static tools for configuring and setting up Lokki LED lighting controllers. Runs entirely in your browser — nothing is uploaded.</p>
+  </div>
+
+  <main>
+    <div class="tools">
+      <a class="tool-card" href="./config-builder.html">
+        <div class="tool-icon">⚙️</div>
+        <div class="tool-name">Config Builder</div>
+        <div class="tool-desc">Build a <code>config.json</code> for any Lokki unit — coordinator or leaf. Configure LED schedules, PIR motion responses, relay control, scenes, and LoRa network settings.</div>
+        <div class="tool-action">Open tool →</div>
+      </a>
+      <a class="tool-card" href="./sun-times-builder.html">
+        <div class="tool-icon">🌅</div>
+        <div class="tool-name">Sun Times Builder</div>
+        <div class="tool-desc">Generate a <code>sun_times.json</code> lookup table for your location. Required when you use <em>sunrise</em> or <em>sunset</em> keywords in your LED schedules.</div>
+        <div class="tool-action">Open tool →</div>
+      </a>
+    </div>
+
+    <h2 class="section-title">Setup Workflow</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-title">Build config</div>
+        <div class="step-body">Use the Config Builder to create a <code>config.json</code> for each unit.</div>
       </div>
-
-      <h2>Downloads</h2>
-      <div class="actions">
-        <a class="button" href="/PagodaLightPico/config.json.sample" download>⬇️ config.json.sample</a>
-        <a class="button" href="/PagodaLightPico/sun_times.json.sample" download>⬇️ sun_times.json.sample</a>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-title">Sun times <span style="font-size:.8em;color:#94a3b8">(if needed)</span></div>
+        <div class="step-body">If your schedule uses sunrise/sunset, generate a <code>sun_times.json</code> for your location.</div>
       </div>
-
-      <div class="footer">
-        <div class="footer-grid">
-          <div class="col">
-            <span class="col-title">Project</span>
-            <a href="https://github.com/m-anish/PagodaLightPico" target="_blank" rel="noopener">Repository</a>
-          </div>
-          <div class="col">
-            <span class="col-title">About</span>
-            <span>Static site via GitHub Pages</span>
-          </div>
-        </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-title">Flash firmware</div>
+        <div class="step-body">Copy MicroPython firmware to each Pico 2. Upload the <code>src/</code> folder.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-title">Upload configs</div>
+        <div class="step-body">Copy <code>config.json</code> (and <code>sun_times.json</code>) to each unit's filesystem root.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-title">Power on</div>
+        <div class="step-body">Units boot, the coordinator connects to WiFi, leaves sync via LoRa. Done.</div>
       </div>
     </div>
-  </body>
+  </main>
+
+  <footer>
+    <a href="https://github.com/m-anish/PagodaLightPico" target="_blank" rel="noopener">GitHub</a>
+    &nbsp;·&nbsp; Lokki v1 &nbsp;·&nbsp; Runs entirely in-browser
+  </footer>
+
+</body>
 </html>

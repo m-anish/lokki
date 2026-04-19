@@ -3,126 +3,324 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Build sun_times.json • PagodaLightPico</title>
+  <title>Sun Times Builder — Lokki</title>
+  <meta name="description" content="Generate a sun_times.json lookup table for Lokki LED lighting controllers" />
   <style>
     *, *::before, *::after { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, 'Noto Sans', 'Liberation Sans', sans-serif; margin: 20px; background: #f5f5f5; }
-    .container { max-width: 920px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    h1 { color: #2c3e50; text-align: center; }
-    fieldset { border: 1px solid #e5e7eb; border-radius: 10px; margin: 16px 0; padding: 12px; background: #fafafa; }
-    fieldset.meta { border-left: 4px solid #60a5fa; }
-    fieldset.location { border-left: 4px solid #34d399; }
-    fieldset.tz { border-left: 4px solid #f59e0b; }
-    fieldset.options { border-left: 4px solid #a78bfa; }
-    fieldset.generated { border-left: 4px solid #22d3ee; }
-    label { display: block; margin: 6px 0; }
-    input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px; max-width: 100%; }
-    .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; row-gap: 12px; align-items: start; }
-    @media (max-width: 640px){ .row { grid-template-columns: 1fr; } }
-    .actions { display: flex; gap: 12px; flex-wrap: wrap; }
-    button, a.button, label.button { padding: 10px 14px; border: 1px solid #999; border-radius: 8px; background: #fff; cursor: pointer; text-decoration: none; color: #222; display:inline-flex; align-items:center; gap:6px; }
-    pre { background: #0b1020; color: #d5e6ff; padding: 12px; border-radius: 8px; overflow: auto; max-height: 420px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border-bottom: 1px solid #eee; padding: 6px; text-align: left; }
-    .tip { font-size: 12px; color: #666; }
-    legend { font-weight: 600; color: #374151; }
-    .legend-row { display:flex; align-items:center; gap:8px; }
-    .collapse-toggle { border:none; background:none; cursor:pointer; font-size:14px; }
-    fieldset.collapsed > :not(legend) { display: none; }
-    .emoji { font-size: 1.1em; margin-right: 6px; }
+    :root {
+      --brand:   #4f46e5;
+      --brand-d: #3730a3;
+      --bg:      #f8fafc;
+      --card:    #ffffff;
+      --border:  #e2e8f0;
+      --text:    #0f172a;
+      --muted:   #64748b;
+      --radius:  10px;
+      --success: #10b981;
+    }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           font-size: 15px; line-height: 1.5; }
+
+    /* NAV */
+    nav { background: var(--card); border-bottom: 1px solid var(--border);
+          padding: 0 24px; display: flex; align-items: center; gap: 12px;
+          height: 56px; position: sticky; top: 0; z-index: 50; }
+    .nav-logo { font-size: 1.1em; font-weight: 700; color: var(--brand);
+                letter-spacing: -.02em; text-decoration: none; }
+    .nav-logo span { color: var(--text); font-weight: 400; }
+    .nav-back { margin-left: auto; font-size: .85em; color: var(--muted);
+                text-decoration: none; display: flex; align-items: center; gap: 4px; }
+    .nav-back:hover { color: var(--brand); }
+
+    /* HERO */
+    .hero { background: linear-gradient(135deg, #064e3b 0%, #059669 55%, #10b981 100%);
+             color: #fff; text-align: center; padding: 48px 24px 40px; }
+    .hero h1 { margin: 0 0 10px; font-size: clamp(1.5em, 4vw, 2.2em);
+               font-weight: 800; letter-spacing: -.03em; }
+    .hero p  { margin: 0 auto; max-width: 540px; font-size: 1em; opacity: .85; }
+    .hero-badge { display: inline-block; background: rgba(255,255,255,.15);
+                  border: 1px solid rgba(255,255,255,.25); border-radius: 20px;
+                  padding: 4px 14px; font-size: .8em; letter-spacing: .04em;
+                  text-transform: uppercase; margin-bottom: 16px; }
+    .hero code { background: rgba(255,255,255,.18); border-radius: 5px;
+                  padding: 1px 7px; font-family: 'SF Mono', 'Fira Code', monospace; }
+
+    /* LAYOUT */
+    .layout { display: grid; grid-template-columns: 1fr 340px; gap: 24px;
+               max-width: 1100px; margin: 0 auto; padding: 32px 20px 60px; align-items: start; }
+    @media (max-width: 840px) { .layout { grid-template-columns: 1fr; } }
+
+    /* CARDS */
+    .card { background: var(--card); border: 1px solid var(--border);
+             border-radius: var(--radius); margin-bottom: 16px;
+             box-shadow: 0 1px 4px rgba(0,0,0,.06); overflow: hidden; }
+    .card-header { padding: 14px 20px; border-bottom: 1px solid var(--border);
+                    display: flex; align-items: center; gap: 10px;
+                    background: #f8fafc; cursor: pointer; user-select: none; }
+    .card-header:hover { background: #f1f5f9; }
+    .card-icon { font-size: 1.1em; }
+    .card-title { font-weight: 700; font-size: .95em; flex: 1; }
+    .card-badge { font-size: .72em; font-weight: 600; letter-spacing: .04em;
+                  text-transform: uppercase; padding: 2px 8px; border-radius: 12px; }
+    .badge-required { background: #fef2f2; color: #dc2626; }
+    .badge-optional  { background: #f0fdf4; color: #16a34a; }
+    .card-chevron { color: var(--muted); font-size: .8em; transition: transform .2s; }
+    .card.collapsed .card-chevron { transform: rotate(-90deg); }
+    .card.collapsed .card-body { display: none; }
+    .card-body { padding: 20px; }
+
+    /* FORM */
+    .form-group { margin-bottom: 16px; }
+    .form-group:last-child { margin-bottom: 0; }
+    label { display: block; font-size: .85em; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    .hint { font-size: .8em; color: var(--muted); margin-top: 4px; }
+    input[type=text], input[type=number], select {
+      width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: .9em; color: var(--text);
+      background: var(--card); transition: border-color .15s, box-shadow .15s; }
+    input:focus, select:focus { outline: none; border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 480px) { .row-2 { grid-template-columns: 1fr; } }
+
+    /* BUTTONS */
+    .btn { padding: 9px 18px; border-radius: 8px; font-size: .88em; font-weight: 600;
+           cursor: pointer; border: none; transition: background .15s, transform .1s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn:active { transform: scale(.98); }
+    .btn-primary   { background: var(--brand); color: #fff; }
+    .btn-primary:hover { background: var(--brand-d); }
+    .btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--brand); color: var(--brand); }
+    .btn-success   { background: var(--success); color: #fff; }
+    .btn-success:hover { background: #059669; }
+    .btn-sm { padding: 7px 14px; font-size: .82em; }
+    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* SEARCH ROW */
+    .search-input-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: end; }
+    @media (max-width: 480px) {
+      .search-input-row { grid-template-columns: 1fr 1fr; }
+      .search-input-row > .input-wrap { grid-column: 1 / -1; }
+    }
+
+    /* DAYS TABLE */
+    .days-table { width: 100%; border-collapse: collapse; font-size: .88em; }
+    .days-table th { font-size: .75em; font-weight: 700; text-transform: uppercase;
+                      letter-spacing: .05em; color: var(--muted); padding: 8px 16px;
+                      border-bottom: 2px solid var(--border); text-align: left; }
+    .days-table td { padding: 7px 16px; border-bottom: 1px solid #f1f5f9; }
+    .days-table tr:last-child td { border-bottom: none; }
+    .days-table tr:hover td { background: #f8fafc; }
+    .empty-state { text-align: center; padding: 36px 20px; color: var(--muted); font-size: .9em; }
+    .empty-icon { font-size: 2em; display: block; margin-bottom: 8px; }
+
+    /* PREVIEW PANEL */
+    .preview-panel { position: sticky; top: 72px; }
+    .preview-card { background: #0f172a; border-radius: var(--radius);
+                     border: 1px solid #1e293b; overflow: hidden; }
+    .preview-header { padding: 12px 18px; border-bottom: 1px solid #1e293b;
+                       display: flex; align-items: center; justify-content: space-between; }
+    .preview-title { font-size: .82em; font-weight: 700; color: #94a3b8;
+                      text-transform: uppercase; letter-spacing: .06em; }
+    .preview-code { padding: 16px 20px; font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+                     font-size: .78em; color: #7dd3fc; overflow: auto; max-height: 480px;
+                     white-space: pre; line-height: 1.6; }
+    .download-section { margin-top: 14px; }
+    .next-step-tip { margin-top: 12px; padding: 14px 16px; background: var(--card);
+                      border: 1px solid var(--border); border-radius: var(--radius);
+                      font-size: .82em; color: var(--muted); }
+    .next-step-tip strong { color: var(--text); }
+    .next-step-tip code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px;
+                           font-size: .9em; color: #334155; }
+
+    /* STATUS DOT */
+    .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+                   background: #334155; margin-right: 5px; vertical-align: middle; }
+    .status-dot.ready { background: var(--success); }
+    .status-text { font-size: .75em; color: #64748b; }
+
+    /* FOOTER */
+    footer { border-top: 1px solid var(--border); padding: 24px 20px; text-align: center;
+              font-size: .82em; color: var(--muted); }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: var(--brand); }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h1><span class="emoji">🌅</span>Build sun_times.json</h1>
 
-    <form id="stForm" oninput="render()" onchange="render()">
-      <fieldset class="meta">
-        <legend><span class="legend-row"><button type="button" class="collapse-toggle" aria-label="toggle">▼</button><span class="emoji">🧩</span>Meta</span></legend>
-        <div class="row">
-          <label>Version (semver)
-            <input id="version" type="text" placeholder="0.4.1" />
-          </label>
-        </div>
-      </fieldset>
+  <nav>
+    <a class="nav-logo" href="./index.html">Lokki <span>Setup</span></a>
+    <a class="nav-back" href="./index.html">← Back to home</a>
+  </nav>
 
-      <fieldset class="location">
-        <legend><span class="legend-row"><button type="button" class="collapse-toggle" aria-label="toggle">▼</button><span class="emoji">📍</span>Location</span></legend>
-        <div class="row">
-          <label>Search place or address
-            <input id="place" type="text" placeholder="e.g., Dharamsala, India" list="placeList" />
-            <datalist id="placeList"></datalist>
-          </label>
-          <div>
-            <label>&nbsp;</label>
-            <button type="button" id="applyPlace">Use selected place</button>
-            <button type="button" id="useMyLocation">Use my location</button>
+  <div class="hero">
+    <div class="hero-badge">Sun Times</div>
+    <h1>Sun Times Builder</h1>
+    <p>Generate a <code>sun_times.json</code> lookup table for your location. Required when your LED schedule uses <em>sunrise</em> or <em>sunset</em> keywords.</p>
+  </div>
+
+  <div class="layout">
+
+    <!-- ===== LEFT: FORM ===== -->
+    <div class="form-col">
+      <form id="stForm" oninput="render()" onchange="render()">
+
+        <!-- Location -->
+        <div class="card" id="card-location">
+          <div class="card-header" onclick="toggleCard('card-location')">
+            <span class="card-icon">📍</span>
+            <span class="card-title">Location</span>
+            <span class="card-badge badge-required">Required</span>
+            <span class="card-chevron">▼</span>
+          </div>
+          <div class="card-body">
+            <div class="form-group">
+              <label for="place">Search for a place</label>
+              <div class="search-input-row">
+                <div class="input-wrap">
+                  <input id="place" type="text" placeholder="e.g. Dharamsala, India" list="placeList" autocomplete="off" />
+                  <datalist id="placeList"></datalist>
+                </div>
+                <button type="button" class="btn btn-secondary btn-sm" id="applyPlace">Apply</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="useMyLocation">My location</button>
+              </div>
+              <div class="hint">Type a place name and wait for suggestions from OpenStreetMap. Select a result, then click Apply.</div>
+            </div>
+            <div class="form-group">
+              <label for="location">Location label <span style="font-weight:400;color:var(--muted)">(stored in the JSON)</span></label>
+              <input id="location" type="text" placeholder="e.g. Dharamsala, Himachal Pradesh" />
+            </div>
+            <div class="row-2">
+              <div class="form-group">
+                <label for="lat">Latitude</label>
+                <input id="lat" type="number" step="0.0001" placeholder="32.2196" />
+              </div>
+              <div class="form-group">
+                <label for="lon">Longitude</label>
+                <input id="lon" type="number" step="0.0001" placeholder="76.3234" />
+              </div>
+            </div>
           </div>
         </div>
-        <div class="row">
-          <label>Chosen name
-            <input id="location" type="text" placeholder="Location name" />
-          </label>
-        </div>
-        <div class="row">
-          <label>Latitude
-            <input id="lat" type="number" step="0.0001" placeholder="0.0000" />
-          </label>
-          <label>Longitude
-            <input id="lon" type="number" step="0.0001" placeholder="0.0000" />
-          </label>
-        </div>
-        <fieldset class="tz" style="margin:0;">
-          <legend><span class="legend-row"><button type="button" class="collapse-toggle" aria-label="toggle">▼</button><span class="emoji">🌍</span>Timezone</span></legend>
-          <div class="row">
-            <label>Timezone
+
+        <!-- Timezone -->
+        <div class="card" id="card-tz">
+          <div class="card-header" onclick="toggleCard('card-tz')">
+            <span class="card-icon">🌍</span>
+            <span class="card-title">Timezone</span>
+            <span class="card-badge badge-required">Required</span>
+            <span class="card-chevron">▼</span>
+          </div>
+          <div class="card-body">
+            <div class="form-group">
+              <label for="tz">IANA timezone name</label>
               <input id="tz" type="text" placeholder="Asia/Kolkata" list="tzList" />
               <datalist id="tzList"></datalist>
-            </label>
+              <div class="hint">Auto-filled when you pick a place or use My Location. Examples: <em>Asia/Kolkata</em>, <em>Europe/Berlin</em>, <em>America/New_York</em>.</div>
+            </div>
           </div>
-        </fieldset>
-        <div class="tip">Pick timezone closest to your location (e.g., Asia/Kolkata). Autodetect is not guaranteed.</div>
-      </fieldset>
-
-      <fieldset class="options">
-        <legend><span class="legend-row"><button type="button" class="collapse-toggle" aria-label="toggle">▼</button><span class="emoji">⚙️</span>Options</span></legend>
-        <div class="row">
-          <label>Frequency
-            <select id="freq">
-              <option value="monthly" selected>Monthly (1st of each month)</option>
-              <option value="fortnightly">Fortnightly (1st and 15th)</option>
-              <option value="weekly">Weekly (Mondays)</option>
-              <option value="daily">Daily</option>
-            </select>
-          </label>
-          <label>Year (for calculations)
-            <select id="year"></select>
-          </label>
         </div>
-        <div>
-          <button type="button" id="generateBtn">Generate from location</button>
+
+        <!-- Options -->
+        <div class="card" id="card-options">
+          <div class="card-header" onclick="toggleCard('card-options')">
+            <span class="card-icon">⚙️</span>
+            <span class="card-title">Generation Options</span>
+            <span class="card-badge badge-optional">Optional</span>
+            <span class="card-chevron">▼</span>
+          </div>
+          <div class="card-body">
+            <div class="row-2">
+              <div class="form-group">
+                <label for="freq">Sampling frequency</label>
+                <select id="freq">
+                  <option value="monthly" selected>Monthly (1st of each month)</option>
+                  <option value="fortnightly">Fortnightly (1st and 15th)</option>
+                  <option value="weekly">Weekly (Mondays)</option>
+                  <option value="daily">Daily (365 entries)</option>
+                </select>
+                <div class="hint">Monthly is recommended — the firmware interpolates between sample dates.</div>
+              </div>
+              <div class="form-group">
+                <label for="year">Year</label>
+                <select id="year"></select>
+                <div class="hint">Generate next year's table in advance if needed.</div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="version">Version string <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+              <input id="version" type="text" placeholder="1.0.0" />
+              <div class="hint">Optional tag to track which table version is deployed on each unit.</div>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn btn-primary" id="generateBtn">Generate sunrise/sunset table</button>
+            </div>
+          </div>
         </div>
-      </fieldset>
 
-      <fieldset class="generated">
-        <legend><span class="legend-row"><button type="button" class="collapse-toggle" aria-label="toggle">▼</button><span class="emoji">📅</span>Generated Days</span></legend>
-        <table id="daysTable">
-          <thead>
-            <tr><th>Date (MM-DD)</th><th>Sunrise</th><th>Sunset</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </fieldset>
-    </form>
+        <!-- Generated days -->
+        <div class="card" id="card-days">
+          <div class="card-header" onclick="toggleCard('card-days')">
+            <span class="card-icon">📅</span>
+            <span class="card-title">Generated Days</span>
+            <span class="card-chevron">▼</span>
+          </div>
+          <div class="card-body" style="padding:0">
+            <table class="days-table" id="daysTable">
+              <thead>
+                <tr><th>Date (MM-DD)</th><th>Sunrise</th><th>Sunset</th></tr>
+              </thead>
+              <tbody id="daysBody">
+                <tr><td colspan="3">
+                  <div class="empty-state">
+                    <span class="empty-icon">🌅</span>
+                    Enter a location and click <strong>Generate sunrise/sunset table</strong>.
+                  </div>
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-    <div class="actions">
-      <button onclick="downloadJSON()">Download sun_times.json</button>
-      <a class="button" href="./index.html">Back to Home</a>
+      </form>
     </div>
 
-    <h2>Preview</h2>
-    <pre id="preview"></pre>
+    <!-- ===== RIGHT: PREVIEW + DOWNLOAD ===== -->
+    <div class="preview-panel">
+      <div class="preview-card">
+        <div class="preview-header">
+          <span class="preview-title">sun_times.json</span>
+          <span id="previewStatus">
+            <span class="status-dot" id="statusDot"></span>
+            <span class="status-text" id="statusText">Empty</span>
+          </span>
+        </div>
+        <div class="preview-code" id="preview">{
+  "version": "",
+  "location": "",
+  "lat": 0,
+  "lon": 0,
+  "days": {}
+}</div>
+      </div>
+      <div class="download-section">
+        <button class="btn btn-success" style="width:100%;justify-content:center" onclick="downloadJSON()">
+          Download sun_times.json
+        </button>
+      </div>
+      <div class="next-step-tip">
+        <strong>Next step:</strong> Copy <code>sun_times.json</code> to each unit's filesystem root alongside <code>config.json</code>. The firmware reads it at boot to resolve <code>sunrise</code> and <code>sunset</code> keywords in your LED schedules.
+      </div>
+    </div>
+
   </div>
+
+  <footer>
+    <a href="https://github.com/m-anish/PagodaLightPico" target="_blank" rel="noopener">GitHub</a>
+    &nbsp;·&nbsp; Lokki v1 &nbsp;·&nbsp; SunCalc + OpenStreetMap Nominatim · Runs entirely in-browser
+  </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.min.js"></script>
   <script src="./vendor/tz-lookup.min.js"></script>
@@ -130,14 +328,20 @@
     const days = {};
     let SAMPLE_VERSION = null;
     const placeMap = new Map();
-    // Canonicalize time zone to a supported IANA name used by Intl
-    function canonicalizeTimeZone(tz){
+
+    // ---- Card collapse ----
+    function toggleCard(id) {
+      document.getElementById(id).classList.toggle('collapsed');
+    }
+
+    // ---- Timezone canonicalization ----
+    function canonicalizeTimeZone(tz) {
       if (!tz) return tz;
       const aliasMap = {
         'Asia/Calcutta': 'Asia/Kolkata',
-        'Asia/Bombay': 'Asia/Kolkata',
-        'Europe/Kiev': 'Europe/Kyiv',
-        'Asia/Rangoon': 'Asia/Yangon'
+        'Asia/Bombay':   'Asia/Kolkata',
+        'Europe/Kiev':   'Europe/Kyiv',
+        'Asia/Rangoon':  'Asia/Yangon'
       };
       let zones = [];
       if (typeof Intl !== 'undefined' && Intl.supportedValuesOf) {
@@ -147,61 +351,11 @@
       if (isSupported(tz)) return tz;
       const mapped = aliasMap[tz];
       if (mapped && isSupported(mapped)) return mapped;
-      return tz; // fallback
+      return tz;
     }
 
-    function validateKey(key){ return /^\d{2}-\d{2}$/.test(key); }
-    function validateTime(t){ return /^\d{2}:\d{2}$/.test(t); }
-
-    // Removed spacetime dynamic loader; using tz-lookup for timezone and Intl for generation
-
-    function renderDays(){
-      const tb = document.querySelector('#daysTable tbody');
-      tb.innerHTML = '';
-      Object.keys(days).sort().forEach(k => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${k}</td><td>${days[k].rise}</td><td>${days[k].set}</td>`;
-        tb.appendChild(tr);
-      });
-    }
-
-    // Collapsible sections
-    function setupCollapsibles(){
-      document.querySelectorAll('fieldset').forEach(fs => {
-        const btn = fs.querySelector('.collapse-toggle');
-        if (!btn) return;
-        btn.addEventListener('click', () => {
-          fs.classList.toggle('collapsed');
-          btn.textContent = fs.classList.contains('collapsed') ? '▶' : '▼';
-        });
-      });
-    }
-
-    async function loadSampleVersion(){
-      try {
-        // GitHub Pages workflow copies sample JSONs to site root (same dir as this page)
-        let resp = await fetch('sun_times.json.sample');
-        if (!resp.ok) resp = await fetch('./sun_times.json.sample');
-        if (!resp.ok) resp = await fetch('/sun_times.json.sample');
-        if (resp.ok) {
-          const data = await resp.json();
-          if (data && typeof data.version === 'string') {
-            SAMPLE_VERSION = data.version;
-            const verInput = document.getElementById('version');
-            if (verInput && !verInput.value) {
-              verInput.value = SAMPLE_VERSION;
-            }
-          }
-        }
-      } catch (e) {
-        // Ignore fetch errors (e.g., file:// access); fallback remains
-      } finally {
-        render();
-      }
-    }
-
-    // ---- Place autocomplete via Nominatim ----
-    function populateTZList(){
+    // ---- Timezone datalist ----
+    function populateTZList() {
       const dl = document.getElementById('tzList');
       dl.innerHTML = '';
       let zones = [];
@@ -211,21 +365,21 @@
       if (!zones || zones.length === 0) {
         zones = [
           'UTC',
-          // Africa
           'Africa/Abidjan','Africa/Accra','Africa/Addis_Ababa','Africa/Algiers','Africa/Cairo','Africa/Casablanca','Africa/Johannesburg','Africa/Lagos','Africa/Nairobi',
-          // America
           'America/Anchorage','America/Argentina/Buenos_Aires','America/Bogota','America/Caracas','America/Chicago','America/Denver','America/Halifax','America/Los_Angeles','America/Mexico_City','America/New_York','America/Phoenix','America/Santiago','America/Sao_Paulo','America/Toronto',
-          // Asia
           'Asia/Almaty','Asia/Amman','Asia/Baghdad','Asia/Bangkok','Asia/Beirut','Asia/Colombo','Asia/Dhaka','Asia/Dubai','Asia/Ho_Chi_Minh','Asia/Hong_Kong','Asia/Jakarta','Asia/Jerusalem','Asia/Kabul','Asia/Karachi','Asia/Kathmandu','Asia/Kolkata','Asia/Kuala_Lumpur','Asia/Macau','Asia/Manila','Asia/Riyadh','Asia/Seoul','Asia/Shanghai','Asia/Singapore','Asia/Taipei','Asia/Tehran','Asia/Tokyo',
-          // Australia-Pacific
           'Australia/Adelaide','Australia/Brisbane','Australia/Darwin','Australia/Hobart','Australia/Melbourne','Australia/Perth','Australia/Sydney','Pacific/Auckland','Pacific/Honolulu','Pacific/Noumea','Pacific/Port_Moresby',
-          // Europe
-          'Europe/Amsterdam','Europe/Athens','Europe/Belgrade','Europe/Berlin','Europe/Brussels','Europe/Bucharest','Europe/Budapest','Europe/Copenhagen','Europe/Dublin','Europe/Gibraltar','Europe/Helsinki','Europe/Istanbul','Europe/Kiev','Europe/Lisbon','Europe/London','Europe/Luxembourg','Europe/Madrid','Europe/Malta','Europe/Minsk','Europe/Moscow','Europe/Oslo','Europe/Paris','Europe/Prague','Europe/Riga','Europe/Rome','Europe/Stockholm','Europe/Tallinn','Europe/Vienna','Europe/Vilnius','Europe/Warsaw','Europe/Zurich'
+          'Europe/Amsterdam','Europe/Athens','Europe/Belgrade','Europe/Berlin','Europe/Brussels','Europe/Bucharest','Europe/Budapest','Europe/Copenhagen','Europe/Dublin','Europe/Helsinki','Europe/Istanbul','Europe/Kyiv','Europe/Lisbon','Europe/London','Europe/Madrid','Europe/Moscow','Europe/Oslo','Europe/Paris','Europe/Prague','Europe/Rome','Europe/Stockholm','Europe/Vienna','Europe/Warsaw','Europe/Zurich'
         ];
       }
-      zones.forEach(z => { const opt = document.createElement('option'); opt.value = z; dl.appendChild(opt); });
+      zones.forEach(z => {
+        const opt = document.createElement('option');
+        opt.value = z;
+        dl.appendChild(opt);
+      });
     }
 
+    // ---- Place autocomplete via Nominatim ----
     let suggestTimer = null;
     document.getElementById('place').addEventListener('input', e => {
       const q = e.target.value.trim();
@@ -233,9 +387,8 @@
       if (!q) return;
       suggestTimer = setTimeout(async () => {
         try {
-          // Note: Browsers do not allow setting User-Agent header. Keep requests light and cache-friendly.
           const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(q)}`;
-          const resp = await fetch(url, { headers: { 'Accept': 'application/json' }});
+          const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
           if (!resp.ok) return;
           const arr = await resp.json();
           placeMap.clear();
@@ -245,53 +398,12 @@
             const name = item.display_name;
             placeMap.set(name, { lat: parseFloat(item.lat), lon: parseFloat(item.lon) });
             const opt = document.createElement('option');
-            opt.value = name; dl.appendChild(opt);
+            opt.value = name;
+            dl.appendChild(opt);
           });
         } catch {}
       }, 250);
     });
-
-    // Use browser geolocation to fill lat/lon and then auto-fill timezone
-    async function useBrowserLocation(){
-      const btn = document.getElementById('useMyLocation');
-      if (!('geolocation' in navigator)) { alert('Geolocation is not supported in this browser.'); return; }
-      const restore = () => { if (btn){ btn.disabled = false; btn.textContent = 'Use my location'; } };
-      if (btn){ btn.disabled = true; btn.textContent = 'Locating…'; }
-      try {
-        const pos = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 60000
-          });
-        });
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        document.getElementById('lat').value = lat.toFixed(4);
-        document.getElementById('lon').value = lon.toFixed(4);
-        if (!document.getElementById('location').value) {
-          document.getElementById('location').value = 'My location';
-        }
-        await autoFillTimezone();
-        render();
-      } catch (e) {
-        alert('Could not get your location. Please allow permission or try again.');
-      } finally {
-        restore();
-      }
-    }
-
-    async function autoFillTimezone(){
-      const lat = parseFloat(document.getElementById('lat').value);
-      const lon = parseFloat(document.getElementById('lon').value);
-      if (isNaN(lat) || isNaN(lon)) return;
-      try {
-        if (typeof tzlookup === 'function'){
-          const tz = tzlookup(lat, lon);
-          if (tz) document.getElementById('tz').value = canonicalizeTimeZone(tz);
-        }
-      } catch {}
-    }
 
     document.getElementById('applyPlace').addEventListener('click', () => {
       const val = document.getElementById('place').value.trim();
@@ -305,105 +417,183 @@
       render();
     });
 
-    // Wire geolocation button
-    const geoBtn = document.getElementById('useMyLocation');
-    if (geoBtn) geoBtn.addEventListener('click', useBrowserLocation);
-
-    // If user edits coordinates manually, try to auto-fill timezone as well
-    ['lat','lon'].forEach(id => document.getElementById(id).addEventListener('change', autoFillTimezone));
-
-    // ---- Generation ----
-    function pad2(n){ return n.toString().padStart(2,'0'); }
-    function formatHM(date, tz){
+    // ---- Geolocation ----
+    async function useBrowserLocation() {
+      const btn = document.getElementById('useMyLocation');
+      if (!('geolocation' in navigator)) { alert('Geolocation is not supported in this browser.'); return; }
+      const restore = () => { if (btn) { btn.disabled = false; btn.textContent = 'My location'; } };
+      if (btn) { btn.disabled = true; btn.textContent = 'Locating…'; }
       try {
-        const parts = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).formatToParts(date);
-        const h = parts.find(p=>p.type==='hour')?.value || '00';
-        const m = parts.find(p=>p.type==='minute')?.value || '00';
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true, timeout: 10000, maximumAge: 60000
+          });
+        });
+        document.getElementById('lat').value = pos.coords.latitude.toFixed(4);
+        document.getElementById('lon').value = pos.coords.longitude.toFixed(4);
+        if (!document.getElementById('location').value) {
+          document.getElementById('location').value = 'My location';
+        }
+        await autoFillTimezone();
+        render();
+      } catch {
+        alert('Could not get your location. Please allow permission or try again.');
+      } finally {
+        restore();
+      }
+    }
+
+    async function autoFillTimezone() {
+      const lat = parseFloat(document.getElementById('lat').value);
+      const lon = parseFloat(document.getElementById('lon').value);
+      if (isNaN(lat) || isNaN(lon)) return;
+      try {
+        if (typeof tzlookup === 'function') {
+          const tz = tzlookup(lat, lon);
+          if (tz) document.getElementById('tz').value = canonicalizeTimeZone(tz);
+        }
+      } catch {}
+    }
+
+    document.getElementById('useMyLocation').addEventListener('click', useBrowserLocation);
+    ['lat', 'lon'].forEach(id => document.getElementById(id).addEventListener('change', autoFillTimezone));
+
+    // ---- Date generation helpers ----
+    function pad2(n) { return n.toString().padStart(2, '0'); }
+
+    function formatHM(date, tz) {
+      try {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz
+        }).formatToParts(date);
+        const h = parts.find(p => p.type === 'hour')?.value || '00';
+        const m = parts.find(p => p.type === 'minute')?.value || '00';
         return `${h}:${m}`;
       } catch { return '00:00'; }
     }
 
-    // Intl helpers (spacetime-free)
-    function localParts(date, tz){
-      const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit', weekday:'long' });
+    function localParts(date, tz) {
+      const fmt = new Intl.DateTimeFormat('en-GB', {
+        timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'long'
+      });
       const parts = fmt.formatToParts(date);
-      const get = (t) => parts.find(p=>p.type===t)?.value;
+      const get = (t) => parts.find(p => p.type === t)?.value;
       return { y: parseInt(get('year')), m: parseInt(get('month')), d: parseInt(get('day')), weekday: get('weekday') };
     }
-    function* daysOfYearUTC(year){
-      let d = new Date(Date.UTC(year,0,1));
-      while (d.getUTCFullYear() === year){ yield new Date(d.getTime()); d.setUTCDate(d.getUTCDate()+1); }
+
+    function* daysOfYearUTC(year) {
+      let d = new Date(Date.UTC(year, 0, 1));
+      while (d.getUTCFullYear() === year) { yield new Date(d.getTime()); d.setUTCDate(d.getUTCDate() + 1); }
     }
-    function generateDatesLocalFallback(year, freq, tz){
+
+    function generateDatesLocal(year, freq, tz) {
       const out = [];
-      if (freq === 'daily'){
+      if (freq === 'daily') {
         for (const d of daysOfYearUTC(year)) out.push(d);
-      } else if (freq === 'weekly'){
-        for (const d of daysOfYearUTC(year)) { const lp = localParts(d, tz); if (lp.weekday === 'Monday') out.push(d); }
-      } else if (freq === 'fortnightly'){
-        // pick all days where local day is 1 or 15; de-dup months per key
-        const pick = new Map(); // key: `${m}-${d}` => first date
-        for (const d of daysOfYearUTC(year)){
+      } else if (freq === 'weekly') {
+        for (const d of daysOfYearUTC(year)) {
           const lp = localParts(d, tz);
-          if (lp.d === 1 || lp.d === 15){ const k = `${lp.m}-${lp.d}`; if (!pick.has(k)) pick.set(k, d); }
+          if (lp.weekday === 'Monday') out.push(d);
         }
-        // order Jan..Dec (1 and 15 per month)
-        for (let m=1;m<=12;m++){ const k1=`${m}-1`, k2=`${m}-15`; if (pick.has(k1)) out.push(pick.get(k1)); if (pick.has(k2)) out.push(pick.get(k2)); }
-      } else { // monthly -> local day 1 of each month
+      } else if (freq === 'fortnightly') {
         const pick = new Map();
-        for (const d of daysOfYearUTC(year)){
+        for (const d of daysOfYearUTC(year)) {
           const lp = localParts(d, tz);
-          if (lp.d === 1){ const k = `${lp.m}-1`; if (!pick.has(k)) pick.set(k, d); }
+          if (lp.d === 1 || lp.d === 15) {
+            const k = `${lp.m}-${lp.d}`;
+            if (!pick.has(k)) pick.set(k, d);
+          }
         }
-        for (let m=1;m<=12;m++){ const k=`${m}-1`; if (pick.has(k)) out.push(pick.get(k)); }
+        for (let m = 1; m <= 12; m++) {
+          const k1 = `${m}-1`, k2 = `${m}-15`;
+          if (pick.has(k1)) out.push(pick.get(k1));
+          if (pick.has(k2)) out.push(pick.get(k2));
+        }
+      } else { // monthly
+        const pick = new Map();
+        for (const d of daysOfYearUTC(year)) {
+          const lp = localParts(d, tz);
+          if (lp.d === 1) {
+            const k = `${lp.m}-1`;
+            if (!pick.has(k)) pick.set(k, d);
+          }
+        }
+        for (let m = 1; m <= 12; m++) {
+          const k = `${m}-1`;
+          if (pick.has(k)) out.push(pick.get(k));
+        }
       }
       return out.map(d => ({ date: d }));
     }
 
-    function generateDatesLocal(year, freq, tz){
-      // Use Intl-based fallback only
-      return generateDatesLocalFallback(year, freq, tz);
-    }
-
-    async function generateFromLocation(){
+    // ---- Generate ----
+    async function generateFromLocation() {
       const loc = document.getElementById('location').value.trim() || 'Unknown';
       const lat = parseFloat(document.getElementById('lat').value);
       const lon = parseFloat(document.getElementById('lon').value);
-      const tz = canonicalizeTimeZone(document.getElementById('tz').value.trim() || 'UTC');
+      const tz  = canonicalizeTimeZone(document.getElementById('tz').value.trim() || 'UTC');
       const year = parseInt(document.getElementById('year').value || new Date().getFullYear(), 10);
-      if (isNaN(lat) || isNaN(lon)) { alert('Please choose a valid place (lat/lon).'); return; }
+      if (isNaN(lat) || isNaN(lon)) { alert('Please enter valid latitude and longitude.'); return; }
+
       daysClear();
       const dates = generateDatesLocal(year, document.getElementById('freq').value, tz);
       dates.forEach(s => {
-        const native = new Date(s.date.getTime()); // UTC date; SunCalc works with Date regardless of tz
+        const native = new Date(s.date.getTime());
         const times = SunCalc.getTimes(native, lat, lon);
         const lp = localParts(native, tz);
         const mmdd = `${pad2(lp.m)}-${pad2(lp.d)}`;
         days[mmdd] = { rise: formatHM(times.sunrise, tz), set: formatHM(times.sunset, tz) };
       });
-      document.getElementById('location').value = loc; // keep
+
       renderDays();
       render();
     }
 
-    function daysClear(){ for (const k of Object.keys(days)) delete days[k]; }
+    function daysClear() { for (const k of Object.keys(days)) delete days[k]; }
 
-    function buildSunTimes(){
+    function renderDays() {
+      const tb = document.getElementById('daysBody');
+      tb.innerHTML = '';
+      const keys = Object.keys(days).sort();
+      if (keys.length === 0) {
+        tb.innerHTML = '<tr><td colspan="3"><div class="empty-state"><span class="empty-icon">🌅</span>No days generated yet.</div></td></tr>';
+        return;
+      }
+      keys.forEach(k => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${k}</td><td>${days[k].rise}</td><td>${days[k].set}</td>`;
+        tb.appendChild(tr);
+      });
+    }
+
+    // ---- Build + preview ----
+    function buildSunTimes() {
       return {
-        version: document.getElementById('version').value || SAMPLE_VERSION || '0.4.1',
+        version:  document.getElementById('version').value || SAMPLE_VERSION || '1.0.0',
         location: document.getElementById('location').value || 'Unknown',
-        lat: parseFloat(document.getElementById('lat').value||'0'),
-        lon: parseFloat(document.getElementById('lon').value||'0'),
-        days: days
+        lat:      parseFloat(document.getElementById('lat').value || '0'),
+        lon:      parseFloat(document.getElementById('lon').value || '0'),
+        days:     days
       };
     }
 
-    function render(){
-      document.getElementById('preview').textContent = JSON.stringify(buildSunTimes(), null, 2);
+    function render() {
+      const obj = buildSunTimes();
+      document.getElementById('preview').textContent = JSON.stringify(obj, null, 2);
+      const count = Object.keys(days).length;
+      const dot  = document.getElementById('statusDot');
+      const text = document.getElementById('statusText');
+      if (count > 0) {
+        dot.classList.add('ready');
+        text.textContent = `${count} days`;
+      } else {
+        dot.classList.remove('ready');
+        text.textContent = 'Empty';
+      }
     }
 
-    function downloadJSON(){
-      const blob = new Blob([JSON.stringify(buildSunTimes(), null, 2)], {type:'application/json'});
+    function downloadJSON() {
+      const blob = new Blob([JSON.stringify(buildSunTimes(), null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = 'sun_times.json';
@@ -411,22 +601,40 @@
       URL.revokeObjectURL(a.href);
     }
 
-    function populateYearSelect(){
+    // ---- Year select ----
+    function populateYearSelect() {
       const sel = document.getElementById('year');
       const y = new Date().getFullYear();
-      const years = [y-1, y, y+1];
-      sel.innerHTML = '';
-      years.forEach(v => {
+      [y - 1, y, y + 1].forEach(v => {
         const opt = document.createElement('option');
-        opt.value = v; opt.textContent = v; if (v===y) opt.selected = true; sel.appendChild(opt);
+        opt.value = v; opt.textContent = v;
+        if (v === y) opt.selected = true;
+        sel.appendChild(opt);
       });
+    }
+
+    // ---- Load sample version ----
+    async function loadSampleVersion() {
+      try {
+        let resp = await fetch('sun_times.json.sample');
+        if (!resp.ok) resp = await fetch('./sun_times.json.sample');
+        if (!resp.ok) resp = await fetch('/sun_times.json.sample');
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && typeof data.version === 'string') {
+            SAMPLE_VERSION = data.version;
+            const verInput = document.getElementById('version');
+            if (verInput && !verInput.value) verInput.value = SAMPLE_VERSION;
+          }
+        }
+      } catch {}
+      render();
     }
 
     document.getElementById('generateBtn').addEventListener('click', generateFromLocation);
     populateTZList();
     populateYearSelect();
     loadSampleVersion();
-    setupCollapsibles();
     render();
   </script>
 </body>

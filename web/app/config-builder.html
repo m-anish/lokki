@@ -3,290 +3,599 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lokki — Build config.json</title>
+  <title>Lokki — Config Builder</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-           margin: 0; background: #f0f2f5; color: #1a1a1a; }
-    .container { max-width: 960px; margin: 0 auto; padding: 20px; }
-    h1 { font-size: 1.5em; margin: 0 0 4px; color: #1a1a1a; }
-    .subtitle { color: #666; font-size: .9em; margin-bottom: 20px; }
-    fieldset { border: none; border-radius: 10px; margin: 14px 0; padding: 16px 18px;
-               background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
-    fieldset.sys   { border-left: 4px solid #6366f1; }
-    fieldset.wifi  { border-left: 4px solid #22c55e; }
-    fieldset.lora  { border-left: 4px solid #0ea5e9; }
-    fieldset.tz    { border-left: 4px solid #f59e0b; }
-    fieldset.hw    { border-left: 4px solid #10b981; }
-    fieldset.ldr   { border-left: 4px solid #eab308; }
-    fieldset.pir   { border-left: 4px solid #f97316; }
-    fieldset.relay { border-left: 4px solid #8b5cf6; }
-    fieldset.led   { border-left: 4px solid #06b6d4; }
-    fieldset.scene { border-left: 4px solid #ec4899; }
-    fieldset.notif { border-left: 4px solid #ef4444; }
-    legend { font-weight: 700; font-size: 1em; color: #374151; padding: 0; margin-bottom: 10px; }
-    label { display: block; font-size: .85em; color: #555; margin-bottom: 10px; }
-    label span.lbl { display: block; margin-bottom: 3px; font-weight: 500; color: #374151; }
+    :root {
+      --brand:   #4f46e5;
+      --brand-d: #3730a3;
+      --bg:      #f8fafc;
+      --card:    #ffffff;
+      --border:  #e2e8f0;
+      --text:    #0f172a;
+      --muted:   #64748b;
+      --radius:  10px;
+      --green:   #059669;
+      --red:     #dc2626;
+      --amber:   #d97706;
+    }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           font-size: 14px; line-height: 1.5; }
+
+    /* NAV */
+    nav { background: var(--card); border-bottom: 1px solid var(--border);
+          padding: 0 20px; display: flex; align-items: center; gap: 12px; height: 52px;
+          position: sticky; top: 0; z-index: 100; }
+    .nav-logo { font-size: 1em; font-weight: 700; color: var(--brand); text-decoration: none; }
+    .nav-sep  { color: var(--border); }
+    .nav-title { color: var(--muted); font-size: .9em; }
+    .nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .expert-toggle { display: flex; align-items: center; gap: 7px; font-size: .8em;
+                      color: var(--muted); cursor: pointer; user-select: none; }
+    .expert-toggle input { width: 32px; height: 18px; appearance: none; background: #cbd5e1;
+                            border-radius: 9px; cursor: pointer; transition: background .2s;
+                            position: relative; }
+    .expert-toggle input:checked { background: var(--brand); }
+    .expert-toggle input::after { content: ''; position: absolute; top: 2px; left: 2px;
+                                   width: 14px; height: 14px; border-radius: 50%;
+                                   background: #fff; transition: left .2s; }
+    .expert-toggle input:checked::after { left: 16px; }
+
+    /* LAYOUT */
+    .layout { display: grid; grid-template-columns: 1fr 340px; gap: 0; min-height: calc(100vh - 52px); }
+    .form-col { padding: 24px 20px; overflow-y: auto; }
+    .preview-col { background: #0f172a; color: #94a3b8; padding: 20px;
+                   position: sticky; top: 52px; height: calc(100vh - 52px);
+                   display: flex; flex-direction: column; gap: 12px; }
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; }
+      .preview-col { position: static; height: auto; min-height: 320px; }
+    }
+
+    /* SECTIONS */
+    .section { background: var(--card); border: 1px solid var(--border);
+                border-radius: var(--radius); margin-bottom: 14px;
+                box-shadow: 0 1px 3px rgba(0,0,0,.05); overflow: hidden; }
+    .section-head { display: flex; align-items: center; gap: 10px; padding: 13px 16px;
+                     cursor: pointer; user-select: none; border-bottom: 1px solid transparent; }
+    .section-head:hover { background: #fafafa; }
+    .section.open .section-head { border-bottom-color: var(--border); }
+    .section-icon { font-size: 1.1em; }
+    .section-title { font-weight: 600; font-size: .9em; flex: 1; }
+    .section-badge { font-size: .7em; padding: 2px 8px; border-radius: 10px;
+                      font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    .badge-required { background: #ede9fe; color: #5b21b6; }
+    .badge-advanced { background: #fef3c7; color: #92400e; }
+    .badge-optional { background: #f0fdf4; color: #166534; }
+    .chevron { color: var(--muted); font-size: .8em; transition: transform .2s; }
+    .section.open .chevron { transform: rotate(90deg); }
+    .section-body { padding: 16px; display: none; }
+    .section.open .section-body { display: block; }
+
+    /* EXPERT-ONLY sections */
+    .expert-only { display: none; }
+    body.expert .expert-only { display: block; }
+
+    /* FORM ELEMENTS */
+    .field { margin-bottom: 14px; }
+    .field:last-child { margin-bottom: 0; }
+    .field-label { display: block; font-weight: 500; font-size: .82em;
+                   color: #374151; margin-bottom: 5px; }
+    .field-hint  { font-size: .76em; color: var(--muted); margin-top: 3px; }
     input[type=text], input[type=password], input[type=number], input[type=time],
     select, textarea {
-      width: 100%; padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 6px;
-      font-size: .9em; background: #fafafa; color: #1a1a1a; }
-    input:focus, select:focus, textarea:focus { outline: 2px solid #6366f1; border-color: transparent; background: #fff; }
-    .row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-    .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-    @media (max-width: 600px) { .row, .row3 { grid-template-columns: 1fr; } }
-    .card { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px;
-             padding: 12px; margin: 10px 0; }
-    .card-head { display: flex; align-items: center; gap: 8px; font-weight: 600;
-                  font-size: .9em; margin-bottom: 10px; color: #374151; }
-    .btn { padding: 7px 14px; border: 1px solid #d1d5db; border-radius: 6px;
-           background: #fff; cursor: pointer; font-size: .85em; color: #374151; }
-    .btn:hover { background: #f3f4f6; }
+      width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+      font-size: .88em; background: #f8fafc; color: var(--text);
+      transition: border-color .15s, box-shadow .15s; }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(79,70,229,.1); background: #fff; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    @media (max-width: 500px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+
+    /* TOGGLE / SWITCH */
+    .toggle-row { display: flex; align-items: center; justify-content: space-between;
+                   padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-label { font-weight: 500; font-size: .88em; }
+    .toggle-hint  { font-size: .76em; color: var(--muted); }
+    .toggle-switch { display: flex; align-items: center; gap: 8px; }
+    .sw { width: 38px; height: 22px; appearance: none; background: #cbd5e1;
+           border-radius: 11px; cursor: pointer; transition: background .2s; position: relative;
+           flex-shrink: 0; }
+    .sw:checked { background: var(--brand); }
+    .sw::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+                  border-radius: 50%; background: #fff; transition: left .2s; }
+    .sw:checked::after { left: 19px; }
+
+    /* RANGE SLIDER */
+    .range-field { display: flex; align-items: center; gap: 10px; }
+    .range-field input[type=range] { flex: 1; appearance: none; height: 5px;
+                                      background: #e2e8f0; border-radius: 3px; border: none; padding: 0; }
+    .range-field input[type=range]::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px;
+      border-radius: 50%; background: var(--brand); cursor: pointer; }
+    .range-field input[type=range]:focus { box-shadow: none; border: none; }
+    .range-field input[type=range]:focus::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(79,70,229,.2); }
+    .range-val { min-width: 42px; text-align: right; font-weight: 600; font-size: .88em;
+                  color: var(--brand); }
+
+    /* BUTTONS */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
+            border: 1px solid var(--border); border-radius: 6px; background: var(--card);
+            cursor: pointer; font-size: .83em; color: var(--text); font-weight: 500;
+            transition: background .12s, border-color .12s; }
+    .btn:hover { background: #f1f5f9; border-color: #94a3b8; }
+    .btn-primary { background: var(--brand); color: #fff; border-color: var(--brand); }
+    .btn-primary:hover { background: var(--brand-d); border-color: var(--brand-d); }
+    .btn-danger  { color: var(--red); border-color: #fca5a5; }
+    .btn-danger:hover  { background: #fef2f2; }
     .btn-sm { padding: 4px 10px; font-size: .78em; }
-    .btn-danger { border-color: #fca5a5; color: #b91c1c; }
-    .btn-danger:hover { background: #fef2f2; }
-    .btn-primary { background: #6366f1; color: #fff; border-color: #6366f1; }
-    .btn-primary:hover { background: #4f46e5; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* CARDS (nested) */
+    .card { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+             padding: 14px; margin-bottom: 10px; }
+    .card-title { font-weight: 600; font-size: .85em; color: #374151;
+                   margin-bottom: 12px; display: flex; align-items: center;
+                   justify-content: space-between; }
+    .card-sub { font-size: .78em; color: var(--muted); font-weight: 400; }
+
+    /* TIME WINDOW BLOCKS */
     .win-block { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px;
-                  padding: 10px; margin: 6px 0; }
-    .range-row { display: flex; align-items: center; gap: 10px; }
-    .range-row input[type=range] { flex: 1; }
-    .range-val { min-width: 36px; text-align: right; font-weight: 600; font-size: .9em; }
-    .tip { font-size: .78em; color: #888; margin: 2px 0 6px; }
-    .val-msg { font-size: .8em; margin-top: 6px; padding: 4px 8px; border-radius: 4px; }
-    .val-ok  { background: #dcfce7; color: #166534; }
-    .val-err { background: #fee2e2; color: #991b1b; }
-    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0; }
-    pre { background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 8px;
-          overflow: auto; max-height: 500px; font-size: .82em; line-height: 1.5; }
+                  padding: 12px; margin: 8px 0; position: relative; }
+    .win-block-head { font-size: .78em; font-weight: 600; color: #1e40af;
+                       margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+    .win-sep { height: 1px; background: #dbeafe; margin: 10px 0; }
+
+    /* PILL BADGE */
+    .pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+             border-radius: 10px; font-size: .72em; font-weight: 600; }
+    .pill-blue   { background: #dbeafe; color: #1e40af; }
+    .pill-green  { background: #dcfce7; color: #166534; }
+    .pill-purple { background: #ede9fe; color: #5b21b6; }
+
+    /* PASSWORD REVEAL */
     .pw-wrap { position: relative; }
     .pw-wrap input { padding-right: 36px; }
-    .pw-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-                  background: none; border: none; cursor: pointer; font-size: 14px; }
-    .collapse-btn { background: none; border: none; cursor: pointer; font-size: 12px;
-                     padding: 0 4px; color: #6b7280; }
-    fieldset.collapsed > *:not(legend) { display: none; }
-    .tab-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
-    .tab { padding: 4px 12px; border: 1px solid #d1d5db; border-radius: 20px;
-            font-size: .8em; cursor: pointer; background: #f9fafb; }
-    .tab.active { background: #6366f1; color: #fff; border-color: #6366f1; }
-    hr { border: none; border-top: 1px solid #e5e7eb; margin: 16px 0; }
+    .pw-btn { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+               background: none; border: none; cursor: pointer; font-size: 15px; padding: 2px; }
+
+    /* VALIDATION */
+    .val-banner { border-radius: 8px; padding: 10px 14px; font-size: .82em;
+                   margin-bottom: 14px; display: none; }
+    .val-banner.show { display: block; }
+    .val-ok  { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .val-err { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+    /* PREVIEW PANEL */
+    .preview-title { font-size: .78em; text-transform: uppercase; letter-spacing: .08em;
+                      color: #475569; font-weight: 600; }
+    .preview-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    pre { flex: 1; margin: 0; font-size: .76em; line-height: 1.6; overflow: auto;
+           color: #94a3b8; font-family: 'Menlo', 'Monaco', 'Consolas', monospace; }
+    pre .key    { color: #7dd3fc; }
+    pre .str    { color: #86efac; }
+    pre .num    { color: #fda4af; }
+    pre .bool   { color: #fbbf24; }
+
+    /* DOWNLOAD AREA */
+    .dl-area { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+                padding: 16px; margin-bottom: 14px; }
+    .dl-area-title { font-weight: 600; font-size: .88em; margin-bottom: 12px; }
+    .dl-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* SECTION DIVIDER */
+    .divider { font-size: .72em; font-weight: 700; text-transform: uppercase;
+                letter-spacing: .08em; color: var(--muted); margin: 24px 0 10px;
+                display: flex; align-items: center; gap: 10px; }
+    .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* TIMEZONE */
+    select[size] { height: auto; }
+
+    /* TOOLTIP */
+    [title] { cursor: help; }
   </style>
 </head>
 <body>
-<div class="container">
-  <h1>Lokki — Config Builder</h1>
-  <p class="subtitle">Generates a valid <code>config.json</code> for Lokki v1 firmware. Upload an existing config to edit it.</p>
 
-  <form id="form" oninput="scheduleRender()" onchange="scheduleRender()">
-
-    <!-- SYSTEM -->
-    <fieldset class="sys">
-      <legend><button type="button" class="collapse-btn">▼</button> System</legend>
-      <div class="row3">
-        <label><span class="lbl">Role</span>
-          <select id="s_role">
-            <option value="coordinator">coordinator</option>
-            <option value="leaf">leaf</option>
-          </select>
-        </label>
-        <label><span class="lbl">Unit ID (0 = coordinator)</span>
-          <input id="s_unit_id" type="number" min="0" max="8" value="0" />
-        </label>
-        <label><span class="lbl">Unit Name</span>
-          <input id="s_unit_name" type="text" value="Pagoda" />
-        </label>
-      </div>
-      <label><span class="lbl">Peer Unit IDs (comma-separated, coordinator only)</span>
-        <input id="s_peers" type="text" placeholder="1, 2, 3" value="1, 2" />
-      </label>
-      <div class="row3">
-        <label><span class="lbl">Log Level</span>
-          <select id="s_log_level">
-            <option>DEBUG</option><option selected>INFO</option><option>WARN</option><option>ERROR</option>
-          </select>
-        </label>
-        <label><span class="lbl">Heartbeat Interval (s)</span>
-          <input id="s_hb_interval" type="number" value="30" min="5" max="300" />
-        </label>
-        <label><span class="lbl">Heartbeat Timeout (s)</span>
-          <input id="s_hb_timeout" type="number" value="120" min="30" max="600" />
-        </label>
-      </div>
-      <label><span class="lbl">PWM Update Interval (ms)</span>
-        <input id="s_pwm_interval" type="number" value="500" min="100" max="5000" />
-      </label>
-    </fieldset>
-
-    <!-- WIFI -->
-    <fieldset class="wifi">
-      <legend><button type="button" class="collapse-btn">▼</button> WiFi (coordinator only)</legend>
-      <div class="row">
-        <label><span class="lbl">SSID</span>
-          <input id="w_ssid" type="text" placeholder="YourNetworkName" />
-        </label>
-        <label><span class="lbl">Password</span>
-          <span class="pw-wrap">
-            <input id="w_password" type="password" placeholder="YourPassword" />
-            <button type="button" class="pw-toggle" onclick="togglePw()">🙈</button>
-          </span>
-        </label>
-      </div>
-      <label><span class="lbl">Hostname</span>
-        <input id="w_hostname" type="text" value="lokki-pagoda" />
-      </label>
-    </fieldset>
-
-    <!-- LORA -->
-    <fieldset class="lora">
-      <legend><button type="button" class="collapse-btn">▼</button> LoRa</legend>
-      <div class="row">
-        <label><span class="lbl">Frequency (MHz)</span>
-          <input id="l_freq" type="number" step="0.1" value="868" />
-        </label>
-        <label><span class="lbl">TX Power (dBm, max 22)</span>
-          <input id="l_power" type="number" value="22" min="0" max="22" />
-        </label>
-      </div>
-      <div class="row">
-        <label><span class="lbl">Channel (0–83)</span>
-          <input id="l_channel" type="number" value="0" min="0" max="83" />
-        </label>
-        <label><span class="lbl">Air Data Rate</span>
-          <select id="l_adr">
-            <option value="300">300 bps</option>
-            <option value="1200">1200 bps</option>
-            <option value="2400" selected>2400 bps</option>
-            <option value="4800">4800 bps</option>
-            <option value="9600">9600 bps</option>
-          </select>
-        </label>
-      </div>
-    </fieldset>
-
-    <!-- TIMEZONE -->
-    <fieldset class="tz">
-      <legend><button type="button" class="collapse-btn">▼</button> Timezone</legend>
-      <div class="row">
-        <label><span class="lbl">Search</span>
-          <input id="tz_search" type="text" placeholder="India, PST, +5:30, Tokyo…" />
-        </label>
-        <label><span class="lbl">Select</span>
-          <select id="tz_select" size="5" style="height:auto;"></select>
-        </label>
-      </div>
-      <div style="display:none">
-        <input id="tz_name" type="text" value="IST" />
-        <input id="tz_offset" type="number" step="0.25" value="5.5" />
-      </div>
-    </fieldset>
-
-    <!-- HARDWARE -->
-    <fieldset class="hw">
-      <legend><button type="button" class="collapse-btn">▼</button> Hardware (GPIO Pins)</legend>
-      <p class="tip">Fixed by PCB layout — only change if you know what you're doing.</p>
-      <div class="row3">
-        <label><span class="lbl">I2C SDA</span><input id="h_sda" type="number" value="20" min="0" max="28" /></label>
-        <label><span class="lbl">I2C SCL</span><input id="h_scl" type="number" value="21" min="0" max="28" /></label>
-        <label><span class="lbl">I2C Freq (Hz)</span><input id="h_i2c_freq" type="number" value="400000" /></label>
-      </div>
-      <div class="row3">
-        <label><span class="lbl">PWM Freq (Hz)</span><input id="h_pwm_freq" type="number" value="1000" /></label>
-        <label><span class="lbl">LDR ADC Pin</span><input id="h_ldr_pin" type="number" value="26" min="26" max="28" /></label>
-        <label><span class="lbl">Status LED Pin</span><input id="h_status_led" type="number" value="5" min="0" max="28" /></label>
-      </div>
-      <div class="row3">
-        <label><span class="lbl">LoRa UART ID</span><input id="h_lora_uart" type="number" value="0" min="0" max="1" /></label>
-        <label><span class="lbl">LoRa TX Pin</span><input id="h_lora_tx" type="number" value="0" min="0" max="28" /></label>
-        <label><span class="lbl">LoRa RX Pin</span><input id="h_lora_rx" type="number" value="1" min="0" max="28" /></label>
-      </div>
-      <div class="row3">
-        <label><span class="lbl">LoRa M0 Pin</span><input id="h_lora_m0" type="number" value="2" min="0" max="28" /></label>
-        <label><span class="lbl">LoRa M1 Pin</span><input id="h_lora_m1" type="number" value="3" min="0" max="28" /></label>
-        <label><span class="lbl">LoRa AUX Pin</span><input id="h_lora_aux" type="number" value="4" min="0" max="28" /></label>
-      </div>
-    </fieldset>
-
-    <!-- LDR -->
-    <fieldset class="ldr">
-      <legend><button type="button" class="collapse-btn">▼</button> LDR (Ambient Light Cap)</legend>
-      <div class="row">
-        <label><span class="lbl">LDR Enabled</span>
-          <select id="ldr_enabled"><option value="true">true</option><option value="false">false</option></select>
-        </label>
-        <label><span class="lbl">Smoothing Window (s)</span>
-          <input id="ldr_smooth" type="number" value="60" min="5" max="300" />
-        </label>
-      </div>
-      <div id="ldr_rules_container"></div>
-      <button type="button" class="btn btn-sm" onclick="addCapRule()">+ Add Cap Rule</button>
-      <p class="tip">Rules are checked highest-threshold-first. If ambient light % exceeds the threshold, LED output is capped at cap_percent.</p>
-    </fieldset>
-
-    <!-- PIR -->
-    <fieldset class="pir">
-      <legend><button type="button" class="collapse-btn">▼</button> PIR Sensors</legend>
-      <div id="pir_container"></div>
-    </fieldset>
-
-    <!-- RELAYS -->
-    <fieldset class="relay">
-      <legend><button type="button" class="collapse-btn">▼</button> Relays</legend>
-      <div id="relay_container"></div>
-    </fieldset>
-
-    <!-- LED CHANNELS -->
-    <fieldset class="led">
-      <legend><button type="button" class="collapse-btn">▼</button> LED Channels (8 max)</legend>
-      <div id="led_container"></div>
-    </fieldset>
-
-    <!-- SCENES -->
-    <fieldset class="scene">
-      <legend><button type="button" class="collapse-btn">▼</button> Scenes</legend>
-      <p class="tip">Scenes specify partial output states. Only listed outputs change when a scene is applied.</p>
-      <div id="scene_container"></div>
-      <button type="button" class="btn btn-sm" onclick="addScene()">+ Add Scene</button>
-    </fieldset>
-
-    <!-- NOTIFICATIONS -->
-    <fieldset class="notif">
-      <legend><button type="button" class="collapse-btn">▼</button> Notifications (MQTT, optional)</legend>
-      <div class="row">
-        <label><span class="lbl">MQTT Enabled</span>
-          <select id="n_enabled"><option value="false" selected>false</option><option value="true">true</option></select>
-        </label>
-        <label><span class="lbl">Broker</span>
-          <input id="n_broker" type="text" value="broker.hivemq.com" />
-        </label>
-      </div>
-      <div class="row">
-        <label><span class="lbl">Port</span><input id="n_port" type="number" value="1883" /></label>
-        <label><span class="lbl">Topic Prefix</span><input id="n_topic" type="text" value="lokki/pagoda" /></label>
-      </div>
-      <label><span class="lbl">Client ID</span><input id="n_client_id" type="text" value="lokki-pagoda" /></label>
-    </fieldset>
-
-  </form>
-
-  <div id="val_msg"></div>
-
-  <div class="actions">
-    <button type="button" class="btn btn-primary" id="dl_btn" onclick="downloadJSON()">Download config.json</button>
-    <button type="button" class="btn" id="upload_btn">Upload &amp; Prefill</button>
-    <input id="upload_input" type="file" accept=".json,application/json"
-           style="position:absolute;width:1px;height:1px;clip:rect(0,0,0,0)" />
-    <a class="btn" href="./index.html">← Home</a>
+<nav>
+  <a class="nav-logo" href="./index.html">Lokki</a>
+  <span class="nav-sep">|</span>
+  <span class="nav-title">Config Builder</span>
+  <div class="nav-right">
+    <label class="expert-toggle" title="Show advanced settings like GPIO pins, LoRa parameters and timing intervals">
+      <input type="checkbox" id="expertToggle" />
+      Expert mode
+    </label>
   </div>
-  <div id="upload_msg" class="tip"></div>
+</nav>
 
-  <h2 style="margin-top:24px">Preview</h2>
-  <pre id="preview"></pre>
-</div>
+<div class="layout">
+  <div class="form-col">
+
+    <!-- VALIDATION -->
+    <div id="valBanner" class="val-banner"></div>
+
+    <!-- DOWNLOAD -->
+    <div class="dl-area">
+      <div class="dl-area-title">Ready to download</div>
+      <div class="dl-actions">
+        <button class="btn btn-primary" id="dlBtn" onclick="downloadJSON()">⬇ Download config.json</button>
+        <button class="btn" id="uploadBtn">↑ Upload &amp; prefill</button>
+        <input id="uploadInput" type="file" accept=".json,application/json"
+               style="position:absolute;width:1px;height:1px;clip:rect(0,0,0,0)" />
+        <a class="btn" href="./index.html">← Home</a>
+      </div>
+      <div id="uploadMsg" style="font-size:.78em;color:var(--muted);margin-top:6px"></div>
+    </div>
+
+    <!-- ── SYSTEM ── -->
+    <div class="section open" data-section="system">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">🖥</span>
+        <span class="section-title">Unit Identity</span>
+        <span class="section-badge badge-required">Required</span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Role</label>
+            <select id="s_role">
+              <option value="coordinator">Coordinator (has WiFi + web UI)</option>
+              <option value="leaf">Leaf (LoRa only)</option>
+            </select>
+            <div class="field-hint">One coordinator per network, up to 8 leaves.</div>
+          </div>
+          <div class="field">
+            <label class="field-label">Unit ID</label>
+            <input id="s_unit_id" type="number" min="0" max="8" value="0" />
+            <div class="field-hint">0 = coordinator, 1–8 = leaves.</div>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label">Unit Name</label>
+          <input id="s_unit_name" type="text" value="Pagoda" placeholder="e.g. Pagoda, Hall, Garden" />
+        </div>
+        <div class="field" id="peersField">
+          <label class="field-label">Peer Unit IDs <span class="card-sub">(coordinator only)</span></label>
+          <input id="s_peers" type="text" placeholder="1, 2, 3" value="1, 2" />
+          <div class="field-hint">Comma-separated IDs of leaf units this coordinator manages.</div>
+        </div>
+        <!-- EXPERT ONLY -->
+        <div class="expert-only">
+          <div class="divider">Advanced</div>
+          <div class="grid3">
+            <div class="field">
+              <label class="field-label">Log Level</label>
+              <select id="s_log_level">
+                <option>DEBUG</option><option selected>INFO</option><option>WARN</option><option>ERROR</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="field-label">Heartbeat Interval (s)</label>
+              <input id="s_hb_interval" type="number" value="30" min="5" max="300" />
+            </div>
+            <div class="field">
+              <label class="field-label">Heartbeat Timeout (s)</label>
+              <input id="s_hb_timeout" type="number" value="120" min="30" max="600" />
+            </div>
+          </div>
+          <div class="field" style="max-width:220px">
+            <label class="field-label">Schedule Update Rate (ms)</label>
+            <input id="s_pwm_interval" type="number" value="500" min="100" max="5000" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── WIFI ── -->
+    <div class="section open" data-section="wifi">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">📶</span>
+        <span class="section-title">WiFi <span class="card-sub">(coordinator only)</span></span>
+        <span class="section-badge badge-required">Required</span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Network Name (SSID)</label>
+            <input id="w_ssid" type="text" placeholder="YourWiFiNetwork" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label class="field-label">Password</label>
+            <span class="pw-wrap">
+              <input id="w_password" type="password" placeholder="••••••••" autocomplete="off" />
+              <button type="button" class="pw-btn" onclick="togglePw()" title="Show/hide password">🙈</button>
+            </span>
+          </div>
+        </div>
+        <div class="field expert-only">
+          <label class="field-label">Hostname</label>
+          <input id="w_hostname" type="text" value="lokki-pagoda" />
+          <div class="field-hint">Device hostname on the network.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TIMEZONE ── -->
+    <div class="section open" data-section="tz">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">🌍</span>
+        <span class="section-title">Timezone</span>
+        <span class="section-badge badge-required">Required</span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Search</label>
+            <input id="tz_search" type="text" placeholder="India, PST, Tokyo, +5:30…" />
+          </div>
+          <div class="field">
+            <label class="field-label">Select timezone</label>
+            <select id="tz_select" size="5" style="height:auto;"></select>
+          </div>
+        </div>
+        <div style="display:none">
+          <input id="tz_name" type="text" value="IST" />
+          <input id="tz_offset" type="number" step="0.25" value="5.5" />
+        </div>
+        <div id="tz_display" style="margin-top:6px;font-size:.82em;color:var(--muted)"></div>
+      </div>
+    </div>
+
+    <!-- ── LED CHANNELS ── -->
+    <div class="section open" data-section="led">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">💡</span>
+        <span class="section-title">LED Channels</span>
+        <span class="section-badge badge-required">Required</span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
+          Each channel controls one circuit of LEDs via PWM dimming.
+          Add time windows to define when and how bright each channel should be.
+          Channels without a matching window fall back to the default brightness.
+        </p>
+        <div id="led_container"></div>
+      </div>
+    </div>
+
+    <!-- ── RELAYS ── -->
+    <div class="section" data-section="relay">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">🔌</span>
+        <span class="section-title">Relays</span>
+        <span class="section-badge badge-optional">Optional</span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
+          Relay outputs for switching non-dimmable loads (fans, UV lamps, power rails, etc.).
+          Set time windows for scheduled on/off.
+        </p>
+        <div id="relay_container"></div>
+      </div>
+    </div>
+
+    <!-- ── PIR ── -->
+    <div class="section" data-section="pir">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">👁</span>
+        <span class="section-title">Motion Sensors (PIR)</span>
+        <span class="section-badge badge-optional">Optional</span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
+          Up to 4 PIR motion sensors. When motion is detected, the chosen action runs
+          at higher priority than the schedule. When the area becomes vacant again, the
+          vacancy action runs (usually reverting to schedule).
+        </p>
+        <div id="pir_container"></div>
+      </div>
+    </div>
+
+    <!-- ── SCENES ── -->
+    <div class="section" data-section="scenes">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">🎬</span>
+        <span class="section-title">Scenes</span>
+        <span class="section-badge badge-optional">Optional</span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <p style="font-size:.82em;color:var(--muted);margin:0 0 10px">
+          A scene is a named lighting snapshot. Scenes are <strong>partial</strong> — only the
+          outputs you list are affected; others keep their current state.
+          Scenes can be triggered by motion sensors, the web dashboard, or LoRa commands.
+        </p>
+        <div id="scene_container"></div>
+        <button class="btn btn-sm" onclick="addScene()" style="margin-top:4px">+ Add Scene</button>
+      </div>
+    </div>
+
+    <!-- ── LDR ── -->
+    <div class="section" data-section="ldr">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">☀️</span>
+        <span class="section-title">Ambient Light (LDR)</span>
+        <span class="section-badge badge-optional">Optional</span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
+          The LDR sensor continuously measures ambient light and applies a brightness cap to all
+          LED channels. Useful to prevent lights from being brighter than the ambient environment.
+          This is a <em>cap</em>, not a trigger — it only reduces brightness, never increases it.
+        </p>
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Enable LDR cap</div>
+          </div>
+          <div class="toggle-switch">
+            <input type="checkbox" class="sw" id="ldr_enabled" checked />
+          </div>
+        </div>
+        <div id="ldr_body" style="margin-top:12px">
+          <div class="field expert-only">
+            <label class="field-label">Smoothing Window</label>
+            <div style="display:flex;align-items:center;gap:10px">
+              <input id="ldr_smooth" type="number" value="60" min="5" max="300" style="width:100px" />
+              <span style="font-size:.82em;color:var(--muted)">seconds rolling average (reduces flicker from passing clouds)</span>
+            </div>
+          </div>
+          <div style="font-weight:600;font-size:.82em;margin:10px 0 8px;color:#374151">Cap Rules</div>
+          <div style="font-size:.78em;color:var(--muted);margin-bottom:10px">
+            When ambient brightness exceeds the threshold, LED output is capped.
+            Rules are checked highest-threshold-first.
+          </div>
+          <div id="ldr_rules_container"></div>
+          <button class="btn btn-sm" onclick="addCapRule()">+ Add Rule</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── LORA (EXPERT) ── -->
+    <div class="section expert-only" data-section="lora">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">📡</span>
+        <span class="section-title">LoRa Radio</span>
+        <span class="section-badge badge-advanced">Advanced</span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Frequency (MHz)</label>
+            <input id="l_freq" type="number" step="0.1" value="868" />
+            <div class="field-hint">868 MHz for EU/India. 915 MHz for North America. Check local regulations.</div>
+          </div>
+          <div class="field">
+            <label class="field-label">TX Power (dBm)</label>
+            <input id="l_power" type="number" value="22" min="0" max="22" />
+            <div class="field-hint">Max 22 dBm. Reduce for shorter range + lower power draw.</div>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Channel (0–83)</label>
+            <input id="l_channel" type="number" value="0" min="0" max="83" />
+          </div>
+          <div class="field">
+            <label class="field-label">Air Data Rate</label>
+            <select id="l_adr">
+              <option value="300">300 bps (longest range)</option>
+              <option value="1200">1200 bps</option>
+              <option value="2400" selected>2400 bps (recommended)</option>
+              <option value="4800">4800 bps</option>
+              <option value="9600">9600 bps (shortest range)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── HARDWARE (EXPERT) ── -->
+    <div class="section expert-only" data-section="hw">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">🔧</span>
+        <span class="section-title">GPIO Pin Assignments</span>
+        <span class="section-badge badge-advanced">Advanced</span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
+          These are fixed by the PCB layout. Only change if you are using a custom board.
+        </p>
+        <div class="divider">I2C (RTC + sensors)</div>
+        <div class="grid3">
+          <div class="field"><label class="field-label">SDA</label><input id="h_sda" type="number" value="20" /></div>
+          <div class="field"><label class="field-label">SCL</label><input id="h_scl" type="number" value="21" /></div>
+          <div class="field"><label class="field-label">Freq (Hz)</label><input id="h_i2c_freq" type="number" value="400000" /></div>
+        </div>
+        <div class="divider">PWM + ADC</div>
+        <div class="grid3">
+          <div class="field"><label class="field-label">PWM Freq (Hz)</label><input id="h_pwm_freq" type="number" value="1000" /></div>
+          <div class="field"><label class="field-label">LDR (ADC Pin)</label><input id="h_ldr_pin" type="number" value="26" /></div>
+          <div class="field"><label class="field-label">Status LED</label><input id="h_status_led" type="number" value="5" /></div>
+        </div>
+        <div class="divider">LoRa (E220 Module)</div>
+        <div class="grid3">
+          <div class="field"><label class="field-label">UART ID</label><input id="h_lora_uart" type="number" value="0" /></div>
+          <div class="field"><label class="field-label">TX Pin</label><input id="h_lora_tx" type="number" value="0" /></div>
+          <div class="field"><label class="field-label">RX Pin</label><input id="h_lora_rx" type="number" value="1" /></div>
+        </div>
+        <div class="grid3">
+          <div class="field"><label class="field-label">M0 Pin</label><input id="h_lora_m0" type="number" value="2" /></div>
+          <div class="field"><label class="field-label">M1 Pin</label><input id="h_lora_m1" type="number" value="3" /></div>
+          <div class="field"><label class="field-label">AUX Pin</label><input id="h_lora_aux" type="number" value="4" /></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── NOTIFICATIONS (EXPERT) ── -->
+    <div class="section expert-only" data-section="notif">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">🔔</span>
+        <span class="section-title">MQTT Notifications</span>
+        <span class="section-badge badge-advanced">Advanced</span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <div class="toggle-row">
+          <div><div class="toggle-label">Enable MQTT</div><div class="toggle-hint">Publishes events to an MQTT broker.</div></div>
+          <div class="toggle-switch"><input type="checkbox" class="sw" id="n_enabled" /></div>
+        </div>
+        <div style="margin-top:12px">
+          <div class="grid2">
+            <div class="field"><label class="field-label">Broker Address</label><input id="n_broker" type="text" value="broker.hivemq.com" /></div>
+            <div class="field"><label class="field-label">Port</label><input id="n_port" type="number" value="1883" /></div>
+          </div>
+          <div class="grid2">
+            <div class="field"><label class="field-label">Topic Prefix</label><input id="n_topic" type="text" value="lokki/pagoda" /></div>
+            <div class="field"><label class="field-label">Client ID</label><input id="n_client_id" type="text" value="lokki-pagoda" /></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /form-col -->
+
+  <!-- PREVIEW PANEL -->
+  <div class="preview-col">
+    <div class="preview-title">config.json preview</div>
+    <div class="preview-actions">
+      <button class="btn btn-primary btn-sm" id="dlBtn2" onclick="downloadJSON()">⬇ Download</button>
+    </div>
+    <pre id="preview"></pre>
+  </div>
+</div><!-- /layout -->
 
 <script>
 // ============================================================
-// Timezone data
+// Expert mode toggle
+// ============================================================
+const expertToggle = document.getElementById('expertToggle');
+expertToggle.addEventListener('change', () => {
+  document.body.classList.toggle('expert', expertToggle.checked);
+});
+
+// ============================================================
+// Section collapse/expand
+// ============================================================
+function toggleSection(head) {
+  head.closest('.section').classList.toggle('open');
+}
+
+// ============================================================
+// Timezone
 // ============================================================
 const TZ_OPTIONS = [
   {name:'UTC',offset:0,label:'UTC (±0:00)'},
@@ -329,14 +638,16 @@ function populateTzSelect(list) {
     applyTzSelect();
   }
 }
-
 function applyTzSelect() {
   const sel = document.getElementById('tz_select');
-  document.getElementById('tz_name').value = sel.value;
-  document.getElementById('tz_offset').value = sel.options[sel.selectedIndex].getAttribute('data-offset');
+  const name = sel.value;
+  const offset = parseFloat(sel.options[sel.selectedIndex].getAttribute('data-offset'));
+  document.getElementById('tz_name').value = name;
+  document.getElementById('tz_offset').value = offset;
+  const sign = offset >= 0 ? '+' : '';
+  document.getElementById('tz_display').textContent = `Selected: ${name} (UTC${sign}${offset})`;
   scheduleRender();
 }
-
 document.getElementById('tz_select').addEventListener('change', applyTzSelect);
 document.getElementById('tz_search').addEventListener('input', () => {
   const q = document.getElementById('tz_search').value.toLowerCase();
@@ -347,110 +658,116 @@ document.getElementById('tz_search').addEventListener('input', () => {
 });
 
 // ============================================================
-// Collapsibles
+// Shared helpers
 // ============================================================
-document.querySelectorAll('fieldset').forEach(fs => {
-  const btn = fs.querySelector('.collapse-btn');
-  if (!btn) return;
-  btn.addEventListener('click', () => {
-    fs.classList.toggle('collapsed');
-    btn.textContent = fs.classList.contains('collapsed') ? '▶' : '▼';
-  });
-});
-
 function togglePw() {
   const inp = document.getElementById('w_password');
-  const btn = document.querySelector('.pw-toggle');
+  const btn = inp.parentElement.querySelector('.pw-btn');
   const show = inp.type === 'password';
   inp.type = show ? 'text' : 'password';
   btn.textContent = show ? '👁️' : '🙈';
 }
 
+function timeTypeSelect(val, prefix, li, wi, isRelay) {
+  const isKey = (val === 'sunrise' || val === 'sunset');
+  const isCustom = !isKey;
+  const entity = isRelay ? 'rl' : 'led';
+  return `<select data-${entity}w data-li="${li}" data-wi="${wi}" data-f="${prefix}_type">
+    <option ${val==='sunrise'?'selected':''}>sunrise</option>
+    <option ${val==='sunset'?'selected':''}>sunset</option>
+    <option value="custom" ${isCustom?'selected':''}>fixed time</option>
+  </select>
+  ${isCustom ? `<input type="time" value="${val}"
+    data-${entity}w data-li="${li}" data-wi="${wi}" data-f="${prefix}_time"
+    style="margin-top:4px" />` : ''}`;
+}
+
 // ============================================================
-// Dynamic state
+// State
 // ============================================================
-
-// PIR: 4 fixed sensors
-const PIR_DEFAULTS = [
-  {id:'pir1',name:'PIR 1',gpio_pin:6,enabled:false,vacancy_timeout_s:300,
-   on_motion:{action:'revert_to_schedule'},on_vacancy:{action:'revert_to_schedule'}},
-  {id:'pir2',name:'PIR 2',gpio_pin:7,enabled:false,vacancy_timeout_s:300,
-   on_motion:{action:'revert_to_schedule'},on_vacancy:{action:'revert_to_schedule'}},
-  {id:'pir3',name:'PIR 3',gpio_pin:8,enabled:false,vacancy_timeout_s:300,
-   on_motion:{action:'revert_to_schedule'},on_vacancy:{action:'revert_to_schedule'}},
-  {id:'pir4',name:'PIR 4',gpio_pin:9,enabled:false,vacancy_timeout_s:300,
-   on_motion:{action:'revert_to_schedule'},on_vacancy:{action:'revert_to_schedule'}},
-];
-let pirState = PIR_DEFAULTS.map(p => Object.assign({}, p,
-  {on_motion: Object.assign({}, p.on_motion),
-   on_vacancy: Object.assign({}, p.on_vacancy)}));
-
-// Relays: 2 fixed
-const RELAY_DEFAULTS = [
-  {id:'rly1',name:'Relay 1',gpio_pin:10,enabled:false,default_state:'off',time_windows:[]},
-  {id:'rly2',name:'Relay 2',gpio_pin:11,enabled:false,default_state:'off',time_windows:[]},
-];
-let relayState = RELAY_DEFAULTS.map(r => Object.assign({}, r, {time_windows:[]}));
-
-// LED channels: 8 fixed
-const LED_GPIOS = [16,17,18,19,22,15,14,13];
-const LED_NAMES = ['Ch 1','Ch 2','Ch 3','Ch 4','Ch 5','Ch 6','Ch 7','Ch 8'];
-let ledState = LED_GPIOS.map((gpio, i) => ({
-  id: `ch${i+1}`, name: LED_NAMES[i], gpio_pin: gpio,
-  enabled: false, default_duty_percent: 0, time_windows: []
+const PIR_GPIO = [6,7,8,9];
+let pirState = PIR_GPIO.map((gpio, i) => ({
+  id:`pir${i+1}`, name:`PIR ${i+1}`, gpio_pin:gpio, enabled:false,
+  vacancy_timeout_s:300,
+  on_motion:{action:'revert_to_schedule'},
+  on_vacancy:{action:'revert_to_schedule'},
 }));
 
-// LDR cap rules
+const RELAY_GPIO = [10,11];
+let relayState = RELAY_GPIO.map((gpio,i) => ({
+  id:`rly${i+1}`, name:`Relay ${i+1}`, gpio_pin:gpio,
+  enabled:false, default_state:'off', time_windows:[],
+}));
+
+const LED_GPIOS = [16,17,18,19,22,15,14,13];
+let ledState = LED_GPIOS.map((gpio,i) => ({
+  id:`ch${i+1}`, name:`Channel ${i+1}`, gpio_pin:gpio,
+  enabled:false, default_duty_percent:0, time_windows:[],
+}));
+
 let ldrCapRules = [
   {above_percent:70, cap_percent:20},
   {above_percent:90, cap_percent:5},
 ];
-
-// Scenes
 let scenes = [];
 
 // ============================================================
-// LDR Rules UI
+// LDR
 // ============================================================
+document.getElementById('ldr_enabled').addEventListener('change', function(){
+  scheduleRender();
+});
+
 function renderLdrRules() {
   const c = document.getElementById('ldr_rules_container');
   c.innerHTML = '';
   ldrCapRules.forEach((r, i) => {
     const d = document.createElement('div');
     d.className = 'card';
-    d.style.padding = '10px';
-    d.style.marginBottom = '6px';
+    d.style.cssText = 'padding:10px;margin-bottom:8px;display:flex;align-items:center;gap:12px;flex-wrap:wrap';
     d.innerHTML = `
-      <div class="row" style="align-items:center">
-        <label><span class="lbl">Above % (ambient)</span>
-          <input type="number" min="0" max="100" value="${r.above_percent}" data-ldr-i="${i}" data-ldr-f="above_percent" />
-        </label>
-        <label><span class="lbl">Cap %</span>
-          <input type="number" min="0" max="100" value="${r.cap_percent}" data-ldr-i="${i}" data-ldr-f="cap_percent" />
-        </label>
-        <div style="display:flex;align-items:flex-end;padding-bottom:2px">
-          <button type="button" class="btn btn-sm btn-danger" onclick="removeCapRule(${i})">Remove</button>
+      <div style="flex:1;min-width:200px">
+        <label style="font-size:.78em;color:var(--muted);display:block;margin-bottom:2px">
+          When ambient brightness is above</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="number" min="0" max="100" value="${r.above_percent}"
+                 data-ldr-i="${i}" data-ldr-f="above_percent"
+                 style="width:70px" />
+          <span style="font-size:.82em;color:var(--muted)">%</span>
         </div>
-      </div>`;
-    d.querySelectorAll('input').forEach(inp => {
+      </div>
+      <div style="flex:1;min-width:200px">
+        <label style="font-size:.78em;color:var(--muted);display:block;margin-bottom:2px">
+          Cap LED brightness at</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="number" min="0" max="100" value="${r.cap_percent}"
+                 data-ldr-i="${i}" data-ldr-f="cap_percent"
+                 style="width:70px" />
+          <span style="font-size:.82em;color:var(--muted)">%</span>
+        </div>
+      </div>
+      <button class="btn btn-sm btn-danger" onclick="removeCapRule(${i})">Remove</button>`;
+    d.querySelectorAll('input[data-ldr-i]').forEach(inp => {
       inp.addEventListener('input', () => {
-        const idx = +inp.getAttribute('data-ldr-i');
-        const field = inp.getAttribute('data-ldr-f');
-        ldrCapRules[idx][field] = parseInt(inp.value) || 0;
+        ldrCapRules[+inp.getAttribute('data-ldr-i')][inp.getAttribute('data-ldr-f')] = parseInt(inp.value)||0;
         scheduleRender();
       });
     });
     c.appendChild(d);
   });
 }
-
 function addCapRule() { ldrCapRules.push({above_percent:50,cap_percent:50}); renderLdrRules(); scheduleRender(); }
 function removeCapRule(i) { ldrCapRules.splice(i,1); renderLdrRules(); scheduleRender(); }
 
 // ============================================================
-// PIR UI
+// PIR
 // ============================================================
-const PIR_ACTIONS = ['revert_to_schedule','set_scene','set_led_channels','set_relay'];
+const PIR_ACTIONS = [
+  {v:'revert_to_schedule', l:'Revert to schedule'},
+  {v:'set_scene',          l:'Activate a scene'},
+  {v:'set_led_channels',   l:'Set specific LED channels'},
+  {v:'set_relay',          l:'Set a relay'},
+];
 
 function renderPIR() {
   const c = document.getElementById('pir_container');
@@ -459,33 +776,42 @@ function renderPIR() {
     const d = document.createElement('div');
     d.className = 'card';
     d.innerHTML = `
-      <div class="card-head">PIR ${i+1} — ${p.name}</div>
-      <div class="row">
-        <label><span class="lbl">Name</span>
+      <div class="card-title">
+        <span>PIR ${i+1} <span class="pill ${p.enabled?'pill-green':'pill-blue'}">${p.enabled?'enabled':'disabled'}</span></span>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label class="field-label">Name</label>
           <input type="text" value="${p.name}" data-pir="${i}" data-f="name" />
-        </label>
-        <label><span class="lbl">Enabled</span>
+        </div>
+        <div class="field">
+          <label class="field-label">Enabled</label>
           <select data-pir="${i}" data-f="enabled">
-            <option value="false" ${!p.enabled?'selected':''}>false</option>
-            <option value="true"  ${p.enabled?'selected':''}>true</option>
+            <option value="false" ${!p.enabled?'selected':''}>No — sensor ignored</option>
+            <option value="true"  ${p.enabled?'selected':''}>Yes — active</option>
           </select>
-        </label>
+        </div>
       </div>
-      <div class="row">
-        <label><span class="lbl">GPIO Pin (fixed)</span>
-          <input type="number" value="${p.gpio_pin}" data-pir="${i}" data-f="gpio_pin" min="0" max="28" />
-        </label>
-        <label><span class="lbl">Vacancy Timeout (s)</span>
-          <input type="number" value="${p.vacancy_timeout_s}" data-pir="${i}" data-f="vacancy_timeout_s" />
-        </label>
+      <div class="grid2" style="margin-top:6px">
+        <div class="field expert-only">
+          <label class="field-label">GPIO Pin</label>
+          <input type="number" value="${p.gpio_pin}" data-pir="${i}" data-f="gpio_pin" />
+        </div>
+        <div class="field">
+          <label class="field-label">Vacancy Timeout</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="number" value="${p.vacancy_timeout_s}" data-pir="${i}" data-f="vacancy_timeout_s" style="width:90px" />
+            <span style="font-size:.82em;color:var(--muted)">seconds after last motion</span>
+          </div>
+        </div>
       </div>
-      <div class="row" style="margin-top:8px">
+      <div class="grid2" style="margin-top:6px">
         <div>
-          <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:4px">On Motion</div>
+          <div style="font-size:.78em;font-weight:600;color:#374151;margin-bottom:6px">On Motion Detected</div>
           ${pirActionUI(i,'on_motion',p.on_motion)}
         </div>
         <div>
-          <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:4px">On Vacancy</div>
+          <div style="font-size:.78em;font-weight:600;color:#374151;margin-bottom:6px">On Area Vacant</div>
           ${pirActionUI(i,'on_vacancy',p.on_vacancy)}
         </div>
       </div>`;
@@ -497,47 +823,68 @@ function renderPIR() {
   });
 }
 
-function pirActionUI(pirIdx, actionKey, actionObj) {
+function pirActionUI(pirIdx, key, actionObj) {
   const sel = PIR_ACTIONS.map(a =>
-    `<option value="${a}" ${a===actionObj.action?'selected':''}>${a}</option>`
+    `<option value="${a.v}" ${a.v===actionObj.action?'selected':''}>${a.l}</option>`
   ).join('');
-  const extra = actionKey === 'on_motion' && actionObj.action === 'set_scene'
-    ? `<label><span class="lbl">Scene Name</span>
-       <input type="text" value="${actionObj.scene_name||''}"
-              data-pir="${pirIdx}" data-f="${actionKey}_scene_name" /></label>`
-    : actionKey === 'on_motion' && actionObj.action === 'set_led_channels'
-    ? `<label><span class="lbl">Channels (e.g. ch1,ch2)</span>
-       <input type="text" value="${(actionObj.channels||[]).join(',')}"
-              data-pir="${pirIdx}" data-f="${actionKey}_channels" /></label>
-       <label><span class="lbl">Duty %</span>
-       <input type="number" value="${actionObj.duty_percent||100}" min="0" max="100"
-              data-pir="${pirIdx}" data-f="${actionKey}_duty_percent" /></label>`
-    : '';
-  return `<select data-pir="${pirIdx}" data-f="${actionKey}_action">${sel}</select>${extra}`;
+  let extra = '';
+  if (key === 'on_motion') {
+    if (actionObj.action === 'set_scene') {
+      extra = `<div class="field" style="margin-top:6px">
+        <label class="field-label">Scene name</label>
+        <input type="text" value="${actionObj.scene_name||''}"
+               data-pir="${pirIdx}" data-f="${key}_scene_name" placeholder="e.g. motion_bright" />
+      </div>`;
+    } else if (actionObj.action === 'set_led_channels') {
+      extra = `<div style="margin-top:6px">
+        <div class="field">
+          <label class="field-label">Channel IDs</label>
+          <input type="text" value="${(actionObj.channels||[]).join(', ')}"
+                 data-pir="${pirIdx}" data-f="${key}_channels" placeholder="ch1, ch2" />
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Brightness</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="number" min="0" max="100" value="${actionObj.duty_percent||100}"
+                     data-pir="${pirIdx}" data-f="${key}_duty_percent" style="width:70px" />
+              <span style="font-size:.82em;color:var(--muted)">%</span>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label">Fade duration</label>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input type="number" min="0" value="${actionObj.fade_ms||0}"
+                     data-pir="${pirIdx}" data-f="${key}_fade_ms" style="width:80px" />
+              <span style="font-size:.82em;color:var(--muted)">ms</span>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    }
+  }
+  return `<select data-pir="${pirIdx}" data-f="${key}_action">${sel}</select>${extra}`;
 }
 
 function syncPIRField(el) {
   const i = +el.getAttribute('data-pir');
   const f = el.getAttribute('data-f');
-  const v = el.type === 'number' ? (parseFloat(el.value)||0) : el.value;
-  if (f === 'enabled') { pirState[i].enabled = (v === 'true'); }
-  else if (f === 'name') { pirState[i].name = v; }
-  else if (f === 'gpio_pin') { pirState[i].gpio_pin = +v; }
-  else if (f === 'vacancy_timeout_s') { pirState[i].vacancy_timeout_s = +v; }
-  else if (f.startsWith('on_motion_action')) {
-    pirState[i].on_motion.action = v;
-    renderPIR(); // re-render to show/hide extra fields
-  } else if (f.startsWith('on_vacancy_action')) {
-    pirState[i].on_vacancy.action = v;
-    renderPIR();
-  } else if (f === 'on_motion_scene_name') { pirState[i].on_motion.scene_name = v; }
-  else if (f === 'on_motion_channels') { pirState[i].on_motion.channels = v.split(',').map(s=>s.trim()).filter(Boolean); }
-  else if (f === 'on_motion_duty_percent') { pirState[i].on_motion.duty_percent = +v; }
+  const v = el.value;
+  if (f === 'enabled') pirState[i].enabled = (v==='true');
+  else if (f === 'name') pirState[i].name = v;
+  else if (f === 'gpio_pin') pirState[i].gpio_pin = +v;
+  else if (f === 'vacancy_timeout_s') pirState[i].vacancy_timeout_s = +v;
+  else if (f === 'on_motion_action') { pirState[i].on_motion.action = v; renderPIR(); return; }
+  else if (f === 'on_vacancy_action') { pirState[i].on_vacancy.action = v; renderPIR(); return; }
+  else if (f === 'on_motion_scene_name') pirState[i].on_motion.scene_name = v;
+  else if (f === 'on_motion_channels') pirState[i].on_motion.channels = v.split(',').map(s=>s.trim()).filter(Boolean);
+  else if (f === 'on_motion_duty_percent') pirState[i].on_motion.duty_percent = +v;
+  else if (f === 'on_motion_fade_ms') pirState[i].on_motion.fade_ms = +v;
   scheduleRender();
 }
 
 // ============================================================
-// Relay UI
+// Relays
 // ============================================================
 function renderRelays() {
   const c = document.getElementById('relay_container');
@@ -546,29 +893,36 @@ function renderRelays() {
     const d = document.createElement('div');
     d.className = 'card';
     d.innerHTML = `
-      <div class="card-head">Relay ${i+1}</div>
-      <div class="row">
-        <label><span class="lbl">Name</span>
-          <input type="text" value="${r.name}" data-rl="${i}" data-f="name" /></label>
-        <label><span class="lbl">Enabled</span>
-          <select data-rl="${i}" data-f="enabled">
-            <option value="false" ${!r.enabled?'selected':''}>false</option>
-            <option value="true"  ${r.enabled?'selected':''}>true</option>
-          </select></label>
+      <div class="card-title">
+        <span>${r.name} <span class="pill ${r.enabled?'pill-green':'pill-blue'}">${r.enabled?'enabled':'disabled'}</span></span>
       </div>
-      <div class="row">
-        <label><span class="lbl">Default State</span>
-          <select data-rl="${i}" data-f="default_state">
-            <option ${r.default_state==='off'?'selected':''}>off</option>
-            <option ${r.default_state==='on'?'selected':''}>on</option>
-          </select></label>
+      <div class="grid2">
+        <div class="field"><label class="field-label">Name</label>
+          <input type="text" value="${r.name}" data-rl="${i}" data-f="name" /></div>
+        <div class="field"><label class="field-label">Enabled</label>
+          <select data-rl="${i}" data-f="enabled">
+            <option value="false" ${!r.enabled?'selected':''}>No</option>
+            <option value="true"  ${r.enabled?'selected':''}>Yes</option>
+          </select></div>
+      </div>
+      <div class="field expert-only">
+        <label class="field-label">GPIO Pin</label>
+        <input type="number" value="${r.gpio_pin}" data-rl="${i}" data-f="gpio_pin" style="width:90px" />
+      </div>
+      <div class="field">
+        <label class="field-label">Default State <span class="card-sub">(when no window matches)</span></label>
+        <select data-rl="${i}" data-f="default_state" style="width:160px">
+          <option ${r.default_state==='off'?'selected':''}>off</option>
+          <option ${r.default_state==='on'?'selected':''}>on</option>
+        </select>
       </div>
       <div style="margin-top:8px">
-        <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:4px">Time Windows</div>
+        <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:6px">
+          Time Windows <span class="card-sub">(relay is ON during these periods)</span></div>
         <div class="rl-wins" data-rli="${i}">
           ${r.time_windows.map((w,wi) => relayWinHTML(i,wi,w)).join('')}
         </div>
-        <button type="button" class="btn btn-sm" onclick="addRelayWin(${i})">+ Window</button>
+        <button class="btn btn-sm" onclick="addRelayWin(${i})" style="margin-top:4px">+ Add Window</button>
       </div>`;
     d.querySelectorAll('[data-rl]').forEach(el => {
       el.addEventListener('change', () => syncRelayField(el));
@@ -583,32 +937,39 @@ function renderRelays() {
 }
 
 function relayWinHTML(ri, wi, w) {
-  return `<div class="win-block" style="margin-bottom:6px">
-    <div class="row3" style="align-items:center">
-      <label><span class="lbl">Start</span>
-        <select data-rlw data-ri="${ri}" data-wi="${wi}" data-f="start_type">
+  const sKey = (w.start==='sunrise'||w.start==='sunset');
+  const eKey = (w.end  ==='sunrise'||w.end  ==='sunset');
+  return `<div class="win-block">
+    <div class="win-block-head">
+      Window ${wi+1}
+      <button class="btn btn-sm btn-danger" onclick="removeRelayWin(${ri},${wi})">Remove</button>
+    </div>
+    <div class="grid2">
+      <div class="field">
+        <label class="field-label">Start</label>
+        <select data-rlw data-li="${ri}" data-wi="${wi}" data-f="start_type">
           <option ${w.start==='sunrise'?'selected':''}>sunrise</option>
           <option ${w.start==='sunset'?'selected':''}>sunset</option>
-          <option value="custom" ${(w.start!=='sunrise'&&w.start!=='sunset')?'selected':''}>custom</option>
+          <option value="custom" ${!sKey?'selected':''}>fixed time</option>
         </select>
-        ${(w.start!=='sunrise'&&w.start!=='sunset')?`<input type="time" value="${w.start}" data-rlw data-ri="${ri}" data-wi="${wi}" data-f="start_time" />`:''}
-      </label>
-      <label><span class="lbl">End</span>
-        <select data-rlw data-ri="${ri}" data-wi="${wi}" data-f="end_type">
+        ${!sKey?`<input type="time" value="${w.start}" data-rlw data-li="${ri}" data-wi="${wi}" data-f="start_time" style="margin-top:4px" />`:''}
+      </div>
+      <div class="field">
+        <label class="field-label">End</label>
+        <select data-rlw data-li="${ri}" data-wi="${wi}" data-f="end_type">
           <option ${w.end==='sunrise'?'selected':''}>sunrise</option>
           <option ${w.end==='sunset'?'selected':''}>sunset</option>
-          <option value="custom" ${(w.end!=='sunrise'&&w.end!=='sunset')?'selected':''}>custom</option>
+          <option value="custom" ${!eKey?'selected':''}>fixed time</option>
         </select>
-        ${(w.end!=='sunrise'&&w.end!=='sunset')?`<input type="time" value="${w.end}" data-rlw data-ri="${ri}" data-wi="${wi}" data-f="end_time" />`:''}
-      </label>
-      <label><span class="lbl">State</span>
-        <select data-rlw data-ri="${ri}" data-wi="${wi}" data-f="state">
-          <option ${w.state==='on'?'selected':''}>on</option>
-          <option ${w.state==='off'?'selected':''}>off</option>
-        </select>
-        <button type="button" class="btn btn-sm btn-danger" style="margin-top:4px"
-                onclick="removeRelayWin(${ri},${wi})">Remove</button>
-      </label>
+        ${!eKey?`<input type="time" value="${w.end}" data-rlw data-li="${ri}" data-wi="${wi}" data-f="end_time" style="margin-top:4px" />`:''}
+      </div>
+    </div>
+    <div class="field" style="margin-top:4px">
+      <label class="field-label">State during this window</label>
+      <select data-rlw data-li="${ri}" data-wi="${wi}" data-f="state" style="width:120px">
+        <option ${w.state==='on'?'selected':''}>on</option>
+        <option ${w.state==='off'?'selected':''}>off</option>
+      </select>
     </div>
   </div>`;
 }
@@ -616,30 +977,28 @@ function relayWinHTML(ri, wi, w) {
 function syncRelayField(el) {
   const i = +el.getAttribute('data-rl');
   const f = el.getAttribute('data-f');
-  const v = el.value;
-  if (f === 'enabled') relayState[i].enabled = (v === 'true');
-  else if (f === 'name') relayState[i].name = v;
-  else if (f === 'default_state') relayState[i].default_state = v;
+  if (f==='enabled') relayState[i].enabled = (el.value==='true');
+  else if (f==='name') relayState[i].name = el.value;
+  else if (f==='gpio_pin') relayState[i].gpio_pin = +el.value;
+  else if (f==='default_state') relayState[i].default_state = el.value;
   scheduleRender();
 }
 function syncRelayWin(el) {
-  const ri = +el.getAttribute('data-ri');
-  const wi = +el.getAttribute('data-wi');
-  const f  = el.getAttribute('data-f');
-  const v  = el.value;
-  const w  = relayState[ri].time_windows[wi];
-  if (f === 'start_type') { if (v !== 'custom') w.start = v; else w.start = '06:00'; renderRelays(); }
-  else if (f === 'start_time') w.start = v;
-  else if (f === 'end_type')   { if (v !== 'custom') w.end = v; else w.end = '22:00'; renderRelays(); }
-  else if (f === 'end_time')   w.end = v;
-  else if (f === 'state')      w.state = v;
+  const ri=+el.getAttribute('data-li'), wi=+el.getAttribute('data-wi');
+  const f=el.getAttribute('data-f'), v=el.value;
+  const w=relayState[ri].time_windows[wi];
+  if (f==='start_type') { w.start = v!=='custom'?v:'06:00'; renderRelays(); return; }
+  if (f==='start_time') w.start = v;
+  if (f==='end_type')   { w.end   = v!=='custom'?v:'22:00'; renderRelays(); return; }
+  if (f==='end_time')   w.end = v;
+  if (f==='state')      w.state = v;
   scheduleRender();
 }
 function addRelayWin(i) { relayState[i].time_windows.push({start:'06:00',end:'22:00',state:'on'}); renderRelays(); scheduleRender(); }
 function removeRelayWin(ri,wi) { relayState[ri].time_windows.splice(wi,1); renderRelays(); scheduleRender(); }
 
 // ============================================================
-// LED Channel UI
+// LED Channels
 // ============================================================
 function renderLEDs() {
   const c = document.getElementById('led_container');
@@ -648,29 +1007,38 @@ function renderLEDs() {
     const d = document.createElement('div');
     d.className = 'card';
     d.innerHTML = `
-      <div class="card-head">ch${i+1} — GP${ch.gpio_pin}</div>
-      <div class="row">
-        <label><span class="lbl">Name</span>
-          <input type="text" value="${ch.name}" data-led="${i}" data-f="name" /></label>
-        <label><span class="lbl">Enabled</span>
-          <select data-led="${i}" data-f="enabled">
-            <option value="false" ${!ch.enabled?'selected':''}>false</option>
-            <option value="true"  ${ch.enabled?'selected':''}>true</option>
-          </select></label>
+      <div class="card-title">
+        <span>${ch.name} <span class="pill pill-blue">GP${ch.gpio_pin}</span>
+          <span class="pill ${ch.enabled?'pill-green':'pill-blue'}">${ch.enabled?'on':'off'}</span></span>
       </div>
-      <label><span class="lbl">Default Duty % (when no window matches)</span>
-        <div class="range-row">
+      <div class="grid2">
+        <div class="field"><label class="field-label">Name</label>
+          <input type="text" value="${ch.name}" data-led="${i}" data-f="name" /></div>
+        <div class="field"><label class="field-label">Enabled</label>
+          <select data-led="${i}" data-f="enabled">
+            <option value="false" ${!ch.enabled?'selected':''}>No — channel off</option>
+            <option value="true"  ${ch.enabled?'selected':''}>Yes — active</option>
+          </select></div>
+      </div>
+      <div class="field">
+        <label class="field-label">Default Brightness
+          <span class="card-sub">(when no schedule window matches)</span></label>
+        <div class="range-field">
           <input type="range" min="0" max="100" value="${ch.default_duty_percent}"
-                 data-led="${i}" data-f="default_duty_percent" />
-          <span class="range-val">${ch.default_duty_percent}%</span>
+                 data-led="${i}" data-f="default_duty" />
+          <span class="range-val" data-led-val="${i}">${ch.default_duty_percent}%</span>
         </div>
-      </label>
+      </div>
       <div style="margin-top:8px">
-        <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:4px">Time Windows</div>
+        <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:2px">Schedule Windows</div>
+        <div style="font-size:.76em;color:var(--muted);margin-bottom:8px">
+          Each window sets the brightness for a time period. Tip: use "sunrise" and "sunset" for automatic solar-based timing
+          (requires <a href="./sun-times-builder.html" style="color:var(--brand)">sun_times.json</a> on the device).
+        </div>
         <div class="led-wins" data-li="${i}">
           ${ch.time_windows.map((w,wi) => ledWinHTML(i,wi,w)).join('')}
         </div>
-        <button type="button" class="btn btn-sm" onclick="addLedWin(${i})">+ Window</button>
+        <button class="btn btn-sm" onclick="addLedWin(${i})" style="margin-top:4px">+ Add Window</button>
       </div>`;
     d.querySelectorAll('[data-led]').forEach(el => {
       el.addEventListener('change', () => syncLedField(el));
@@ -685,125 +1053,150 @@ function renderLEDs() {
 }
 
 function ledWinHTML(li, wi, w) {
-  const sIsCustom = (w.start !== 'sunrise' && w.start !== 'sunset');
-  const eIsCustom = (w.end   !== 'sunrise' && w.end   !== 'sunset');
-  return `<div class="win-block" style="margin-bottom:6px">
-    <div class="row" style="align-items:start">
-      <label><span class="lbl">Start</span>
+  const sKey = (w.start==='sunrise'||w.start==='sunset');
+  const eKey = (w.end  ==='sunrise'||w.end  ==='sunset');
+  return `<div class="win-block">
+    <div class="win-block-head">
+      Window ${wi+1}
+      <button class="btn btn-sm btn-danger" onclick="removeLedWin(${li},${wi})">Remove</button>
+    </div>
+    <div class="grid2">
+      <div class="field">
+        <label class="field-label">Start time</label>
         <select data-lw data-li="${li}" data-wi="${wi}" data-f="start_type">
           <option ${w.start==='sunrise'?'selected':''}>sunrise</option>
           <option ${w.start==='sunset'?'selected':''}>sunset</option>
-          <option value="custom" ${sIsCustom?'selected':''}>custom</option>
+          <option value="custom" ${!sKey?'selected':''}>fixed time</option>
         </select>
-        ${sIsCustom?`<input type="time" value="${w.start}" data-lw data-li="${li}" data-wi="${wi}" data-f="start_time" />`:''}
-      </label>
-      <label><span class="lbl">End</span>
+        ${!sKey?`<input type="time" value="${w.start}" data-lw data-li="${li}" data-wi="${wi}" data-f="start_time" style="margin-top:4px" />`:''}
+      </div>
+      <div class="field">
+        <label class="field-label">End time</label>
         <select data-lw data-li="${li}" data-wi="${wi}" data-f="end_type">
           <option ${w.end==='sunrise'?'selected':''}>sunrise</option>
           <option ${w.end==='sunset'?'selected':''}>sunset</option>
-          <option value="custom" ${eIsCustom?'selected':''}>custom</option>
+          <option value="custom" ${!eKey?'selected':''}>fixed time</option>
         </select>
-        ${eIsCustom?`<input type="time" value="${w.end}" data-lw data-li="${li}" data-wi="${wi}" data-f="end_time" />`:''}
-      </label>
+        ${!eKey?`<input type="time" value="${w.end}" data-lw data-li="${li}" data-wi="${wi}" data-f="end_time" style="margin-top:4px" />`:''}
+      </div>
     </div>
-    <label style="margin-top:6px"><span class="lbl">Duty %</span>
-      <div class="range-row">
+    <div class="win-sep"></div>
+    <div class="field">
+      <label class="field-label">Brightness during this window</label>
+      <div class="range-field">
         <input type="range" min="0" max="100" value="${w.duty_percent||0}"
                data-lw data-li="${li}" data-wi="${wi}" data-f="duty_percent" />
         <span class="range-val">${w.duty_percent||0}%</span>
       </div>
-    </label>
-    <label><span class="lbl">Fade (ms, 0 = instant)</span>
-      <input type="number" min="0" value="${w.fade_ms||0}"
-             data-lw data-li="${li}" data-wi="${wi}" data-f="fade_ms" />
-    </label>
-    <button type="button" class="btn btn-sm btn-danger" style="margin-top:4px"
-            onclick="removeLedWin(${li},${wi})">Remove Window</button>
+    </div>
+    <div class="field">
+      <label class="field-label">Fade duration <span class="card-sub">(how long to transition to this brightness)</span></label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" min="0" value="${w.fade_ms||0}"
+               data-lw data-li="${li}" data-wi="${wi}" data-f="fade_ms" style="width:100px" />
+        <span style="font-size:.82em;color:var(--muted)">milliseconds &nbsp;·&nbsp; 0 = instant, 5000 = 5 sec fade</span>
+      </div>
+    </div>
   </div>`;
 }
 
 function syncLedField(el) {
-  const i = +el.getAttribute('data-led');
-  const f = el.getAttribute('data-f');
-  const v = el.value;
-  if (f === 'name') ledState[i].name = v;
-  else if (f === 'enabled') ledState[i].enabled = (v === 'true');
-  else if (f === 'default_duty_percent') {
+  const i=+el.getAttribute('data-led'), f=el.getAttribute('data-f'), v=el.value;
+  if (f==='name') ledState[i].name = v;
+  else if (f==='enabled') ledState[i].enabled = (v==='true');
+  else if (f==='default_duty') {
     ledState[i].default_duty_percent = +v;
-    const span = el.closest('label').querySelector('.range-val');
-    if (span) span.textContent = v + '%';
+    const sp = document.querySelector(`[data-led-val="${i}"]`);
+    if (sp) sp.textContent = v + '%';
   }
   scheduleRender();
 }
-
 function syncLedWin(el) {
-  const li = +el.getAttribute('data-li');
-  const wi = +el.getAttribute('data-wi');
-  const f  = el.getAttribute('data-f');
-  const v  = el.value;
-  const w  = ledState[li].time_windows[wi];
-  if (f === 'start_type') { if (v !== 'custom') w.start = v; else w.start = '06:00'; renderLEDs(); }
-  else if (f === 'start_time') w.start = v;
-  else if (f === 'end_type') { if (v !== 'custom') w.end = v; else w.end = '22:00'; renderLEDs(); }
-  else if (f === 'end_time') w.end = v;
-  else if (f === 'duty_percent') {
-    w.duty_percent = +v;
-    const span = el.closest('label').querySelector('.range-val');
-    if (span) span.textContent = v + '%';
+  const li=+el.getAttribute('data-li'), wi=+el.getAttribute('data-wi');
+  const f=el.getAttribute('data-f'), v=el.value;
+  const w=ledState[li].time_windows[wi];
+  if (f==='start_type') { w.start=v!=='custom'?v:'06:00'; renderLEDs(); return; }
+  if (f==='start_time') w.start=v;
+  if (f==='end_type')   { w.end=v!=='custom'?v:'22:00'; renderLEDs(); return; }
+  if (f==='end_time')   w.end=v;
+  if (f==='duty_percent') {
+    w.duty_percent=+v;
+    const sp = el.closest('.win-block').querySelector('.range-val');
+    if (sp) sp.textContent=v+'%';
   }
-  else if (f === 'fade_ms') w.fade_ms = +v;
+  if (f==='fade_ms') w.fade_ms=+v;
   scheduleRender();
 }
-
-function addLedWin(i) {
-  ledState[i].time_windows.push({start:'sunset',end:'22:00',duty_percent:50,fade_ms:5000});
-  renderLEDs(); scheduleRender();
-}
-function removeLedWin(li, wi) { ledState[li].time_windows.splice(wi,1); renderLEDs(); scheduleRender(); }
+function addLedWin(i) { ledState[i].time_windows.push({start:'sunset',end:'22:00',duty_percent:60,fade_ms:5000}); renderLEDs(); scheduleRender(); }
+function removeLedWin(li,wi) { ledState[li].time_windows.splice(wi,1); renderLEDs(); scheduleRender(); }
 
 // ============================================================
-// Scene UI
+// Scenes
 // ============================================================
 function renderScenes() {
   const c = document.getElementById('scene_container');
   c.innerHTML = '';
+  if (!scenes.length) {
+    c.innerHTML = '<p style="font-size:.82em;color:var(--muted);margin:0 0 10px">No scenes defined yet. Add one below.</p>';
+    return;
+  }
   scenes.forEach((sc, i) => {
     const d = document.createElement('div');
     d.className = 'card';
     d.innerHTML = `
-      <div class="card-head" style="justify-content:space-between">
-        <span>Scene: ${sc.name || '(unnamed)'}</span>
-        <button type="button" class="btn btn-sm btn-danger" onclick="removeScene(${i})">Remove</button>
+      <div class="card-title">
+        <span>Scene: <strong>${sc.name||'(unnamed)'}</strong></span>
+        <button class="btn btn-sm btn-danger" onclick="removeScene(${i})">Remove</button>
       </div>
-      <label><span class="lbl">Scene Name</span>
-        <input type="text" value="${sc.name}" data-sc="${i}" data-f="name" /></label>
-      <div style="font-size:.82em;font-weight:600;margin:8px 0 4px;color:#374151">LED Channels</div>
-      <div class="tip">Only listed channels will change when scene is applied.</div>
+      <div class="field">
+        <label class="field-label">Scene Name</label>
+        <input type="text" value="${sc.name}" data-sc="${i}" data-f="name"
+               placeholder="e.g. motion_bright, evening, all_off" style="max-width:280px" />
+      </div>
+      <div class="win-sep"></div>
+      <div style="font-size:.82em;font-weight:600;color:#374151;margin-bottom:8px">
+        LED Channels <span class="card-sub">— tick to include in this scene</span></div>
       ${ledState.map((ch, ci) => {
         const entry = (sc.led_channels||[]).find(x=>x.id===ch.id);
         const checked = !!entry;
-        const duty = entry ? entry.duty_percent : 0;
-        const fade = entry ? (entry.fade_ms||0) : 0;
-        return `<label style="display:flex;align-items:center;gap:8px;margin:4px 0">
-          <input type="checkbox" ${checked?'checked':''} data-sc="${i}" data-f="led_check" data-ci="${ci}" />
-          <span>${ch.id} — ${ch.name}</span>
-          ${checked?`<input type="number" min="0" max="100" value="${duty}" style="width:60px" data-sc="${i}" data-f="led_duty" data-ci="${ci}" />%
-          <input type="number" min="0" value="${fade}" style="width:70px" data-sc="${i}" data-f="led_fade" data-ci="${ci}" />ms`:''}
-        </label>`;
+        return `<div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <input type="checkbox" ${checked?'checked':''} data-sc="${i}" data-f="led_check" data-ci="${ci}"
+                 style="margin-top:3px;width:16px;height:16px;cursor:pointer" />
+          <div style="flex:1">
+            <div style="font-size:.85em;font-weight:500">${ch.name} <span style="font-size:.78em;color:var(--muted)">ch${ci+1} · GP${ch.gpio_pin}</span></div>
+            ${checked?`<div style="display:flex;align-items:center;gap:16px;margin-top:6px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:6px;font-size:.8em;color:#374151">
+                Brightness
+                <div class="range-field" style="width:140px">
+                  <input type="range" min="0" max="100" value="${entry.duty_percent||0}"
+                         data-sc="${i}" data-f="led_duty" data-ci="${ci}" />
+                  <span class="range-val">${entry.duty_percent||0}%</span>
+                </div>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:.8em;color:#374151">
+                Fade
+                <input type="number" min="0" value="${entry.fade_ms||0}"
+                       data-sc="${i}" data-f="led_fade" data-ci="${ci}" style="width:70px" />
+                <span style="color:var(--muted)">ms</span>
+              </label>
+            </div>`:''}
+          </div>
+        </div>`;
       }).join('')}
-      <div style="font-size:.82em;font-weight:600;margin:8px 0 4px;color:#374151">Relays</div>
+      <div style="font-size:.82em;font-weight:600;color:#374151;margin:10px 0 8px">
+        Relays <span class="card-sub">— tick to include in this scene</span></div>
       ${relayState.map((r, ri) => {
         const entry = (sc.relays||[]).find(x=>x.id===r.id);
         const checked = !!entry;
-        const state = entry ? entry.state : 'off';
-        return `<label style="display:flex;align-items:center;gap:8px;margin:4px 0">
-          <input type="checkbox" ${checked?'checked':''} data-sc="${i}" data-f="rl_check" data-ri="${ri}" />
-          <span>${r.id} — ${r.name}</span>
-          ${checked?`<select data-sc="${i}" data-f="rl_state" data-ri="${ri}">
-            <option ${state==='on'?'selected':''}>on</option>
-            <option ${state==='off'?'selected':''}>off</option>
+        return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <input type="checkbox" ${checked?'checked':''} data-sc="${i}" data-f="rl_check" data-ri="${ri}"
+                 style="width:16px;height:16px;cursor:pointer" />
+          <span style="font-size:.85em;font-weight:500;flex:1">${r.name} <span style="font-size:.78em;color:var(--muted)">${r.id}</span></span>
+          ${checked?`<select data-sc="${i}" data-f="rl_state" data-ri="${ri}" style="width:80px">
+            <option ${(entry.state||'off')==='on'?'selected':''}>on</option>
+            <option ${(entry.state||'off')==='off'?'selected':''}>off</option>
           </select>`:''}
-        </label>`;
+        </div>`;
       }).join('')}`;
     d.querySelectorAll('[data-sc]').forEach(el => {
       el.addEventListener('change', () => syncScene(el));
@@ -814,40 +1207,40 @@ function renderScenes() {
 }
 
 function syncScene(el) {
-  const i  = +el.getAttribute('data-sc');
-  const f  = el.getAttribute('data-f');
-  const sc = scenes[i];
-  if (f === 'name') { sc.name = el.value; renderScenes(); return; }
-  if (f === 'led_check') {
-    const ci = +el.getAttribute('data-ci');
-    if (el.checked) { sc.led_channels.push({id: ledState[ci].id, duty_percent:50, fade_ms:0}); }
-    else { sc.led_channels = sc.led_channels.filter(x => x.id !== ledState[ci].id); }
+  const i=+el.getAttribute('data-sc'), f=el.getAttribute('data-f');
+  const sc=scenes[i];
+  if (f==='name') { sc.name=el.value; renderScenes(); return; }
+  if (f==='led_check') {
+    const ci=+el.getAttribute('data-ci');
+    if (el.checked) sc.led_channels.push({id:ledState[ci].id,duty_percent:60,fade_ms:0});
+    else sc.led_channels=sc.led_channels.filter(x=>x.id!==ledState[ci].id);
     renderScenes(); return;
   }
-  if (f === 'led_duty') {
-    const ci = +el.getAttribute('data-ci');
-    const entry = sc.led_channels.find(x => x.id === ledState[ci].id);
-    if (entry) entry.duty_percent = +el.value;
+  if (f==='led_duty') {
+    const ci=+el.getAttribute('data-ci');
+    const e=sc.led_channels.find(x=>x.id===ledState[ci].id);
+    if (e) { e.duty_percent=+el.value;
+      const sp=el.closest('label').querySelector('.range-val');
+      if(sp) sp.textContent=el.value+'%'; }
   }
-  if (f === 'led_fade') {
-    const ci = +el.getAttribute('data-ci');
-    const entry = sc.led_channels.find(x => x.id === ledState[ci].id);
-    if (entry) entry.fade_ms = +el.value;
+  if (f==='led_fade') {
+    const ci=+el.getAttribute('data-ci');
+    const e=sc.led_channels.find(x=>x.id===ledState[ci].id);
+    if (e) e.fade_ms=+el.value;
   }
-  if (f === 'rl_check') {
-    const ri = +el.getAttribute('data-ri');
-    if (el.checked) { sc.relays.push({id: relayState[ri].id, state:'off'}); }
-    else { sc.relays = sc.relays.filter(x => x.id !== relayState[ri].id); }
+  if (f==='rl_check') {
+    const ri=+el.getAttribute('data-ri');
+    if (el.checked) sc.relays.push({id:relayState[ri].id,state:'off'});
+    else sc.relays=sc.relays.filter(x=>x.id!==relayState[ri].id);
     renderScenes(); return;
   }
-  if (f === 'rl_state') {
-    const ri = +el.getAttribute('data-ri');
-    const entry = sc.relays.find(x => x.id === relayState[ri].id);
-    if (entry) entry.state = el.value;
+  if (f==='rl_state') {
+    const ri=+el.getAttribute('data-ri');
+    const e=sc.relays.find(x=>x.id===relayState[ri].id);
+    if (e) e.state=el.value;
   }
   scheduleRender();
 }
-
 function addScene() {
   scenes.push({name:`scene_${scenes.length+1}`, led_channels:[], relays:[]});
   renderScenes(); scheduleRender();
@@ -855,138 +1248,132 @@ function addScene() {
 function removeScene(i) { scenes.splice(i,1); renderScenes(); scheduleRender(); }
 
 // ============================================================
-// Build config JSON
+// Build config
 // ============================================================
 function buildConfig() {
-  const peers = (document.getElementById('s_peers').value || '')
-    .split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-
+  const peers = (document.getElementById('s_peers').value||'')
+    .split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
   return {
     version: "1.0",
     system: {
-      role:                  document.getElementById('s_role').value,
-      unit_id:               parseInt(document.getElementById('s_unit_id').value) || 0,
-      unit_name:             document.getElementById('s_unit_name').value.trim() || 'Lokki',
+      role:                   document.getElementById('s_role').value,
+      unit_id:                parseInt(document.getElementById('s_unit_id').value)||0,
+      unit_name:              document.getElementById('s_unit_name').value.trim()||'Lokki',
       peers,
-      log_level:             document.getElementById('s_log_level').value,
-      heartbeat_interval_s:  parseInt(document.getElementById('s_hb_interval').value) || 30,
-      heartbeat_timeout_s:   parseInt(document.getElementById('s_hb_timeout').value) || 120,
-      pwm_update_interval_ms:parseInt(document.getElementById('s_pwm_interval').value) || 500,
+      log_level:              document.getElementById('s_log_level').value,
+      heartbeat_interval_s:   parseInt(document.getElementById('s_hb_interval').value)||30,
+      heartbeat_timeout_s:    parseInt(document.getElementById('s_hb_timeout').value)||120,
+      pwm_update_interval_ms: parseInt(document.getElementById('s_pwm_interval').value)||500,
     },
     wifi: {
       ssid:     document.getElementById('w_ssid').value,
       password: document.getElementById('w_password').value,
-      hostname: document.getElementById('w_hostname').value.trim() || 'lokki',
+      hostname: document.getElementById('w_hostname').value.trim()||'lokki',
     },
     lora: {
-      enabled:         true,
-      frequency_mhz:   parseFloat(document.getElementById('l_freq').value) || 868,
-      air_data_rate:   parseInt(document.getElementById('l_adr').value) || 2400,
-      tx_power_dbm:    parseInt(document.getElementById('l_power').value) || 22,
-      channel:         parseInt(document.getElementById('l_channel').value) || 0,
+      enabled:       true,
+      frequency_mhz: parseFloat(document.getElementById('l_freq').value)||868,
+      air_data_rate: parseInt(document.getElementById('l_adr').value)||2400,
+      tx_power_dbm:  parseInt(document.getElementById('l_power').value)||22,
+      channel:       parseInt(document.getElementById('l_channel').value)||0,
     },
     timezone: {
-      name:             document.getElementById('tz_name').value || 'UTC',
-      utc_offset_hours: parseFloat(document.getElementById('tz_offset').value) || 0,
+      name:             document.getElementById('tz_name').value||'UTC',
+      utc_offset_hours: parseFloat(document.getElementById('tz_offset').value)||0,
     },
     hardware: {
-      i2c_sda_pin:   parseInt(document.getElementById('h_sda').value) || 20,
-      i2c_scl_pin:   parseInt(document.getElementById('h_scl').value) || 21,
-      i2c_freq_hz:   parseInt(document.getElementById('h_i2c_freq').value) || 400000,
-      pwm_freq_hz:   parseInt(document.getElementById('h_pwm_freq').value) || 1000,
-      ldr_adc_pin:   parseInt(document.getElementById('h_ldr_pin').value) || 26,
-      status_led_pin:parseInt(document.getElementById('h_status_led').value) || 5,
-      reset_btn_pin: 12,
-      lora_uart_id:  parseInt(document.getElementById('h_lora_uart').value) || 0,
-      lora_tx_pin:   parseInt(document.getElementById('h_lora_tx').value) || 0,
-      lora_rx_pin:   parseInt(document.getElementById('h_lora_rx').value) || 1,
-      lora_m0_pin:   parseInt(document.getElementById('h_lora_m0').value) || 2,
-      lora_m1_pin:   parseInt(document.getElementById('h_lora_m1').value) || 3,
-      lora_aux_pin:  parseInt(document.getElementById('h_lora_aux').value) || 4,
+      i2c_sda_pin:    parseInt(document.getElementById('h_sda').value)||20,
+      i2c_scl_pin:    parseInt(document.getElementById('h_scl').value)||21,
+      i2c_freq_hz:    parseInt(document.getElementById('h_i2c_freq').value)||400000,
+      pwm_freq_hz:    parseInt(document.getElementById('h_pwm_freq').value)||1000,
+      ldr_adc_pin:    parseInt(document.getElementById('h_ldr_pin').value)||26,
+      status_led_pin: parseInt(document.getElementById('h_status_led').value)||5,
+      reset_btn_pin:  12,
+      lora_uart_id:   parseInt(document.getElementById('h_lora_uart').value)||0,
+      lora_tx_pin:    parseInt(document.getElementById('h_lora_tx').value)||0,
+      lora_rx_pin:    parseInt(document.getElementById('h_lora_rx').value)||1,
+      lora_m0_pin:    parseInt(document.getElementById('h_lora_m0').value)||2,
+      lora_m1_pin:    parseInt(document.getElementById('h_lora_m1').value)||3,
+      lora_aux_pin:   parseInt(document.getElementById('h_lora_aux').value)||4,
     },
     ldr: {
-      enabled:           document.getElementById('ldr_enabled').value === 'true',
-      smoothing_window_s:parseInt(document.getElementById('ldr_smooth').value) || 60,
-      cap_rules:         ldrCapRules.map(r => ({...r})),
+      enabled:            document.getElementById('ldr_enabled').checked,
+      smoothing_window_s: parseInt(document.getElementById('ldr_smooth').value)||60,
+      cap_rules:          ldrCapRules.map(r=>({...r})),
     },
     pir: pirState.map(p => {
-      const out = {
-        id: p.id, name: p.name, gpio_pin: p.gpio_pin,
-        enabled: p.enabled, vacancy_timeout_s: p.vacancy_timeout_s,
-        on_motion:  {action: p.on_motion.action},
-        on_vacancy: {action: p.on_vacancy.action},
-      };
-      if (p.on_motion.action === 'set_scene') out.on_motion.scene_name = p.on_motion.scene_name || '';
-      if (p.on_motion.action === 'set_led_channels') {
-        out.on_motion.channels    = p.on_motion.channels || [];
-        out.on_motion.duty_percent= p.on_motion.duty_percent || 100;
-        out.on_motion.fade_ms     = p.on_motion.fade_ms || 0;
+      const out = {id:p.id, name:p.name, gpio_pin:p.gpio_pin, enabled:p.enabled,
+                   vacancy_timeout_s:p.vacancy_timeout_s,
+                   on_motion:{action:p.on_motion.action},
+                   on_vacancy:{action:p.on_vacancy.action}};
+      if (p.on_motion.action==='set_scene') out.on_motion.scene_name=p.on_motion.scene_name||'';
+      if (p.on_motion.action==='set_led_channels') {
+        out.on_motion.channels=p.on_motion.channels||[];
+        out.on_motion.duty_percent=p.on_motion.duty_percent||100;
+        out.on_motion.fade_ms=p.on_motion.fade_ms||0;
       }
       return out;
     }),
-    relays: relayState.map(r => ({
-      id: r.id, name: r.name, gpio_pin: r.gpio_pin,
-      enabled: r.enabled, default_state: r.default_state,
-      time_windows: r.time_windows.map(w => ({...w})),
+    relays: relayState.map(r=>({
+      id:r.id, name:r.name, gpio_pin:r.gpio_pin, enabled:r.enabled,
+      default_state:r.default_state, time_windows:r.time_windows.map(w=>({...w})),
     })),
-    led_channels: ledState.map(ch => ({
-      id: ch.id, name: ch.name, gpio_pin: ch.gpio_pin,
-      enabled: ch.enabled, default_duty_percent: ch.default_duty_percent,
-      time_windows: ch.time_windows.map(w => {
-        const out = {start: w.start, end: w.end, duty_percent: w.duty_percent || 0};
-        if (w.fade_ms) out.fade_ms = w.fade_ms;
-        return out;
+    led_channels: ledState.map(ch=>({
+      id:ch.id, name:ch.name, gpio_pin:ch.gpio_pin, enabled:ch.enabled,
+      default_duty_percent:ch.default_duty_percent,
+      time_windows:ch.time_windows.map(w=>{
+        const o={start:w.start,end:w.end,duty_percent:w.duty_percent||0};
+        if (w.fade_ms) o.fade_ms=w.fade_ms; return o;
       }),
     })),
-    scenes: scenes.map(sc => ({
-      name: sc.name,
-      led_channels: (sc.led_channels || []).map(x => ({...x})),
-      relays:       (sc.relays || []).map(x => ({...x})),
+    scenes: scenes.map(sc=>({
+      name:sc.name,
+      led_channels:(sc.led_channels||[]).map(x=>({...x})),
+      relays:(sc.relays||[]).map(x=>({...x})),
     })),
     notifications: {
-      mqtt_enabled: document.getElementById('n_enabled').value === 'true',
-      broker:       document.getElementById('n_broker').value || 'broker.hivemq.com',
-      port:         parseInt(document.getElementById('n_port').value) || 1883,
-      topic_prefix: document.getElementById('n_topic').value || 'lokki',
-      client_id:    document.getElementById('n_client_id').value || 'lokki',
+      mqtt_enabled: document.getElementById('n_enabled').checked,
+      broker:       document.getElementById('n_broker').value||'broker.hivemq.com',
+      port:         parseInt(document.getElementById('n_port').value)||1883,
+      topic_prefix: document.getElementById('n_topic').value||'lokki',
+      client_id:    document.getElementById('n_client_id').value||'lokki',
     },
   };
 }
 
 // ============================================================
-// Render / validation
+// Render + validate
 // ============================================================
 let renderTimer = null;
 function scheduleRender() {
-  if (renderTimer) clearTimeout(renderTimer);
-  renderTimer = setTimeout(doRender, 80);
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(doRender, 100);
 }
 function doRender() {
   const cfg = buildConfig();
   document.getElementById('preview').textContent = JSON.stringify(cfg, null, 2);
-  validateAndShow(cfg);
+  validate(cfg);
 }
-
-function validateAndShow(cfg) {
+function validate(cfg) {
   const errs = [];
   if (!cfg.wifi.ssid) errs.push('WiFi SSID is empty');
-  if (cfg.system.role === 'coordinator' && !cfg.system.peers.length)
-    errs.push('Coordinator has no peers configured');
+  if (cfg.system.role==='coordinator' && !cfg.system.peers.length)
+    errs.push('Coordinator has no peers — add leaf unit IDs in Unit Identity');
   cfg.pir.forEach((p,i) => {
-    if (p.on_motion.action === 'set_scene' && !p.on_motion.scene_name)
-      errs.push(`PIR ${i+1} on_motion: scene_name is empty`);
+    if (p.enabled && p.on_motion.action==='set_scene' && !p.on_motion.scene_name)
+      errs.push(`PIR ${i+1}: on_motion is set to "activate a scene" but no scene name is set`);
   });
-
-  const el = document.getElementById('val_msg');
-  const btn = document.getElementById('dl_btn');
+  const banner = document.getElementById('valBanner');
+  const dlBtn  = document.getElementById('dlBtn');
+  const dlBtn2 = document.getElementById('dlBtn2');
   if (errs.length) {
-    el.innerHTML = `<div class="val-msg val-err">${errs.join('<br>')}</div>`;
-    btn.setAttribute('disabled', '');
-    btn.style.opacity = '.5';
+    banner.className='val-banner val-err show';
+    banner.innerHTML = '<strong>Fix before downloading:</strong><br>' + errs.join('<br>');
+    [dlBtn,dlBtn2].forEach(b=>{ b.disabled=true; });
   } else {
-    el.innerHTML = '<div class="val-msg val-ok">Config looks good ✓</div>';
-    btn.removeAttribute('disabled');
-    btn.style.opacity = '';
+    banner.className='val-banner val-ok show';
+    banner.textContent = 'Config looks good ✓';
+    [dlBtn,dlBtn2].forEach(b=>{ b.disabled=false; });
   }
 }
 
@@ -995,13 +1382,14 @@ function validateAndShow(cfg) {
 // ============================================================
 function downloadJSON() {
   const cfg = buildConfig();
-  const blob = new Blob([JSON.stringify(cfg, null, 2)], {type: 'application/json'});
+  const blob = new Blob([JSON.stringify(cfg, null, 2)], {type:'application/json'});
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
   const ts  = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-  const a   = document.createElement('a');
-  a.href     = URL.createObjectURL(blob);
-  a.download = `config_${ts}_${cfg.system.unit_name.toLowerCase().replace(/\s+/g,'_')}.json`;
+  const name = cfg.system.unit_name.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `config_${name}_${ts}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
 }
@@ -1010,111 +1398,80 @@ function downloadJSON() {
 // Upload & prefill
 // ============================================================
 function applyConfigToForm(cfg) {
-  const sys = cfg.system || {};
-  const s = k => sys[k] !== undefined;
-  if (s('role'))                  document.getElementById('s_role').value = sys.role;
-  if (s('unit_id'))               document.getElementById('s_unit_id').value = sys.unit_id;
-  if (s('unit_name'))             document.getElementById('s_unit_name').value = sys.unit_name;
-  if (s('peers'))                 document.getElementById('s_peers').value = (sys.peers||[]).join(', ');
-  if (s('log_level'))             document.getElementById('s_log_level').value = sys.log_level;
-  if (s('heartbeat_interval_s'))  document.getElementById('s_hb_interval').value = sys.heartbeat_interval_s;
-  if (s('heartbeat_timeout_s'))   document.getElementById('s_hb_timeout').value = sys.heartbeat_timeout_s;
-  if (s('pwm_update_interval_ms'))document.getElementById('s_pwm_interval').value = sys.pwm_update_interval_ms;
+  const sys = cfg.system||{};
+  const set = (id, v) => { const el=document.getElementById(id); if(el&&v!==undefined) el.value=v; };
+  const setChk = (id, v) => { const el=document.getElementById(id); if(el&&v!==undefined) el.checked=!!v; };
+  set('s_role', sys.role);
+  set('s_unit_id', sys.unit_id);
+  set('s_unit_name', sys.unit_name);
+  if (sys.peers) set('s_peers', sys.peers.join(', '));
+  set('s_log_level', sys.log_level);
+  set('s_hb_interval', sys.heartbeat_interval_s);
+  set('s_hb_timeout', sys.heartbeat_timeout_s);
+  set('s_pwm_interval', sys.pwm_update_interval_ms);
 
-  const w = cfg.wifi || {};
-  if (w.ssid)     document.getElementById('w_ssid').value = w.ssid;
-  if (w.password) document.getElementById('w_password').value = w.password;
-  if (w.hostname) document.getElementById('w_hostname').value = w.hostname;
+  const w=cfg.wifi||{};
+  set('w_ssid', w.ssid); set('w_password', w.password); set('w_hostname', w.hostname);
 
-  const l = cfg.lora || {};
-  if (l.frequency_mhz !== undefined) document.getElementById('l_freq').value  = l.frequency_mhz;
-  if (l.tx_power_dbm  !== undefined) document.getElementById('l_power').value = l.tx_power_dbm;
-  if (l.channel       !== undefined) document.getElementById('l_channel').value = l.channel;
-  if (l.air_data_rate !== undefined) document.getElementById('l_adr').value   = l.air_data_rate;
+  const l=cfg.lora||{};
+  set('l_freq', l.frequency_mhz); set('l_power', l.tx_power_dbm);
+  set('l_channel', l.channel); set('l_adr', l.air_data_rate);
 
-  const tz = cfg.timezone || {};
-  if (tz.name)             document.getElementById('tz_name').value   = tz.name;
-  if (tz.utc_offset_hours !== undefined) document.getElementById('tz_offset').value = tz.utc_offset_hours;
+  const tz=cfg.timezone||{};
+  set('tz_name', tz.name); set('tz_offset', tz.utc_offset_hours);
 
-  const hw = cfg.hardware || {};
-  ['sda:i2c_sda_pin','scl:i2c_scl_pin','ldr_pin:ldr_adc_pin','status_led:status_led_pin',
-   'lora_uart:lora_uart_id','lora_tx:lora_tx_pin','lora_rx:lora_rx_pin',
-   'lora_m0:lora_m0_pin','lora_m1:lora_m1_pin','lora_aux:lora_aux_pin',
-   'i2c_freq:i2c_freq_hz','pwm_freq:pwm_freq_hz'].forEach(pair => {
-    const [id, key] = pair.split(':');
-    if (hw[key] !== undefined) document.getElementById(`h_${id}`).value = hw[key];
-  });
+  const hw=cfg.hardware||{};
+  const hmap={'h_sda':'i2c_sda_pin','h_scl':'i2c_scl_pin','h_i2c_freq':'i2c_freq_hz',
+    'h_pwm_freq':'pwm_freq_hz','h_ldr_pin':'ldr_adc_pin','h_status_led':'status_led_pin',
+    'h_lora_uart':'lora_uart_id','h_lora_tx':'lora_tx_pin','h_lora_rx':'lora_rx_pin',
+    'h_lora_m0':'lora_m0_pin','h_lora_m1':'lora_m1_pin','h_lora_aux':'lora_aux_pin'};
+  Object.entries(hmap).forEach(([id,key]) => set(id, hw[key]));
 
-  const ldr = cfg.ldr || {};
-  if (ldr.enabled !== undefined) document.getElementById('ldr_enabled').value = String(ldr.enabled);
-  if (ldr.smoothing_window_s) document.getElementById('ldr_smooth').value = ldr.smoothing_window_s;
-  if (ldr.cap_rules) { ldrCapRules = ldr.cap_rules.map(r => ({...r})); renderLdrRules(); }
+  const ldr=cfg.ldr||{};
+  setChk('ldr_enabled', ldr.enabled!==false);
+  set('ldr_smooth', ldr.smoothing_window_s);
+  if (ldr.cap_rules) { ldrCapRules=ldr.cap_rules.map(r=>({...r})); renderLdrRules(); }
 
-  if (cfg.pir) {
-    cfg.pir.forEach((p, i) => {
-      if (i >= pirState.length) return;
-      Object.assign(pirState[i], p,
-        {on_motion: Object.assign({}, p.on_motion),
-         on_vacancy: Object.assign({}, p.on_vacancy)});
-    });
-    renderPIR();
-  }
+  if (cfg.pir) { cfg.pir.forEach((p,i)=>{ if(i<pirState.length) Object.assign(pirState[i],p,
+    {on_motion:{...p.on_motion},on_vacancy:{...p.on_vacancy}}); }); renderPIR(); }
+  if (cfg.relays) { cfg.relays.forEach((r,i)=>{ if(i<relayState.length) relayState[i]=
+    Object.assign({},relayState[i],r,{time_windows:(r.time_windows||[]).map(w=>({...w}))}); }); renderRelays(); }
+  if (cfg.led_channels) { cfg.led_channels.forEach((ch,i)=>{ if(i<ledState.length) ledState[i]=
+    Object.assign({},ledState[i],ch,{time_windows:(ch.time_windows||[]).map(w=>({...w}))}); }); renderLEDs(); }
+  if (cfg.scenes) { scenes=cfg.scenes.map(sc=>({name:sc.name,
+    led_channels:(sc.led_channels||[]).map(x=>({...x})),relays:(sc.relays||[]).map(x=>({...x}))})); renderScenes(); }
 
-  if (cfg.relays) {
-    cfg.relays.forEach((r, i) => {
-      if (i >= relayState.length) return;
-      relayState[i] = Object.assign({}, relayState[i], r,
-        {time_windows: (r.time_windows||[]).map(w => ({...w}))});
-    });
-    renderRelays();
-  }
-
-  if (cfg.led_channels) {
-    cfg.led_channels.forEach((ch, i) => {
-      if (i >= ledState.length) return;
-      ledState[i] = Object.assign({}, ledState[i], ch,
-        {time_windows: (ch.time_windows||[]).map(w => ({...w}))});
-    });
-    renderLEDs();
-  }
-
-  if (cfg.scenes) {
-    scenes = cfg.scenes.map(sc => ({
-      name: sc.name || '',
-      led_channels: (sc.led_channels||[]).map(x=>({...x})),
-      relays:       (sc.relays||[]).map(x=>({...x})),
-    }));
-    renderScenes();
-  }
-
-  const n = cfg.notifications || {};
-  if (n.mqtt_enabled !== undefined) document.getElementById('n_enabled').value = String(n.mqtt_enabled);
-  if (n.broker)       document.getElementById('n_broker').value    = n.broker;
-  if (n.port)         document.getElementById('n_port').value      = n.port;
-  if (n.topic_prefix) document.getElementById('n_topic').value     = n.topic_prefix;
-  if (n.client_id)    document.getElementById('n_client_id').value = n.client_id;
+  const n=cfg.notifications||{};
+  setChk('n_enabled', n.mqtt_enabled);
+  set('n_broker', n.broker); set('n_port', n.port);
+  set('n_topic', n.topic_prefix); set('n_client_id', n.client_id);
 
   scheduleRender();
-  document.getElementById('upload_msg').textContent = 'Prefilled from uploaded config.';
+  document.getElementById('uploadMsg').textContent = 'Prefilled from uploaded config.json ✓';
 }
 
-document.getElementById('upload_btn').addEventListener('click', () =>
-  document.getElementById('upload_input').click());
-document.getElementById('upload_input').addEventListener('change', async ev => {
+document.getElementById('uploadBtn').addEventListener('click', () =>
+  document.getElementById('uploadInput').click());
+document.getElementById('uploadInput').addEventListener('change', async ev => {
   const f = ev.target.files && ev.target.files[0];
   if (!f) return;
   try {
     const cfg = JSON.parse(await f.text());
-    if (!cfg.version || !cfg.version.startsWith('1.')) {
-      document.getElementById('upload_msg').textContent =
-        `Warning: config version is "${cfg.version}" — expected 1.x. Proceeding anyway.`;
-    }
+    if (cfg.version && !String(cfg.version).startsWith('1.'))
+      document.getElementById('uploadMsg').textContent =
+        `Warning: version "${cfg.version}" — expected 1.x. Applying anyway.`;
     applyConfigToForm(cfg);
   } catch (e) {
-    document.getElementById('upload_msg').textContent = 'Invalid JSON file.';
-  } finally {
-    ev.target.value = '';
-  }
+    document.getElementById('uploadMsg').textContent = 'Invalid JSON file.';
+  } finally { ev.target.value = ''; }
+});
+
+// auto-trigger render on all inputs
+document.getElementById('expertToggle').addEventListener('change', scheduleRender);
+document.querySelectorAll('input,select').forEach(el => {
+  if (el.id === 'expertToggle' || el.id === 'uploadInput') return;
+  el.addEventListener('input',  scheduleRender);
+  el.addEventListener('change', scheduleRender);
 });
 
 // ============================================================
