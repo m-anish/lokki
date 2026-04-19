@@ -719,28 +719,38 @@
       <div class="section-body">
         <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
           Your schedule uses <code>sunrise</code> or <code>sunset</code> keywords.
-          Generate a <code>sun_times.json</code> for your location and upload it
-          alongside <code>config.json</code>. UTC offset is taken from the Timezone section above.
+          Generate a <code>sun_times.json</code> for your location and upload it alongside <code>config.json</code>.
         </p>
+
+        <!-- Location: three paths -->
         <div class="field">
           <label class="field-label">Search location <span style="font-weight:400;color:var(--muted)">(requires internet)</span></label>
           <div class="st-loc-wrap">
-            <div style="display:flex;gap:8px">
-              <input id="st_search" type="text" placeholder="City, landmark or address…" style="flex:1" />
-              <button class="btn btn-sm" onclick="stGeolocate()" title="Use device location">📍 My location</button>
-            </div>
+            <input id="st_search" type="text" placeholder="City, landmark or address…" />
             <div id="st_suggest" class="st-suggest" style="display:none"></div>
           </div>
         </div>
-        <div class="field" style="margin-top:8px">
-          <label class="field-label">Or enter coordinates manually <span style="font-weight:400;color:var(--muted)">(works offline)</span></label>
+        <div class="field" style="margin-top:6px">
+          <label class="field-label">Use device GPS <span style="font-weight:400;color:var(--muted)">(no internet needed)</span></label>
+          <button class="btn btn-sm" style="width:fit-content" onclick="stGeolocate()">📍 My location</button>
+        </div>
+        <div class="field" style="margin-top:6px">
+          <label class="field-label">Manual coordinates <span style="font-weight:400;color:var(--muted)">(works offline)</span></label>
           <div style="display:flex;gap:8px;align-items:center">
-            <input id="st_lat" type="number" step="0.0001" min="-90" max="90" placeholder="Latitude (e.g. 18.9750)" style="flex:1" />
-            <input id="st_lon" type="number" step="0.0001" min="-180" max="180" placeholder="Longitude (e.g. 72.8258)" style="flex:1" />
+            <input id="st_lat" type="number" step="0.0001" min="-90" max="90" placeholder="Latitude" style="flex:1" />
+            <input id="st_lon" type="number" step="0.0001" min="-180" max="180" placeholder="Longitude" style="flex:1" />
             <button class="btn btn-sm" onclick="stApplyManual()">Apply</button>
           </div>
         </div>
-        <div id="st_loc_display" style="font-size:.8em;color:var(--muted);margin-top:6px"></div>
+        <div id="st_loc_display" style="font-size:.82em;color:var(--muted);margin-top:6px;min-height:1.2em"></div>
+
+        <!-- Timezone -->
+        <div class="field" style="margin-top:10px">
+          <label class="field-label">Timezone <span style="font-weight:400;color:var(--muted)">(for sun time calculation)</span></label>
+          <select id="st_tz" onchange="stTzChanged()"></select>
+        </div>
+
+        <!-- Frequency -->
         <div class="field" style="margin-top:8px">
           <label class="field-label">Sampling frequency</label>
           <select id="st_freq">
@@ -751,7 +761,9 @@
           </select>
           <div style="font-size:.78em;color:var(--muted);margin-top:3px">Firmware interpolates between sample dates — monthly is sufficient.</div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
+
+        <!-- Generate -->
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px">
           <button class="btn btn-primary btn-sm" id="stGenBtn" onclick="generateSunTimes()" disabled>Generate sun_times.json</button>
           <span id="stGenStatus" style="font-size:.8em;color:var(--muted)">Set a location first</span>
         </div>
@@ -1938,6 +1950,76 @@ document.querySelectorAll('input,select').forEach(el => {
 // ============================================================
 let _sunLat = null, _sunLon = null, _sunGenerated = null;
 
+const ST_TZ_OPTIONS = [
+  { offset: -12,    iana: 'Etc/GMT+12',              label: 'UTC−12:00' },
+  { offset: -11,    iana: 'Pacific/Midway',           label: 'UTC−11:00 — Pacific/Midway' },
+  { offset: -10,    iana: 'Pacific/Honolulu',         label: 'UTC−10:00 — Pacific/Honolulu' },
+  { offset: -9,     iana: 'America/Anchorage',        label: 'UTC−9:00 — America/Anchorage' },
+  { offset: -8,     iana: 'America/Los_Angeles',      label: 'UTC−8:00 — America/Los_Angeles' },
+  { offset: -7,     iana: 'America/Denver',           label: 'UTC−7:00 — America/Denver' },
+  { offset: -6,     iana: 'America/Chicago',          label: 'UTC−6:00 — America/Chicago' },
+  { offset: -5,     iana: 'America/New_York',         label: 'UTC−5:00 — America/New_York' },
+  { offset: -4,     iana: 'America/Halifax',          label: 'UTC−4:00 — America/Halifax' },
+  { offset: -3,     iana: 'America/Sao_Paulo',        label: 'UTC−3:00 — America/Sao_Paulo' },
+  { offset: -2,     iana: 'America/Noronha',          label: 'UTC−2:00 — America/Noronha' },
+  { offset: -1,     iana: 'Atlantic/Azores',          label: 'UTC−1:00 — Atlantic/Azores' },
+  { offset: 0,      iana: 'UTC',                      label: 'UTC+0:00 — UTC' },
+  { offset: 0,      iana: 'Europe/London',            label: 'UTC+0:00 — Europe/London' },
+  { offset: 1,      iana: 'Europe/Paris',             label: 'UTC+1:00 — Europe/Paris / Berlin' },
+  { offset: 2,      iana: 'Europe/Athens',            label: 'UTC+2:00 — Europe/Athens / Cairo' },
+  { offset: 3,      iana: 'Europe/Moscow',            label: 'UTC+3:00 — Europe/Moscow' },
+  { offset: 3,      iana: 'Asia/Riyadh',              label: 'UTC+3:00 — Asia/Riyadh' },
+  { offset: 3.5,    iana: 'Asia/Tehran',              label: 'UTC+3:30 — Asia/Tehran' },
+  { offset: 4,      iana: 'Asia/Dubai',               label: 'UTC+4:00 — Asia/Dubai' },
+  { offset: 4.5,    iana: 'Asia/Kabul',               label: 'UTC+4:30 — Asia/Kabul' },
+  { offset: 5,      iana: 'Asia/Karachi',             label: 'UTC+5:00 — Asia/Karachi' },
+  { offset: 5.5,    iana: 'Asia/Kolkata',             label: 'UTC+5:30 — Asia/Kolkata (IST)' },
+  { offset: 5.75,   iana: 'Asia/Kathmandu',           label: 'UTC+5:45 — Asia/Kathmandu' },
+  { offset: 6,      iana: 'Asia/Dhaka',               label: 'UTC+6:00 — Asia/Dhaka' },
+  { offset: 6.5,    iana: 'Asia/Yangon',              label: 'UTC+6:30 — Asia/Yangon' },
+  { offset: 7,      iana: 'Asia/Bangkok',             label: 'UTC+7:00 — Asia/Bangkok' },
+  { offset: 8,      iana: 'Asia/Singapore',           label: 'UTC+8:00 — Asia/Singapore / Shanghai' },
+  { offset: 8.75,   iana: 'Australia/Eucla',          label: 'UTC+8:45 — Australia/Eucla' },
+  { offset: 9,      iana: 'Asia/Tokyo',               label: 'UTC+9:00 — Asia/Tokyo' },
+  { offset: 9.5,    iana: 'Australia/Adelaide',       label: 'UTC+9:30 — Australia/Adelaide' },
+  { offset: 10,     iana: 'Australia/Sydney',         label: 'UTC+10:00 — Australia/Sydney' },
+  { offset: 10.5,   iana: 'Australia/Lord_Howe',      label: 'UTC+10:30 — Australia/Lord_Howe' },
+  { offset: 11,     iana: 'Pacific/Noumea',           label: 'UTC+11:00 — Pacific/Noumea' },
+  { offset: 12,     iana: 'Pacific/Auckland',         label: 'UTC+12:00 — Pacific/Auckland' },
+  { offset: 13,     iana: 'Pacific/Apia',             label: 'UTC+13:00 — Pacific/Apia' },
+];
+
+function populateStTz() {
+  const sel = document.getElementById('st_tz');
+  if (!sel) return;
+  sel.innerHTML = '';
+  ST_TZ_OPTIONS.forEach((tz, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = tz.label;
+    opt.dataset.offset = tz.offset;
+    sel.appendChild(opt);
+  });
+  // Pre-select based on current config tz_offset
+  const cfgOffset = parseFloat(document.getElementById('tz_offset').value) || 0;
+  stSyncTzFromOffset(cfgOffset);
+}
+
+function stSyncTzFromOffset(offset) {
+  const sel = document.getElementById('st_tz');
+  if (!sel) return;
+  let bestIdx = 0, bestDiff = Infinity;
+  ST_TZ_OPTIONS.forEach((tz, i) => {
+    const d = Math.abs(tz.offset - offset);
+    if (d < bestDiff) { bestDiff = d; bestIdx = i; }
+  });
+  sel.value = bestIdx;
+}
+
+function stTzChanged() {
+  // No side-effects needed — generateSunTimes reads st_tz directly
+}
+
 function sunTimesNeeded() {
   return ledState.some(ch =>
     ch.time_windows.some(w =>
@@ -2028,7 +2110,10 @@ function stSetLocation(lat, lon, label) {
 function generateSunTimes() {
   if (_sunLat === null) return;
   if (typeof SunCalc === 'undefined') { showToast('SunCalc library not loaded', 'err'); return; }
-  const offset = parseFloat(document.getElementById('tz_offset').value) || 0;
+  const sel    = document.getElementById('st_tz');
+  const tzIdx  = sel ? parseInt(sel.value) : -1;
+  const tzObj  = ST_TZ_OPTIONS[tzIdx] || { offset: 0, iana: 'UTC', label: 'UTC+0:00' };
+  const offset = tzObj.offset;
   const freq   = document.getElementById('st_freq').value;
   const year   = new Date().getFullYear();
   const pad    = n => String(n).padStart(2, '0');
@@ -2057,10 +2142,10 @@ function generateSunTimes() {
     }
   }
   _sunGenerated = { location: document.getElementById('st_loc_display').textContent.replace('📍 ','').trim(),
-                    lat: _sunLat, lon: _sunLon, year, days };
+                    lat: _sunLat, lon: _sunLon, iana: tzObj.iana, utc_offset: offset, year, days };
   const count = Object.keys(days).length;
   const status = document.getElementById('stGenStatus');
-  if (status) status.textContent = `✓ ${count} entries generated for ${year}`;
+  if (status) status.textContent = `✓ ${count} entries — ${year} — ${tzObj.label}`;
   const dlBtn = document.getElementById('dlSunTimesBtn');
   if (dlBtn) { dlBtn.disabled = false; dlBtn.style.display = ''; }
   showToast('sun_times.json ready — click Download', 'ok');
@@ -2083,6 +2168,7 @@ function downloadSunTimes() {
   applyRoleMode();
   buildUnitEmojiGrid();
   populateTzSelect();
+  populateStTz();
   renderLdrRules();
   renderPIR();
   renderRelays();
