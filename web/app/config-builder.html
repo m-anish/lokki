@@ -720,10 +720,10 @@
         <p style="font-size:.82em;color:var(--muted);margin:0 0 14px">
           Your schedule uses <code>sunrise</code> or <code>sunset</code> keywords.
           Generate a <code>sun_times.json</code> for your location and upload it
-          alongside <code>config.json</code>. Timezone is taken from the Timezone section above.
+          alongside <code>config.json</code>. UTC offset is taken from the Timezone section above.
         </p>
         <div class="field">
-          <label class="field-label">Search location</label>
+          <label class="field-label">Search location <span style="font-weight:400;color:var(--muted)">(requires internet)</span></label>
           <div class="st-loc-wrap">
             <div style="display:flex;gap:8px">
               <input id="st_search" type="text" placeholder="City, landmark or address…" style="flex:1" />
@@ -731,9 +731,17 @@
             </div>
             <div id="st_suggest" class="st-suggest" style="display:none"></div>
           </div>
-          <div id="st_loc_display" style="font-size:.8em;color:var(--muted);margin-top:5px"></div>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px">
+        <div class="field" style="margin-top:8px">
+          <label class="field-label">Or enter coordinates manually <span style="font-weight:400;color:var(--muted)">(works offline)</span></label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="st_lat" type="number" step="0.0001" min="-90" max="90" placeholder="Latitude (e.g. 18.9750)" style="flex:1" />
+            <input id="st_lon" type="number" step="0.0001" min="-180" max="180" placeholder="Longitude (e.g. 72.8258)" style="flex:1" />
+            <button class="btn btn-sm" onclick="stApplyManual()">Apply</button>
+          </div>
+        </div>
+        <div id="st_loc_display" style="font-size:.8em;color:var(--muted);margin-top:6px"></div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px">
           <button class="btn btn-primary btn-sm" id="stGenBtn" onclick="generateSunTimes()" disabled>Generate sun_times.json</button>
           <span id="stGenStatus" style="font-size:.8em;color:var(--muted)">Set a location first</span>
         </div>
@@ -1985,6 +1993,16 @@ function stGeolocate() {
     p => stSetLocation(p.coords.latitude, p.coords.longitude, 'Device location'),
     () => alert('Could not get location — check browser permissions.')
   );
+}
+
+function stApplyManual() {
+  const lat = parseFloat(document.getElementById('st_lat').value);
+  const lon = parseFloat(document.getElementById('st_lon').value);
+  if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    showToast('Enter valid latitude (−90 to 90) and longitude (−180 to 180)', 'err');
+    return;
+  }
+  stSetLocation(lat, lon, `Manual entry`);
 }
 
 function stSetLocation(lat, lon, label) {
