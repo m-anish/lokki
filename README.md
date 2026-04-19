@@ -46,6 +46,7 @@ Full GPIO map and hardware details: [docs/architecture.md](docs/architecture.md)
 | [docs/config-schema.md](docs/config-schema.md) | Complete `config.json` structure with examples |
 | [docs/lora-protocol.md](docs/lora-protocol.md) | LoRa message types, packet format, chunked transfer |
 | [docs/firmware-modules.md](docs/firmware-modules.md) | Module map, interfaces, implementation phases |
+| [ROADMAP.md](ROADMAP.md) | Planned features and future direction |
 
 ---
 
@@ -133,6 +134,28 @@ import gc; gc.collect(); print(gc.mem_free())
 ```
 
 Active development is on the `dev/lokki-v1` branch. See [docs/firmware-modules.md](docs/firmware-modules.md) for the phased implementation plan.
+
+---
+
+## Roadmap
+
+OTA updates, a secure live dashboard, MQTT → Telegram/WhatsApp notifications, Home Assistant integration, and more. See [ROADMAP.md](ROADMAP.md) for the full picture.
+
+---
+
+## Contributing
+
+Lokki is an open project and real-world feedback from deployments shapes its direction. The best place to contribute is [GitHub Issues](https://github.com/m-anish/PagodaLightPico/issues).
+
+**Good ways to contribute:**
+
+- **Report bugs** — if something doesn't work as documented, open an issue with your config (redact WiFi credentials), firmware logs, and a description of what you expected
+- **Share your deployment** — what venue type, how many units, what worked and what didn't; this directly influences roadmap priorities
+- **Request features** — describe the use case, not just the feature; understanding the why helps design something that works for more than one scenario
+- **Discuss before building** — if you want to implement something from the roadmap or propose something new, open an issue first so the approach can be agreed before code is written
+- **Hardware variations** — if you're adapting Lokki to different hardware (different LoRa module, different MCU, different LED driver), open an issue to discuss upstreaming support
+
+Pull requests without a prior issue discussion may be closed if they conflict with the design direction — the issue-first approach avoids that.
 
 ---
 
