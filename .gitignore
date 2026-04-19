@@ -11,8 +11,15 @@ __pycache__/
 # Thonny IDE files
 .thonny/
 
-# VSCode settings folder
+# VSCode settings and workspace files
 .vscode/
+*.code-workspace
+
+# AI / editor tool local state
+.claude/
+.zencoder/
+.cursor/
+.windsurf/
 
 # Files created by rshell or ampy
 .pyboard/
