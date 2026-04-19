@@ -1,16 +1,12 @@
-"""
-Shared RTC and I2C instances for use across modules.
-
-This module provides shared instances of I2C bus and DS3231 RTC to avoid
-creating multiple instances which could cause conflicts.
-"""
-
 from machine import I2C, Pin
-import urtc
-from lib.config_manager import RTC_I2C_SDA_PIN, RTC_I2C_SCL_PIN
+from hardware.urtc import DS3231
+from core.config_manager import config_manager
 
-# Initialize shared I2C bus for RTC
-i2c = I2C(0, scl=Pin(RTC_I2C_SCL_PIN), sda=Pin(RTC_I2C_SDA_PIN))
-
-# Create shared DS3231 instance from urtc library
-rtc = urtc.DS3231(i2c)
+hw = config_manager.get("hardware")
+i2c = I2C(
+    0,
+    scl=Pin(hw.get("i2c_scl_pin", 21)),
+    sda=Pin(hw.get("i2c_sda_pin", 20)),
+    freq=hw.get("i2c_freq_hz", 400000),
+)
+rtc = DS3231(i2c)
