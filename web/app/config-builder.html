@@ -889,28 +889,52 @@ const UNIT_EMOJIS = [
 ];
 
 const LED_EMOJIS = [
-  {icon:'🕯️', label:'Warm / candlelight'},
+  // Warm
+  {icon:'🕯️', label:'Candle / warm glow'},
+  {icon:'🪔', label:'Oil lamp / deep warm'},
   {icon:'🟡', label:'Warm white'},
   {icon:'🟠', label:'Amber'},
+  {icon:'🔶', label:'Deep amber'},
+  {icon:'🧡', label:'Orange warm'},
+  // Neutral / white
   {icon:'💡', label:'Neutral white'},
-  {icon:'🔆', label:'Bright / daylight'},
+  {icon:'🔆', label:'Bright white'},
+  // Daylight / cool
   {icon:'☀️', label:'Full spectrum / daylight'},
   {icon:'🌤️', label:'Cool white'},
-  {icon:'🔵', label:'Cool / blue'},
-  {icon:'🏮', label:'Decorative lantern'},
-  {icon:'🌟', label:'Accent / sparkle'},
-  {icon:'✨', label:'Decorative / fairy lights'},
+  {icon:'❄️', label:'Ice blue / cool'},
+  {icon:'🔵', label:'Deep cool blue'},
+  {icon:'💎', label:'Crystal clear'},
+  // Decorative
+  {icon:'🏮', label:'Lantern / decorative'},
+  {icon:'🌟', label:'Accent / star'},
+  {icon:'⭐', label:'Soft accent'},
+  {icon:'✨', label:'Fairy lights / sparkle'},
   {icon:'💫', label:'Soft glow'},
+  {icon:'🎆', label:'Festive / celebration'},
+  {icon:'🌺', label:'Warm decorative'},
+  {icon:'🌸', label:'Soft decorative'},
+  // Directional / task
   {icon:'🔦', label:'Spot / directional'},
   {icon:'🎯', label:'Focused beam'},
-  {icon:'🌈', label:'RGB / colour'},
+  {icon:'🔬', label:'Task / work light'},
+  // Colour
+  {icon:'🌈', label:'RGB / full colour'},
   {icon:'🔮', label:'UV / special'},
   {icon:'💜', label:'Violet / purple'},
+  {icon:'🟣', label:'Purple'},
   {icon:'🟢', label:'Green'},
+  {icon:'🌿', label:'Nature green'},
   {icon:'🔴', label:'Red'},
+  // Outdoor / functional
   {icon:'🌃', label:'Street / outdoor'},
+  {icon:'🏕️', label:'Garden / landscape'},
   {icon:'⚡', label:'High power / flood'},
-  {icon:'🌙', label:'Night / dim'},
+  {icon:'🌙', label:'Night mode / dim'},
+  {icon:'🌑', label:'Very dim / standby'},
+  // Stage
+  {icon:'🎭', label:'Stage / theatrical'},
+  {icon:'🪩', label:'Party / disco'},
 ];
 
 function pickEmoji(input, emoji) {
@@ -1293,7 +1317,7 @@ function renderLEDs() {
                  placeholder="e.g. Outer ring, Ceiling fill, Uplights" style="max-width:280px" />
           <div class="field-hint">Give it a meaningful name — this appears in scenes and the dashboard.</div>
           <div class="emoji-grid" style="margin-top:6px">
-            ${LED_EMOJIS.map(e=>`<span class="emoji-chip sm" title="${e.label}"
+            ${LED_EMOJIS.map(e=>`<span class="emoji-chip" title="${e.label}"
               onclick="pickEmoji(this.closest('.out-card-body').querySelector('[data-f=name]'),'${e.icon}')">${e.icon}</span>`).join('')}
           </div>
         </div>
