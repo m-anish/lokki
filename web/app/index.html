@@ -67,32 +67,33 @@
     h2.section-title { font-size: 1em; font-weight: 700; text-transform: uppercase;
                         letter-spacing: .06em; color: var(--muted); margin: 0 0 16px; }
 
-    /* PATH LAYOUT */
-    .paths { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 32px; }
-    @media (max-width: 640px) { .paths { grid-template-columns: 1fr; } }
-    .path { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-             overflow: hidden; }
-    .path-head { padding: 14px 18px; font-weight: 700; font-size: .92em;
-                  display: flex; align-items: center; gap: 10px; }
-    .path-head-coord { background: #ede9fe; color: #4338ca; border-bottom: 1px solid #ddd6fe; }
-    .path-head-leaf  { background: #dcfce7; color: #166534; border-bottom: 1px solid #bbf7d0; }
-    .path-head-icon  { font-size: 1.2em; }
-    .path-model { margin-left: auto; font-size: .75em; font-weight: 600; opacity: .7; }
-    .steps { padding: 14px 18px; display: flex; flex-direction: column; gap: 0; }
-    .step  { display: flex; gap: 12px; padding: 11px 0;
-              border-bottom: 1px solid var(--border); }
+    /* STEPS */
+    .steps-card { background: var(--card); border: 1px solid var(--border);
+                   border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; }
+    .steps { padding: 4px 18px 4px; display: flex; flex-direction: column; }
+    .step  { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
     .step:last-child { border-bottom: none; }
     .step-num { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
                  width: 24px; height: 24px; border-radius: 50%; margin-top: 1px;
                  background: var(--brand); color: #fff; font-size: .75em; font-weight: 700; }
-    .path.leaf .step-num { background: var(--green); }
     .step-content { flex: 1; }
-    .step-title { font-weight: 600; font-size: .88em; margin-bottom: 2px; }
-    .step-body  { font-size: .8em; color: var(--muted); line-height: 1.5; }
+    .step-title { font-weight: 600; font-size: .88em; margin-bottom: 3px; }
+    .step-body  { font-size: .8em; color: var(--muted); line-height: 1.55; }
     .step-body code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px;
                        font-size: .9em; color: #334155; font-family: 'Menlo','Monaco',monospace; }
-    .step-opt { font-size: .72em; font-weight: 600; color: #92400e; background: #fef3c7;
-                 border-radius: 8px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
+    .step-opt  { font-size: .72em; font-weight: 600; color: #92400e; background: #fef3c7;
+                  border-radius: 8px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
+    .step-note { display: block; margin-top: 5px; padding: 6px 10px; border-radius: 6px;
+                  font-size: .78em; line-height: 1.5; }
+    .step-note.coord { background: #ede9fe; color: #4338ca; }
+    .step-note.leaf  { background: #dcfce7; color: #166534; }
+
+    /* SHORTCUT CARD */
+    .shortcut { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius);
+                 padding: 16px 20px; margin-bottom: 20px; display: flex; gap: 14px; align-items: flex-start; }
+    .shortcut-icon  { font-size: 1.6em; flex-shrink: 0; margin-top: 2px; }
+    .shortcut-title { font-weight: 700; font-size: .92em; color: #1d4ed8; margin-bottom: 4px; }
+    .shortcut-body  { font-size: .82em; color: #1e40af; line-height: 1.5; }
 
     /* VERIFY STEP */
     .verify { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius);
@@ -119,17 +120,17 @@
         --brand:  #818cf8;
         --green:  #34d399;
       }
-      .path-head-coord { background: #2e1065; color: #a5b4fc; border-color: #4338ca; }
-      .path-head-leaf  { background: #052e16; color: #6ee7b7; border-color: #166534; }
-      .path.leaf .step-num { background: #059669; }
       .prereq { background: #1e293b; }
       .verify { background: #052e16; border-color: #166534; }
       .verify-title { color: #6ee7b7; }
       .verify-body  { color: #4ade80; }
-      .step-opt { background: #422006; color: #fde68a; }
+      .step-opt  { background: #422006; color: #fde68a; }
+      .step-note.coord { background: #2e1065; color: #a5b4fc; }
+      .step-note.leaf  { background: #052e16; color: #6ee7b7; }
+      .shortcut { background: #0f1f3d; border-color: #1e40af; }
+      .shortcut-title { color: #93c5fd; }
+      .shortcut-body  { color: #60a5fa; }
       .tool-card:hover { box-shadow: 0 8px 24px rgba(129,140,248,.2); border-color: var(--brand); }
-      .tool-card.green:hover { box-shadow: 0 8px 24px rgba(52,211,153,.2); border-color: var(--green); }
-      .tool-card.green .tool-action { color: var(--green); }
       .tool-action { color: var(--brand); }
       .step-body code { background: #0f172a; color: #94a3b8; }
     }
@@ -168,107 +169,87 @@
     <div class="prereq">
       <strong>Before you start</strong> — you'll need:
       <ul>
-        <li>MicroPython UF2 for <strong>Pico 2 W</strong> (coordinator) and <strong>Pico 2</strong> (each leaf) — download from <strong>micropython.org</strong></li>
-        <li>A file upload tool: <strong>Thonny IDE</strong> (beginner-friendly) or <code>mpremote</code> via <code>pip install mpremote</code></li>
-        <li>This repo's <code>firmware/micropython/src/</code> folder and <code>web/app/</code> folder cloned locally</li>
+        <li>MicroPython UF2 for <strong>Pico 2 W</strong> (coordinator) and <strong>Pico 2</strong> (each leaf) — from <strong>micropython.org</strong></li>
+        <li>A file transfer tool: <strong>Thonny IDE</strong> (beginner-friendly) or <code>mpremote</code> via <code>pip install mpremote</code></li>
+        <li>This repo's <code>firmware/micropython/src/</code> and <code>web/app/</code> folders cloned locally</li>
       </ul>
     </div>
 
-    <div class="paths">
+    <div class="steps-card">
+      <div class="steps">
 
-      <!-- COORDINATOR -->
-      <div class="path">
-        <div class="path-head path-head-coord">
-          <span class="path-head-icon">🌐</span>
-          Coordinator
-          <span class="path-model">Pico 2 W (has WiFi)</span>
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <div class="step-title">Build config</div>
+            <div class="step-body">
+              Open <strong>Config Builder</strong>, choose role <em>Coordinator</em> or <em>Leaf</em>, fill in your settings, and download <code>config.json</code>.
+              If any LED schedule uses <code>sunrise</code> or <code>sunset</code>, the Sun Times section appears automatically — set your location and download <code>sun_times.json</code> too.
+              <span class="step-note coord">🌐 Coordinator: enter your WiFi credentials and the unit IDs of your leaf units.</span>
+              <span class="step-note leaf">🍃 Leaf: set a unique unit ID (1–8). No WiFi credentials needed.</span>
+            </div>
+          </div>
         </div>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div class="step-content">
-              <div class="step-title">Build coordinator config</div>
-              <div class="step-body">Open <strong>Config Builder</strong>, select role <em>Coordinator</em>. Fill in your WiFi credentials, unit name, and the IDs of your leaf units. Download <code>config.json</code>.</div>
+
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <div class="step-title">Flash MicroPython</div>
+            <div class="step-body">
+              Hold <strong>BOOTSEL</strong> while plugging in USB — the board mounts as a drive. Drag the UF2 onto it. The board reboots into MicroPython.
+              <span class="step-note coord">🌐 Coordinator: use the <strong>Pico 2 W</strong> UF2.</span>
+              <span class="step-note leaf">🍃 Leaf: use the <strong>Pico 2</strong> UF2 (no W).</span>
             </div>
           </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <div class="step-content">
-              <div class="step-title">Generate sun times <span class="step-opt">if needed</span></div>
-              <div class="step-body">Only required if any LED schedule uses <code>sunrise</code> or <code>sunset</code> keywords. The <strong>Sun Times</strong> section appears automatically inside Config Builder — set your location and download <code>sun_times.json</code>.</div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <div class="step-title">Upload firmware</div>
+            <div class="step-body">
+              Using Thonny or <code>mpremote</code>, copy the entire <code>src/</code> folder to the board root.
+              <span class="step-note coord">🌐 Coordinator only: also copy <code>web/app/</code> to a folder named <code>/www</code> on the board — this serves the web dashboard over WiFi.</span>
             </div>
           </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <div class="step-content">
-              <div class="step-title">Flash MicroPython</div>
-              <div class="step-body">Hold <strong>BOOTSEL</strong> on the Pico 2 W while plugging in USB. It mounts as a drive. Drag the <strong>Pico 2 W</strong> UF2 onto it. The board reboots into MicroPython.</div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <div class="step-title">Upload config</div>
+            <div class="step-body">
+              Copy <code>config.json</code> (and <code>sun_times.json</code> if generated) to the board's filesystem root — same level as the <code>src/</code> folder.
             </div>
           </div>
-          <div class="step">
-            <div class="step-num">4</div>
-            <div class="step-content">
-              <div class="step-title">Upload firmware files</div>
-              <div class="step-body">Using Thonny or <code>mpremote</code>, copy the entire <code>src/</code> folder to the board root. Then copy <code>web/app/</code> to a folder named <code>/www</code> on the board — this is the web dashboard served over WiFi.</div>
+        </div>
+
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-content">
+            <div class="step-title">Power on</div>
+            <div class="step-body">
+              Unplug and reconnect power.
+              <span class="step-note coord">🌐 Coordinator connects to WiFi and starts the web dashboard. Find it at its router-assigned IP, or try <code>lokki-&lt;unitname&gt;.local</code>.</span>
+              <span class="step-note leaf">🍃 Leaf starts up and listens for the coordinator over LoRa. No WiFi needed — time and commands sync automatically.</span>
             </div>
           </div>
-          <div class="step">
-            <div class="step-num">5</div>
-            <div class="step-content">
-              <div class="step-title">Upload config</div>
-              <div class="step-body">Copy <code>config.json</code> (and <code>sun_times.json</code> if generated) to the board's filesystem root — same level as the <code>src/</code> folder.</div>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">6</div>
-            <div class="step-content">
-              <div class="step-title">Power on</div>
-              <div class="step-body">Unplug and reconnect power. The coordinator connects to your WiFi and starts the web dashboard. Find its IP on your router, or try <code>lokki-&lt;unitname&gt;.local</code>.</div>
-            </div>
-          </div>
+        </div>
+
+      </div>
+    </div><!-- /steps-card -->
+
+    <div class="shortcut">
+      <div class="shortcut-icon">🔄</div>
+      <div>
+        <div class="shortcut-title">Coordinator: updating config without USB</div>
+        <div class="shortcut-body">
+          Once the coordinator is running, open its web dashboard in a browser and navigate to Config Builder.
+          Make your changes and click <strong>Save to device</strong> — the config uploads directly over WiFi.
+          Reboot the coordinator (power cycle or reboot button in the dashboard) to apply the new config. No USB cable needed after the initial setup.
         </div>
       </div>
-
-      <!-- LEAF -->
-      <div class="path leaf">
-        <div class="path-head path-head-leaf">
-          <span class="path-head-icon">🍃</span>
-          Each Leaf Unit
-          <span class="path-model">Pico 2 (no WiFi)</span>
-        </div>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div class="step-content">
-              <div class="step-title">Build leaf config</div>
-              <div class="step-body">Open <strong>Config Builder</strong>, select role <em>Leaf</em>. Set a unique unit ID (1–8), configure LED channels, schedules, and any PIR sensors. Download <code>config.json</code>.</div>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <div class="step-content">
-              <div class="step-title">Flash MicroPython</div>
-              <div class="step-body">Hold <strong>BOOTSEL</strong> on the Pico 2 while plugging in USB. Drag the <strong>Pico 2</strong> UF2 onto the mounted drive. The board reboots into MicroPython.</div>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <div class="step-content">
-              <div class="step-title">Upload firmware &amp; config</div>
-              <div class="step-body">Copy the <code>src/</code> folder to the board root, then copy <code>config.json</code> alongside it. Leaves do <em>not</em> need the <code>/www</code> folder.</div>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">4</div>
-            <div class="step-content">
-              <div class="step-title">Power on</div>
-              <div class="step-body">Plug in power. The leaf starts up and listens for the coordinator over LoRa. No WiFi needed — it syncs automatically once the coordinator is online.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </div><!-- /paths -->
+    </div>
 
     <div class="verify">
       <div class="verify-icon">✅</div>
