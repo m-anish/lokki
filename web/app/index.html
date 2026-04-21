@@ -146,6 +146,9 @@
 
   <nav>
     <a class="nav-logo" href="#">Lokki <span>Setup</span></a>
+    <div style="margin-left:auto">
+      <a href="/" id="dashboardLink" style="display:none;font-size:.85em;color:var(--muted);text-decoration:none">← Dashboard</a>
+    </div>
   </nav>
 
   <div class="hero">
@@ -269,5 +272,15 @@
     &nbsp;·&nbsp; Lokki v1 &nbsp;·&nbsp; Runs entirely in-browser
   </footer>
 
+  <script>
+    // Show dashboard link when running on actual hardware
+    const ON_DEVICE = (() => {
+      const h = window.location.hostname;
+      return h && h !== 'localhost' && h !== '127.0.0.1' && window.location.protocol !== 'file:';
+    })();
+    if (ON_DEVICE) {
+      document.getElementById('dashboardLink').style.display = '';
+    }
+  </script>
 </body>
 </html>
