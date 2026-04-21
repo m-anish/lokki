@@ -28,18 +28,22 @@ class MQTTNotifier:
         self.client_id   = n.get("client_id", "lokki")
 
     def connect(self):
+        from shared.system_status import system_status
         if not _MQTT_OK or not self.enabled:
+            system_status.set_connection_status(mqtt=False)
             return False
         try:
             self.client = MQTTClient(self.client_id, self.broker, port=self.port)
             self.client.connect()
             self.connected = True
+            system_status.set_connection_status(mqtt=True)
             log.info(f"[MQTT] Connected to {self.broker}:{self.port}")
             self._publish("system", {"event": "startup", "t": time.time()})
             return True
         except Exception as e:
             log.error(f"[MQTT] Connect failed: {e}")
             self.connected = False
+            system_status.set_connection_status(mqtt=False)
             return False
 
     def disconnect(self):

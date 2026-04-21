@@ -310,6 +310,16 @@ async def main():
     if role == "coordinator":
         tasks.append(asyncio.create_task(fleet_timeout_task(fleet_mgr)))
         if wifi_ok:
+            # MQTT notifications (if enabled)
+            try:
+                from comms.mqtt_notifier import mqtt_notifier
+                if mqtt_notifier.connect():
+                    log.info("[MAIN] MQTT connected")
+                else:
+                    log.info("[MAIN] MQTT disabled or unavailable")
+            except Exception as e:
+                log.error(f"[MAIN] MQTT init failed: {e}")
+            # Web server
             try:
                 from coordinator.web_server import web_server
                 tasks.append(asyncio.create_task(web_server.start_and_serve()))

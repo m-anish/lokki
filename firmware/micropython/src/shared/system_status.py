@@ -10,16 +10,19 @@ class SystemStatus:
         self.wifi_connected = False
         self.lora_connected = False
         self.web_server_running = False
+        self.mqtt_connected = False
         self.error_count = 0
         self.last_error = None
 
-    def set_connection_status(self, wifi=None, lora=None, web_server=None):
+    def set_connection_status(self, wifi=None, lora=None, web_server=None, mqtt=None):
         if wifi is not None:
             self.wifi_connected = wifi
         if lora is not None:
             self.lora_connected = lora
         if web_server is not None:
             self.web_server_running = web_server
+        if mqtt is not None:
+            self.mqtt_connected = mqtt
 
     def record_error(self, msg):
         self.error_count += 1
@@ -56,6 +59,7 @@ class SystemStatus:
                 "wifi": self.wifi_connected,
                 "lora": self.lora_connected,
                 "web_server": self.web_server_running,
+                "mqtt": self.mqtt_connected,
             },
             "led_channels": pwm_controller.get_all(),
             "relays": relay_controller.get_all(),
