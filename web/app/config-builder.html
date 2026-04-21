@@ -130,6 +130,8 @@
     input:focus, select:focus, textarea:focus {
       outline: none; border-color: var(--brand);
       box-shadow: 0 0 0 3px rgba(79,70,229,.1); background: #fff; }
+    input:disabled, select:disabled, textarea:disabled {
+      background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
     @media (max-width: 500px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
@@ -283,6 +285,8 @@
       input[type=text], input[type=password], input[type=number], input[type=time],
       select, textarea { background: #0f172a; color: var(--text); border-color: var(--border); }
       input:focus, select:focus, textarea:focus { background: #1e293b; }
+      input:disabled, select:disabled, textarea:disabled {
+        background: #1e293b; color: #64748b; border-color: #475569; }
       .section-head:hover { background: #263548; }
       .out-card { background: #162032; }
       .out-card-head { background: #1a2a3e; border-color: var(--border); }
@@ -851,12 +855,10 @@ function applyRoleMode() {
     idField.min = 1; idField.max = 8;
     if (!idField.value || parseInt(idField.value) < 1) idField.value = 1;
     idField.disabled = false;
-    idField.style.background = '';
     idHint.textContent = 'Leaf units are 1–8. Each must be unique across the network.';
   } else {
     idField.value = 0; idField.min = 0; idField.max = 0;
     idField.disabled = true;
-    idField.style.background = '#f1f5f9';
     idHint.textContent = 'Coordinator is always 0.';
   }
 }
