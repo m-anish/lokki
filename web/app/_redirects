@@ -1,0 +1,7 @@
+# Cloudflare Pages redirects for Lokki web app
+
+# Redirect root to index.html
+/  /index.html  200
+
+# Redirect old GitHub Pages URLs if any
+/PagodaLightPico/*  /:splat  301

@@ -1,6 +1,6 @@
 # Lokki Web Helper App
 
-Static web application for configuring and managing Lokki units. Hosted via GitHub Pages, served locally by the coordinator unit, or opened directly from the filesystem.
+Static web application for configuring and managing Lokki units. Hosted via Cloudflare Pages at [lokki.starstucklab.com](https://lokki.starstucklab.com), served locally by the coordinator unit, or opened directly from the filesystem.
 
 No build step required — static HTML/CSS/JS only.
 
@@ -20,7 +20,9 @@ No build step required — static HTML/CSS/JS only.
 
 ## Deployment
 
-GitHub Actions (`.github/workflows/gh-pages.yml`) deploys this directory to GitHub Pages automatically on push to `main`.
+Cloudflare Pages automatically deploys this directory on push to `main`. See [../CLOUDFLARE_DEPLOYMENT.md](../CLOUDFLARE_DEPLOYMENT.md) for setup instructions.
+
+**Production URL:** https://lokki.starstucklab.com
 
 ## Local preview
 
