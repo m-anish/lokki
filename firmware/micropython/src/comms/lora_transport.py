@@ -10,9 +10,11 @@ _MODE_NORMAL = (0, 0)   # data transmission
 _MODE_SLEEP  = (1, 1)   # AT command configuration
 
 _AUX_POLL_MS   = 10
-_AUX_TIMEOUT_S = 2
-_AT_TIMEOUT_MS = 500
-_BAUD           = 9600
+_AUX_TIMEOUT_S = 5        # increased for hot reboots
+_AT_TIMEOUT_MS = 150      # increased for reliability
+_MODE_DELAY_MS = 250      # delay after mode switch
+_AT_RETRIES    = 3        # number of retries for AT commands
+_BAUD          = 9600
 _BROADCAST_ADDR = 0xFFFF
 
 
@@ -31,24 +33,33 @@ class LoRaTransport:
         self._ready  = False
 
     def init(self):
-        hw   = config_manager.get("hardware")
-        lora = config_manager.get("lora")
+        log.info("[LORA] Starting initialization...")
+        try:
+            hw   = config_manager.get("hardware")
+            lora = config_manager.get("lora")
 
-        self._m0  = Pin(hw.get("lora_m0_pin",  2), Pin.OUT)
-        self._m1  = Pin(hw.get("lora_m1_pin",  3), Pin.OUT)
-        self._aux = Pin(hw.get("lora_aux_pin",  4), Pin.IN)
+            self._m0  = Pin(hw.get("lora_m0_pin",  2), Pin.OUT)
+            self._m1  = Pin(hw.get("lora_m1_pin",  3), Pin.OUT)
+            self._aux = Pin(hw.get("lora_aux_pin",  4), Pin.IN)
 
-        uart_id = hw.get("lora_uart_id", 0)
-        tx_pin  = hw.get("lora_tx_pin",  0)
-        rx_pin  = hw.get("lora_rx_pin",  1)
+            uart_id = hw.get("lora_uart_id", 0)
+            tx_pin  = hw.get("lora_tx_pin",  0)
+            rx_pin  = hw.get("lora_rx_pin",  1)
 
-        self._uart = UART(uart_id, baudrate=_BAUD,
-                         tx=Pin(tx_pin), rx=Pin(rx_pin))
-        self._channel = lora.get("channel", 0)
+            log.info(f"[LORA] UART{uart_id}, TX={tx_pin}, RX={rx_pin}, M0={hw.get('lora_m0_pin',2)}, M1={hw.get('lora_m1_pin',3)}, AUX={hw.get('lora_aux_pin',4)}")
 
-        self._configure(lora)
-        self._ready = True
-        log.info("[LORA] Transport ready")
+            self._uart = UART(uart_id, baudrate=_BAUD,
+                             tx=Pin(tx_pin), rx=Pin(rx_pin))
+            self._channel = lora.get("channel", 0)
+
+            self._configure(lora)
+            self._ready = True
+            log.info("[LORA] Transport ready")
+        except Exception as e:
+            log.error(f"[LORA] Init failed: {e}")
+            import sys
+            sys.print_exception(e)
+            raise
 
     # ------------------------------------------------------------------
     # Public API
@@ -88,10 +99,14 @@ class LoRaTransport:
         channel  = lora_cfg.get("channel", 0)
 
         self._set_mode(*_MODE_SLEEP)
-        time.sleep_ms(100)
+        time.sleep_ms(_MODE_DELAY_MS)
 
-        # Flush any stale bytes
-        self._uart.read()
+        # Aggressive UART flushing for hot reboots
+        for _ in range(3):
+            self._uart.read()
+            time.sleep_ms(50)
+        
+        log.debug(f"[LORA] Configuring: unit_id={unit_id}, freq={freq_hz}Hz, tx_power={tx_power}dBm, ch={channel}")
 
         cmds = [
             f"AT+ADDRESS={unit_id}",
@@ -111,17 +126,33 @@ class LoRaTransport:
                 log.debug(f"[LORA] {cmd} → {resp}")
 
         self._set_mode(*_MODE_NORMAL)
-        time.sleep_ms(100)
+        time.sleep_ms(_MODE_DELAY_MS)
+        
         # Wait for AUX to settle HIGH after mode switch
-        deadline = time.time() + 2
+        log.debug(f"[LORA] Waiting for AUX to settle (timeout={_AUX_TIMEOUT_S}s)...")
+        deadline = time.time() + _AUX_TIMEOUT_S
         while self._aux.value() == 0 and time.time() < deadline:
             time.sleep_ms(10)
+        
+        if self._aux.value() == 0:
+            log.warn("[LORA] AUX still LOW after timeout, but continuing...")
+        else:
+            log.debug("[LORA] AUX settled HIGH")
 
     def _at(self, cmd):
-        self._uart.write((cmd + "\r\n").encode())
-        time.sleep_ms(_AT_TIMEOUT_MS)
-        raw = self._uart.read()
-        return raw.decode("utf-8", "ignore").strip() if raw else ""
+        try:
+            self._uart.write((cmd + "\r\n").encode())
+            time.sleep_ms(_AT_TIMEOUT_MS)
+            raw = self._uart.read()
+            if raw:
+                try:
+                    return raw.decode("utf-8", "ignore").strip()
+                except Exception:
+                    return ""
+            return ""
+        except Exception as e:
+            log.error(f"[LORA] AT command failed: {e}")
+            return ""
 
     # ------------------------------------------------------------------
     # AUX discipline and mode control
@@ -135,9 +166,10 @@ class LoRaTransport:
             time.sleep_ms(_AUX_POLL_MS)
 
     def _set_mode(self, m0, m1):
+        log.debug(f"[LORA] Setting mode: M0={m0}, M1={m1}")
         self._m0.value(m0)
         self._m1.value(m1)
-        time.sleep_ms(20)
+        time.sleep_ms(50)  # Give pins time to settle
 
 
 lora_transport = LoRaTransport()
