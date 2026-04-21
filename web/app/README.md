@@ -1,13 +1,27 @@
-# PagodaLightPico Helper App
+# Lokki Web Helper App
 
-This is a static helper application intended to be hosted via GitHub Pages.
+Static web application for configuring and managing Lokki units. Hosted via GitHub Pages, served locally by the coordinator unit, or opened directly from the filesystem.
 
-- Source directory: `helper-app/`
-- Entry point: `index.html`
-- No build step required; static files only.
+No build step required — static HTML/CSS/JS only.
 
-## Local preview
-Open `helper-app/index.html` in your browser.
+## Current pages
+
+| Page | Purpose |
+|------|---------|
+| `index.html` | Fleet dashboard — all units, all channels, live status |
+| `config-builder.html` | Generate and validate `config.json`; includes integrated sun times generator |
+
+## Planned (Phase 3)
+
+| Page | Purpose |
+|------|---------|
+| `scene-editor.html` | Define and push named scenes to units |
+| `network-view.html` | LoRa network health, unit last-seen, signal quality |
 
 ## Deployment
-Deployment is handled by GitHub Actions to GitHub Pages. See `.github/workflows/gh-pages.yml` in the repository root.
+
+GitHub Actions (`.github/workflows/gh-pages.yml`) deploys this directory to GitHub Pages automatically on push to `main`.
+
+## Local preview
+
+Open any `.html` file directly in a browser. For API-connected features, point the app at a running coordinator unit's IP.

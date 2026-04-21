@@ -4,7 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
-## [Unreleased]
+## [Unreleased] — Lokki v1 (dev/lokki-v1)
+
+Complete redesign of the system as **Lokki** — a multi-unit campus lighting platform.
+
+### Added
+- 8-channel LED PWM control (was 5)
+- 2-channel relay control (scheduled + event-triggered)
+- 4× PIR motion sensor support with priority override
+- LDR ambient light sensor — continuous brightness cap modifier
+- LoRa peer-to-peer communication (E220-900T22D, ~868MHz)
+- Multi-unit coordinator/leaf architecture (star with local autonomy)
+- Scene management (named output snapshots, broadcastable)
+- Priority arbiter — single source of truth for output state
+- Fleet management web UI and REST API (coordinator)
+- WS2812 addressable status LED (replaces simple RGB)
+- Optional I2C expansion sensors (BME280, BH1750, SCD40)
+- Full architecture and design documentation in `docs/`
+
+### Changed
+- Target MCU: Raspberry Pi Pico 2 / Pico 2 W (RP2350, 520KB RAM)
+- Firmware restructured into `core/`, `hardware/`, `comms/`, `coordinator/`, `shared/`
+- Config schema extended for all new hardware and multi-unit features
+- Schedule engine extracted from `main.py` into dedicated module
+- Web server extended for fleet-wide REST API
 
 ## [0.4.1] - 2025-08-21
 
