@@ -99,7 +99,7 @@ class PriorityArbiter:
 
     def _cancel_revert(self, output_id):
         t = self._revert_tasks.pop(output_id, None)
-        if t:
+        if t and t != asyncio.current_task():
             t.cancel()
 
     async def _revert_after(self, output_id, delay_s):

@@ -360,6 +360,7 @@
         <button class="btn btn-success coordinator-only" id="saveDeviceBtn" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
         <button class="btn" id="dlSunTimesBtn" onclick="downloadSunTimes()" style="display:none" disabled>⬇ Download sun_times.json</button>
         <button class="btn" id="uploadBtn">↑ Load existing config</button>
+        <button class="btn coordinator-only" id="loadFromCoordinatorBtn" onclick="loadFromCoordinator()" style="display:none">📡 Load from Coordinator</button>
         <input id="uploadInput" type="file" accept=".json,application/json"
                style="position:absolute;width:1px;height:1px;clip:rect(0,0,0,0)" />
       </div>
@@ -795,6 +796,29 @@ const ON_DEVICE = (() => {
 if (ON_DEVICE) {
   document.getElementById('saveDeviceBtn').style.display = '';
   document.getElementById('saveDeviceBtn2').style.display = '';
+  document.getElementById('loadFromCoordinatorBtn').style.display = '';
+}
+
+// ============================================================
+// Load from Coordinator
+// ============================================================
+async function loadFromCoordinator() {
+  const btn = document.getElementById('loadFromCoordinatorBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  try {
+    const r = await fetch('/api/config');
+    const data = await r.json();
+    if (r.ok && data.ok !== false && data.data) {
+      applyConfigToForm(data.data);
+      showToast('Loaded config from coordinator ✓', 'ok');
+    } else {
+      showToast('Failed to load: ' + (data.error || `HTTP ${r.status}`), 'err');
+    }
+  } catch (e) {
+    showToast('Could not reach coordinator: ' + e.message, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📡 Load from Coordinator'; }
+  }
 }
 
 // ============================================================
