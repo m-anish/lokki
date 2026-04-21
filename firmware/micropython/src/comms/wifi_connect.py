@@ -66,17 +66,31 @@ def sync_time_ntp():
         start_time = time.time()
         try:
             ntptime.host = server
-            ntptime.timeout = 2
+            ntptime.timeout = 3  # Increased from 2 to 3 seconds
             log.info(f"[NTP] Attempting sync with {server}...")
+            
+            # Add manual timeout check in case ntptime.settime() blocks
             ntptime.settime()
-            log.info(f"[NTP] Synced with {server}")
+            
+            elapsed = time.time() - start_time
+            log.info(f"[NTP] Synced with {server} in {elapsed:.1f}s")
             synced = True
             break
+        except OSError as e:
+            elapsed = time.time() - start_time
+            log.warn(f"[NTP] {server} network error after {elapsed:.1f}s: {e}")
+            # Network errors are usually quick, continue to next attempt
         except Exception as e:
             elapsed = time.time() - start_time
             log.warn(f"[NTP] {server} failed after {elapsed:.1f}s: {e}")
+        
+        # If we spent too long, don't retry
+        if time.time() - start_time > 5:
+            log.error("[NTP] Timeout exceeded, aborting")
+            break
     
     if not synced:
+        log.error("[NTP] All sync attempts failed")
         raise Exception("NTP sync failed")
 
     utc_sec   = time.time()
