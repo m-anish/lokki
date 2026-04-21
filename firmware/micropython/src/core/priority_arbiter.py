@@ -1,6 +1,9 @@
 import asyncio
 from hardware.pwm_control import pwm_controller
 from hardware.relay_control import relay_controller
+from shared.simple_logger import Logger
+
+log = Logger()
 
 
 class PriorityArbiter:
@@ -24,26 +27,37 @@ class PriorityArbiter:
     # ------------------------------------------------------------------
 
     def init_from_config(self, led_channels_cfg, relays_cfg):
+        log.info("[ARBITER] Initializing from config...")
         for ch in led_channels_cfg:
             cid = ch["id"]
+            default_duty = ch.get("default_duty_percent", 0)
+            enabled = ch.get("enabled", False)
+            log.info(f"[ARBITER] LED {cid}: default={default_duty}%, enabled={enabled}")
             self._state[cid] = {
                 "type": "led",
                 "manual": None,
                 "pir": None,
-                "schedule": {"duty_percent": ch.get("default_duty_percent", 0), "fade_ms": 0},
+                "schedule": {"duty_percent": default_duty, "fade_ms": 0},
                 "ldr_cap": None,
-                "actual": ch.get("default_duty_percent", 0),
+                "actual": default_duty,
             }
         for r in relays_cfg:
             rid = r["id"]
+            default_state = r.get("default_state", "off")
+            enabled = r.get("enabled", False)
+            log.info(f"[ARBITER] Relay {rid}: default={default_state}, enabled={enabled}")
             self._state[rid] = {
                 "type": "relay",
                 "manual": None,
                 "pir": None,
-                "schedule": {"state": r.get("default_state", "off")},
+                "schedule": {"state": default_state},
                 "ldr_cap": None,
-                "actual": r.get("default_state", "off"),
+                "actual": default_state,
             }
+        # Apply initial defaults to hardware
+        log.info("[ARBITER] Applying initial defaults to hardware...")
+        self._apply_all(force=True)
+        log.info("[ARBITER] Initialization complete")
 
     # ------------------------------------------------------------------
     # Manual overrides
@@ -181,25 +195,31 @@ class PriorityArbiter:
         else:
             return source.get("state", "off")
 
-    def _apply(self, output_id):
+    def _apply(self, output_id, force=False):
         s = self._state[output_id]
         source = s["manual"] or s["pir"] or s["schedule"]
         new_actual = self._resolve(output_id)
-        if new_actual == s["actual"]:
+        if not force and new_actual == s["actual"]:
+            log.debug(f"[ARBITER] {output_id}: no change (already {new_actual})")
             return
         s["actual"] = new_actual
         if s["type"] == "led":
             fade_ms = source.get("fade_ms", 0) if source else 0
+            source_name = "manual" if s["manual"] else ("pir" if s["pir"] else "schedule")
             if fade_ms > 0:
+                log.info(f"[ARBITER] {output_id}: {new_actual}% (fade {fade_ms}ms) from {source_name}")
                 asyncio.create_task(pwm_controller.fade_to(output_id, new_actual, fade_ms))
             else:
+                log.info(f"[ARBITER] {output_id}: {new_actual}% from {source_name}")
                 pwm_controller.set(output_id, new_actual)
         else:
+            source_name = "manual" if s["manual"] else ("pir" if s["pir"] else "schedule")
+            log.info(f"[ARBITER] {output_id}: {new_actual} from {source_name}")
             relay_controller.set(output_id, new_actual)
 
-    def _apply_all(self):
+    def _apply_all(self, force=False):
         for oid in self._state:
-            self._apply(oid)
+            self._apply(oid, force=force)
 
 
 priority_arbiter = PriorityArbiter()

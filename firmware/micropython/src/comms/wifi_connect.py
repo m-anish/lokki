@@ -1,7 +1,7 @@
 import network
 import time
 import ntptime
-import urtc
+from hardware import urtc
 from machine import Pin
 from core.config_manager import config_manager
 from hardware.rtc_shared import rtc
@@ -59,19 +59,25 @@ def connect_wifi(timeout=10, max_attempts=3):
 
 def sync_time_ntp():
     tz_offset = config_manager.get("timezone").get("utc_offset_hours", 0)
-    servers = ["pool.ntp.org", "time.nist.gov", "time.google.com"]
-
+    servers = ["pool.ntp.org"]  # Try only one server to avoid long delays
+    
+    synced = False
     for server in servers:
+        start_time = time.time()
         try:
             ntptime.host = server
-            ntptime.timeout = 5
+            ntptime.timeout = 2
+            log.info(f"[NTP] Attempting sync with {server}...")
             ntptime.settime()
             log.info(f"[NTP] Synced with {server}")
+            synced = True
             break
         except Exception as e:
-            log.warn(f"[NTP] {server} failed: {e}")
-            if server == servers[-1]:
-                raise
+            elapsed = time.time() - start_time
+            log.warn(f"[NTP] {server} failed after {elapsed:.1f}s: {e}")
+    
+    if not synced:
+        raise Exception("NTP sync failed")
 
     utc_sec   = time.time()
     local_sec = utc_sec + int(tz_offset * 3600)

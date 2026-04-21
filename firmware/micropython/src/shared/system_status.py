@@ -5,7 +5,8 @@ class SystemStatus:
     """Runtime status for this unit — uptime, connections, output state, errors."""
 
     def __init__(self):
-        self._boot_time = time.time()
+        # Use ticks_ms for uptime - it's monotonic and not affected by time sync
+        self._boot_ticks = time.ticks_ms()
         self.wifi_connected = False
         self.lora_connected = False
         self.web_server_running = False
@@ -25,7 +26,9 @@ class SystemStatus:
         self.last_error = {"message": msg, "timestamp": time.time()}
 
     def get_uptime(self):
-        return int(time.time() - self._boot_time)
+        # Use ticks_diff for accurate uptime regardless of time sync
+        uptime_ms = time.ticks_diff(time.ticks_ms(), self._boot_ticks)
+        return uptime_ms // 1000  # Convert to seconds
 
     def get_uptime_string(self):
         s = self.get_uptime()

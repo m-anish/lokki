@@ -65,6 +65,7 @@ firmware/micropython/src/   # MicroPython firmware
 hardware/kicad/             # KiCad PCB project (Rev0, in progress)
 web/app/                    # Static fleet management web UI (GitHub Pages)
 docs/                       # Architecture and design documentation
+utils/                      # Developer helper scripts (e.g. update.sh)
 ```
 
 ---
@@ -83,6 +84,18 @@ cp firmware/micropython/src/config/samples/config.json.sample config.json
 See [docs/config-schema.md](docs/config-schema.md) for all options. The web helper app at [web/app/config-builder.html](web/app/config-builder.html) can generate a valid config interactively.
 
 ### 3. Deploy firmware
+
+The repo includes a helper script at [utils/update.sh](utils/update.sh) that closes any stale `mpremote` sessions, copies `firmware/micropython/src/*` to the device root and the dashboard assets from `web/app/` to `:/www/`, then resets the board:
+
+```bash
+./utils/update.sh
+```
+
+Requires [`mpremote`](https://docs.micropython.org/en/latest/reference/mpremote.html) on your PATH. The script flashes firmware + web UI only — `config.json` and `sun_times.json` still need to be copied separately (see the manual commands below, or use the web config builder once the coordinator is up).
+
+<details>
+<summary>Manual alternatives (rshell / ampy)</summary>
+
 ```bash
 # rshell
 rshell -p /dev/ttyACM0 cp -r firmware/micropython/src/* /pyboard/
@@ -94,6 +107,8 @@ ampy -p /dev/ttyACM0 put firmware/micropython/src/
 ampy -p /dev/ttyACM0 put config.json
 ampy -p /dev/ttyACM0 put sun_times.json
 ```
+
+</details>
 
 ### 4. Access the web UI (coordinator only)
 ```

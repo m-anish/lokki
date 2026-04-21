@@ -142,7 +142,7 @@ def _register_lora_handlers(role, fleet_manager=None):
         epoch = payload.get("epoch")
         if epoch and role == "leaf":
             try:
-                import urtc
+                from hardware import urtc
                 tz = payload.get("tz", 0)
                 local_sec = int(epoch) + int(tz * 3600)
                 dt = urtc.seconds2tuple(local_sec)
@@ -278,8 +278,11 @@ async def main():
             if wifi_ok:
                 log.info("[MAIN] WiFi connected")
                 system_status.set_connection_status(wifi=True)
-                sync_time_ntp()
-                log.info("[MAIN] NTP synced + TIME_SYNC broadcast sent")
+                try:
+                    sync_time_ntp()
+                    log.info("[MAIN] NTP synced + TIME_SYNC broadcast sent")
+                except Exception as e:
+                    log.warn(f"[MAIN] NTP sync failed: {e} — continuing with RTC time")
             else:
                 log.warn("[MAIN] WiFi failed — running on RTC")
         except Exception as e:

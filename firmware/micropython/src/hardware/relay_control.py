@@ -1,4 +1,7 @@
 from machine import Pin
+from shared.simple_logger import Logger
+
+log = Logger()
 
 
 class RelayChannel:
@@ -39,14 +42,18 @@ class RelayController:
         self._relays = {}
 
     def init_from_config(self, relays_cfg):
+        log.info("[RELAY] Initializing...")
         for r in relays_cfg:
             rid = r.get("id")
             pin = r.get("gpio_pin")
             default = r.get("default_state", "off")
+            enabled = r.get("enabled", False)
             if rid and pin is not None:
                 if rid in self._relays:
                     self._relays[rid].deinit()
                 self._relays[rid] = RelayChannel(rid, pin, default)
+                log.info(f"[RELAY] {rid}: GPIO{pin}, default={default}, enabled={enabled}")
+        log.info(f"[RELAY] Initialized {len(self._relays)} relay(s)")
 
     def set(self, relay_id, state):
         r = self._relays.get(relay_id)

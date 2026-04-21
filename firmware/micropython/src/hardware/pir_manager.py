@@ -1,6 +1,8 @@
 import asyncio
 from machine import Pin
+from shared.simple_logger import Logger
 
+log = Logger()
 
 _DEBOUNCE_MS = 500
 
@@ -78,17 +80,24 @@ class PIRManager:
             cb(pir_id)
 
     def init_from_config(self, pir_cfg):
+        log.info("[PIR] Initializing...")
         for p in pir_cfg:
-            if not p.get("enabled", False):
-                continue
+            enabled = p.get("enabled", False)
             pid = p["id"]
+            pin = p["gpio_pin"]
+            timeout = p.get("vacancy_timeout_s", 300)
+            if not enabled:
+                log.info(f"[PIR] {pid}: GPIO{pin}, disabled")
+                continue
             self._sensors[pid] = PIRSensor(
                 pir_id=pid,
-                gpio_pin=p["gpio_pin"],
-                vacancy_timeout_s=p.get("vacancy_timeout_s", 300),
+                gpio_pin=pin,
+                vacancy_timeout_s=timeout,
                 on_motion_cb=self._motion_fired,
                 on_vacancy_cb=self._vacancy_fired,
             )
+            log.info(f"[PIR] {pid}: GPIO{pin}, timeout={timeout}s, enabled=True")
+        log.info(f"[PIR] Initialized {len(self._sensors)} sensor(s)")
 
     def get_state(self, pir_id):
         s = self._sensors.get(pir_id)
