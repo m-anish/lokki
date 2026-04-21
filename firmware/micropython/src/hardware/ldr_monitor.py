@@ -17,20 +17,28 @@ class LDRMonitor:
     def init_from_config(self, ldr_cfg, hardware_cfg):
         from shared.simple_logger import Logger
         log = Logger()
-        self._enabled = ldr_cfg.get("enabled", False)
-        if not self._enabled:
-            log.info("[LDR] Disabled in config")
-            return
+        
+        # Always initialize ADC for sensor reading
         pin = hardware_cfg.get("ldr_adc_pin", 26)
         self._adc = ADC(Pin(pin))
         self._window_size = ldr_cfg.get("smoothing_window_s", 60)
-        rules = sorted(
-            ldr_cfg.get("cap_rules", []),
-            key=lambda r: r.get("above_percent", 0),
-            reverse=True,
-        )
-        self._cap_rules = rules
-        log.info(f"[LDR] Initialized on GP{pin}, window={self._window_size}s, rules={len(rules)}")
+        
+        # Cap rules are optional (enabled flag controls whether caps are applied)
+        cap_enabled = ldr_cfg.get("enabled", False)
+        if cap_enabled:
+            rules = sorted(
+                ldr_cfg.get("cap_rules", []),
+                key=lambda r: r.get("above_percent", 0),
+                reverse=True,
+            )
+            self._cap_rules = rules
+            log.info(f"[LDR] Initialized on GP{pin}, window={self._window_size}s, cap_rules={len(rules)} (ENABLED)")
+        else:
+            self._cap_rules = []
+            log.info(f"[LDR] Initialized on GP{pin}, window={self._window_size}s, cap_rules=DISABLED")
+        
+        # Always enable sensor reading
+        self._enabled = True
 
     def on_cap_change(self, callback):
         self._on_cap_change = callback

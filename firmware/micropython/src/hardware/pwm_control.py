@@ -114,10 +114,16 @@ class PWMController:
             cid = item[0]
             # Extract number from 'ch1', 'ch2', etc.
             try:
-                return int(cid[2:]) if cid.startswith('ch') else cid
+                num = int(cid[2:]) if cid.startswith('ch') else 999
+                log.debug(f"[PWM] sort_key: {cid} -> {num}")
+                return num
             except (ValueError, IndexError):
-                return cid
-        return {cid: ch.duty_percent for cid, ch in sorted(self._channels.items(), key=sort_key)}
+                log.debug(f"[PWM] sort_key: {cid} -> fallback")
+                return 999
+        sorted_items = sorted(self._channels.items(), key=sort_key)
+        result = {cid: ch.duty_percent for cid, ch in sorted_items}
+        log.debug(f"[PWM] get_all() order: {list(result.keys())} -> values: {list(result.values())}")
+        return result
 
     def deinit(self):
         for ch in self._channels.values():
