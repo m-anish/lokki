@@ -109,17 +109,23 @@ class PWMController:
 
     def get_all(self):
         # Return dict sorted by channel ID (ch1, ch2, ..., ch8)
-        # Sort by extracting numeric part to avoid alphabetic sorting (ch10 < ch2)
+        # IMPORTANT: Must maintain order for dashboard display!
+        # Sort by extracting numeric part: 'ch1'->1, 'ch2'->2, etc.
         def sort_key(item):
-            cid = item[0]
-            # Extract number from 'ch1', 'ch2', etc.
+            cid, ch = item  # item is a tuple (channel_id, PWMChannel)
             try:
-                num = int(cid[2:]) if cid.startswith('ch') else 999
-                log.debug(f"[PWM] sort_key: {cid} -> {num}")
-                return num
-            except (ValueError, IndexError):
-                log.debug(f"[PWM] sort_key: {cid} -> fallback")
+                # Extract number from 'ch1', 'ch2', etc.
+                if cid.startswith('ch'):
+                    num = int(cid[2:])
+                    log.debug(f"[PWM] sort_key: {cid} -> {num}")
+                    return num
+                else:
+                    log.debug(f"[PWM] sort_key: {cid} -> 999 (not ch*)")
+                    return 999
+            except (ValueError, IndexError) as e:
+                log.debug(f"[PWM] sort_key: {cid} -> 999 (error: {e})")
                 return 999
+        
         sorted_items = sorted(self._channels.items(), key=sort_key)
         result = {cid: ch.duty_percent for cid, ch in sorted_items}
         log.debug(f"[PWM] get_all() order: {list(result.keys())} -> values: {list(result.values())}")
