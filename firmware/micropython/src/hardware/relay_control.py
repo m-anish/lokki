@@ -52,7 +52,7 @@ class RelayController:
                 if rid in self._relays:
                     self._relays[rid].deinit()
                 self._relays[rid] = RelayChannel(rid, pin, default)
-                log.info(f"[RELAY] {rid}: GPIO{pin}, default={default}, enabled={enabled}")
+                log.debug(f"[RELAY] {rid}: GPIO{pin}, default={default}, enabled={enabled}")
         log.info(f"[RELAY] Initialized {len(self._relays)} relay(s)")
 
     def set(self, relay_id, state):

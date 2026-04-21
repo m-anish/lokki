@@ -32,7 +32,7 @@ class PriorityArbiter:
             cid = ch["id"]
             default_duty = ch.get("default_duty_percent", 0)
             enabled = ch.get("enabled", False)
-            log.info(f"[ARBITER] LED {cid}: default={default_duty}%, enabled={enabled}")
+            log.debug(f"[ARBITER] LED {cid}: default={default_duty}%, enabled={enabled}")
             self._state[cid] = {
                 "type": "led",
                 "manual": None,
@@ -45,7 +45,7 @@ class PriorityArbiter:
             rid = r["id"]
             default_state = r.get("default_state", "off")
             enabled = r.get("enabled", False)
-            log.info(f"[ARBITER] Relay {rid}: default={default_state}, enabled={enabled}")
+            log.debug(f"[ARBITER] Relay {rid}: default={default_state}, enabled={enabled}")
             self._state[rid] = {
                 "type": "relay",
                 "manual": None,
@@ -207,14 +207,14 @@ class PriorityArbiter:
             fade_ms = source.get("fade_ms", 0) if source else 0
             source_name = "manual" if s["manual"] else ("pir" if s["pir"] else "schedule")
             if fade_ms > 0:
-                log.info(f"[ARBITER] {output_id}: {new_actual}% (fade {fade_ms}ms) from {source_name}")
+                log.debug(f"[ARBITER] {output_id}: {new_actual}% (fade {fade_ms}ms) from {source_name}")
                 asyncio.create_task(pwm_controller.fade_to(output_id, new_actual, fade_ms))
             else:
-                log.info(f"[ARBITER] {output_id}: {new_actual}% from {source_name}")
+                log.debug(f"[ARBITER] {output_id}: {new_actual}% from {source_name}")
                 pwm_controller.set(output_id, new_actual)
         else:
             source_name = "manual" if s["manual"] else ("pir" if s["pir"] else "schedule")
-            log.info(f"[ARBITER] {output_id}: {new_actual} from {source_name}")
+            log.debug(f"[ARBITER] {output_id}: {new_actual} from {source_name}")
             relay_controller.set(output_id, new_actual)
 
     def _apply_all(self, force=False):

@@ -73,7 +73,7 @@ class PWMController:
         self._channels = {}
 
     def init_from_config(self, led_channels_cfg, freq_hz=1000, gamma=2.2):
-        log.info(f"[PWM] Initializing with freq={freq_hz}Hz, gamma={gamma}")
+        log.debug(f"[PWM] Initializing with freq={freq_hz}Hz, gamma={gamma}")
         set_gamma(gamma)
         for ch in led_channels_cfg:
             cid = ch.get("id")
@@ -83,7 +83,7 @@ class PWMController:
                 if cid in self._channels:
                     self._channels[cid].deinit()
                 self._channels[cid] = PWMChannel(cid, pin, freq_hz)
-                log.info(f"[PWM] {cid}: GPIO{pin}, enabled={enabled}")
+                log.debug(f"[PWM] {cid}: GPIO{pin}, enabled={enabled}")
         log.info(f"[PWM] Initialized {len(self._channels)} channel(s)")
 
     def set(self, channel_id, duty_pct):

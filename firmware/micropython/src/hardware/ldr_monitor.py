@@ -86,7 +86,7 @@ class LDRMonitor:
             # Debug logging every 10 seconds
             log_counter += 1
             if log_counter >= 10:
-                log.info(f"[LDR] raw_adc={raw_adc}, inverted={reading}%, smoothed={self._ambient_percent}%, cap={new_cap}")
+                log.debug(f"[LDR] raw_adc={raw_adc}, reading={reading}%, smoothed={self._ambient_percent}%, cap={new_cap}")
                 log_counter = 0
 
             if new_cap != self._cap_percent:
