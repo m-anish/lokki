@@ -108,27 +108,29 @@ class PWMController:
         return ch.duty_percent if ch else 0
 
     def get_all(self):
-        # Return dict sorted by channel ID (ch1, ch2, ..., ch8)
-        # IMPORTANT: Must maintain order for dashboard display!
-        # Sort by extracting numeric part: 'ch1'->1, 'ch2'->2, etc.
+        # Return list of duty percentages sorted by channel number
+        # CRITICAL: MicroPython dicts don't maintain insertion order!
+        # Must return values in a list, sorted by channel ID number
+        
+        # Sort channels by numeric ID: ch1=1, ch2=2, ..., ch8=8
         def sort_key(item):
-            cid, ch = item  # item is a tuple (channel_id, PWMChannel)
+            cid, ch = item
             try:
-                # Extract number from 'ch1', 'ch2', etc.
                 if cid.startswith('ch'):
-                    num = int(cid[2:])
-                    log.debug(f"[PWM] sort_key: {cid} -> {num}")
-                    return num
-                else:
-                    log.debug(f"[PWM] sort_key: {cid} -> 999 (not ch*)")
-                    return 999
-            except (ValueError, IndexError) as e:
-                log.debug(f"[PWM] sort_key: {cid} -> 999 (error: {e})")
+                    return int(cid[2:])
+                return 999
+            except (ValueError, IndexError):
                 return 999
         
         sorted_items = sorted(self._channels.items(), key=sort_key)
-        result = {cid: ch.duty_percent for cid, ch in sorted_items}
-        log.debug(f"[PWM] get_all() order: {list(result.keys())} -> values: {list(result.values())}")
+        
+        # Return list of values in sorted order
+        result = [ch.duty_percent for cid, ch in sorted_items]
+        
+        # Debug: show channel IDs and their values
+        channel_ids = [cid for cid, ch in sorted_items]
+        log.debug(f"[PWM] get_all() channels: {channel_ids} -> values: {result}")
+        
         return result
 
     def deinit(self):

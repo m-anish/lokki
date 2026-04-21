@@ -36,7 +36,7 @@ def handle_fleet_status():
     fleet[0] = {
         "online": True,
         "uptime": system_status.get_uptime(),
-        "ch": list(pwm_controller.get_all().values()),
+        "ch": pwm_controller.get_all(),  # Already returns sorted list
         "rl": list(relay_controller.get_all().values()),
         "pir": list(pir_manager.get_all_states().values()),
         "ldr": ldr_monitor.ambient_percent,
@@ -57,7 +57,7 @@ def handle_unit_status(unit_id):
         return _ok({
             "online": True,
             "uptime": system_status.get_uptime(),
-            "ch": list(pwm_controller.get_all().values()),
+            "ch": pwm_controller.get_all(),  # Already returns sorted list
             "rl": list(relay_controller.get_all().values()),
             "pir": list(pir_manager.get_all_states().values()),
             "ldr": ldr_monitor.ambient_percent,

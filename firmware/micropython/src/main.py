@@ -101,7 +101,7 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
         try:
             payload = {
                 "uptime":  system_status.get_uptime(),
-                "ch":      list(pwm_controller.get_all().values()),
+                "ch":      pwm_controller.get_all(),  # Already returns sorted list
                 "rl":      list(relay_controller.get_all().values()),
                 "pir":     list(pir_manager.get_all_states().values()),
                 "ldr":     ldr_monitor.ambient_percent,
@@ -182,7 +182,7 @@ def _register_lora_handlers(role, fleet_manager=None):
     def on_status_request(src, payload):
         response = {
             "uptime":  system_status.get_uptime(),
-            "ch":      list(pwm_controller.get_all().values()),
+            "ch":      pwm_controller.get_all(),  # Already returns sorted list
             "rl":      list(relay_controller.get_all().values()),
             "pir":     list(pir_manager.get_all_states().values()),
             "ldr":     ldr_monitor.ambient_percent,
