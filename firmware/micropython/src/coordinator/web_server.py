@@ -201,6 +201,9 @@ class WebServer:
         if path == "/api/config" and method == "GET":
             return self._json(api.handle_unit_config(0))
 
+        if path == "/api/reboot" and method == "POST":
+            return self._json(api.handle_reboot())
+
         # --- Fleet ---
         if path == "/api/fleet" and method == "GET":
             return self._json(api.handle_fleet_status())
@@ -439,7 +442,8 @@ class WebServer:
             "<div style='margin-top:40px;padding-top:20px;border-top:1px solid var(--border);font-size:.85em;color:var(--muted)'>"
             "<a href='/api/config' download='config.json' style='color:var(--brand)'>📥 Export Config</a> &middot; "
             "<a href='/index.html' style='color:var(--brand)'>📄 Documentation</a> &middot; "
-            "<a href='/config-builder.html' style='color:var(--brand)'>⚙️ Config Builder</a>"
+            "<a href='/config-builder.html' style='color:var(--brand)'>⚙️ Config Builder</a> &middot; "
+            "<button class='btn' onclick='rebootDevice()' style='color:#dc2626;border-color:#fca5a5'>🔄 Reboot</button>"
             "</div>"
             "</main>"
             "<!-- Manual Override Modal -->"
@@ -631,6 +635,14 @@ class WebServer:
             " await fetch(`/api/units/${{currentUnitId}}/manual`,{{method:'DELETE'}});"
             " closeModal();"
             " load();"
+            "}}"
+            "async function rebootDevice(){{"
+            " if(!confirm('Reboot the coordinator? This will disconnect all clients briefly.')) return;"
+            " try{{"
+            "  await fetch('/api/reboot',{{method:'POST'}});"
+            "  alert('Rebooting... The page will reload in 10 seconds.');"
+            "  setTimeout(()=>{{window.location.reload();}},10000);"
+            " }}catch(e){{alert('Reboot request failed: '+e);}}"
             "}}"
             "function updateClock(){{"
             " const now=new Date();"

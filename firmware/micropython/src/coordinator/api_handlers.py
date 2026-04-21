@@ -214,3 +214,19 @@ def handle_sensors():
 def handle_request_status(unit_id):
     lora_protocol.request_status(unit_id)
     return _ok({"requested": unit_id})
+
+
+# ------------------------------------------------------------------
+# Reboot coordinator
+# ------------------------------------------------------------------
+
+def handle_reboot():
+    import machine
+    log.info("[API] Reboot requested")
+    # Schedule reboot after response is sent
+    import asyncio
+    async def do_reboot():
+        await asyncio.sleep(1)  # Give time for response to be sent
+        machine.reset()
+    asyncio.create_task(do_reboot())
+    return _ok({"rebooting": True})

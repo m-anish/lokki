@@ -359,6 +359,7 @@
       <div class="dl-actions">
         <button class="btn btn-primary" id="dlBtn" onclick="downloadJSON()">⬇ Download config.json</button>
         <button class="btn btn-success coordinator-only" id="saveDeviceBtn" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
+        <button class="btn coordinator-only" id="rebootBtn" onclick="rebootDevice()" style="display:none;color:#dc2626;border-color:#fca5a5">🔄 Reboot</button>
         <button class="btn" id="dlSunTimesBtn" onclick="downloadSunTimes()" style="display:none" disabled>⬇ Download sun_times.json</button>
         <button class="btn" id="uploadBtn">↑ Load existing config</button>
         <button class="btn coordinator-only" id="loadFromCoordinatorBtn" onclick="loadFromCoordinator()" style="display:none">📡 Load from Coordinator</button>
@@ -1890,6 +1891,23 @@ async function saveToDevice() {
     showToast('Could not reach device: ' + e.message, 'err');
   } finally {
     btns.forEach(b=>{ if(b){ b.disabled=false; b.textContent='↑ Save to device'; } });
+  }
+}
+
+// ============================================================
+// Reboot device
+// ============================================================
+async function rebootDevice() {
+  if (!confirm('Reboot the coordinator? This will disconnect all clients briefly and apply the new config.')) return;
+  const btn = document.getElementById('rebootBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Rebooting…'; }
+  try {
+    await fetch('/api/reboot', { method: 'POST' });
+    showToast('Rebooting... The page will reload in 10 seconds.', 'ok');
+    setTimeout(() => { window.location.href = '/'; }, 10000);
+  } catch (e) {
+    showToast('Reboot request failed: ' + e.message, 'err');
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Reboot'; }
   }
 }
 
