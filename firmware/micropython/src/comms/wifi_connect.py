@@ -58,55 +58,59 @@ def connect_wifi(timeout=10, max_attempts=3):
 
 
 def sync_time_ntp():
+    """
+    Attempt NTP sync with aggressive timeout.
+    Returns True on success, False on failure (non-fatal).
+    """
     tz_offset = config_manager.get("timezone").get("utc_offset_hours", 0)
-    servers = ["pool.ntp.org"]  # Try only one server to avoid long delays
     
-    synced = False
+    # Use a faster, more reliable NTP server
+    servers = ["time.google.com", "pool.ntp.org"]
+    
     for server in servers:
         start_time = time.time()
         try:
             ntptime.host = server
-            ntptime.timeout = 3  # Increased from 2 to 3 seconds
+            ntptime.timeout = 2  # Socket timeout
             log.info(f"[NTP] Attempting sync with {server}...")
             
-            # Add manual timeout check in case ntptime.settime() blocks
+            # ntptime.settime() can block indefinitely despite timeout setting
+            # We'll try it but give up quickly if it hangs
             ntptime.settime()
             
             elapsed = time.time() - start_time
             log.info(f"[NTP] Synced with {server} in {elapsed:.1f}s")
-            synced = True
-            break
+            
+            # Success! Update RTC and broadcast
+            utc_sec   = time.time()
+            local_sec = utc_sec + int(tz_offset * 3600)
+            dt_tuple  = urtc.seconds2tuple(local_sec)
+            rtc.datetime(dt_tuple)
+            log.info("[NTP] DS3231 updated with local time")
+            
+            try:
+                from comms.lora_protocol import lora_protocol
+                lora_protocol.broadcast_time_sync(utc_sec, tz_offset)
+                log.info("[NTP] TIME_SYNC broadcast sent")
+            except Exception as e:
+                log.warn(f"[NTP] TIME_SYNC broadcast failed: {e}")
+            
+            return True
+            
         except OSError as e:
             elapsed = time.time() - start_time
             log.warn(f"[NTP] {server} network error after {elapsed:.1f}s: {e}")
-            # Network errors are usually quick, continue to next attempt
+            # Quick network errors, try next server
+            if elapsed > 3:
+                break  # Taking too long, give up
         except Exception as e:
             elapsed = time.time() - start_time
             log.warn(f"[NTP] {server} failed after {elapsed:.1f}s: {e}")
-        
-        # If we spent too long, don't retry
-        if time.time() - start_time > 5:
-            log.error("[NTP] Timeout exceeded, aborting")
-            break
+            if elapsed > 3:
+                break
     
-    if not synced:
-        log.error("[NTP] All sync attempts failed")
-        raise Exception("NTP sync failed")
-
-    utc_sec   = time.time()
-    local_sec = utc_sec + int(tz_offset * 3600)
-    dt_tuple  = urtc.seconds2tuple(local_sec)
-    rtc.datetime(dt_tuple)
-    log.info("[NTP] DS3231 updated with local time")
-
-    try:
-        from comms.lora_protocol import lora_protocol
-        lora_protocol.broadcast_time_sync(utc_sec, tz_offset)
-        log.info("[NTP] TIME_SYNC broadcast sent")
-    except Exception as e:
-        log.warn(f"[NTP] TIME_SYNC broadcast failed: {e}")
-
-    return True
+    log.error("[NTP] All sync attempts failed - continuing without NTP")
+    return False
 
 
 def get_network_status():

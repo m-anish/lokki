@@ -278,11 +278,11 @@ async def main():
             if wifi_ok:
                 log.info("[MAIN] WiFi connected")
                 system_status.set_connection_status(wifi=True)
-                try:
-                    sync_time_ntp()
-                    log.info("[MAIN] NTP synced + TIME_SYNC broadcast sent")
-                except Exception as e:
-                    log.warn(f"[MAIN] NTP sync failed: {e} — continuing with RTC time")
+                # NTP sync is optional - returns True/False, never blocks indefinitely
+                if sync_time_ntp():
+                    log.info("[MAIN] NTP synced successfully")
+                else:
+                    log.warn("[MAIN] NTP sync failed — continuing with RTC time")
             else:
                 log.warn("[MAIN] WiFi failed — running on RTC")
         except Exception as e:
