@@ -108,7 +108,8 @@ class PWMController:
         return ch.duty_percent if ch else 0
 
     def get_all(self):
-        return {cid: ch.duty_percent for cid, ch in self._channels.items()}
+        # Return dict sorted by channel ID to ensure consistent order
+        return {cid: ch.duty_percent for cid, ch in sorted(self._channels.items())}
 
     def deinit(self):
         for ch in self._channels.values():
