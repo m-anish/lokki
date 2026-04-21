@@ -53,9 +53,10 @@ class LDRMonitor:
 
     def _read_adc(self):
         raw = self._adc.read_u16()       # 0–65535
-        # Invert: LDR is on top of voltage divider, so low voltage = bright light
-        # 0 ADC = bright (100%), 65535 ADC = dark (0%)
-        return 100 - int(raw * 100 / 65535)
+        # LDR is on bottom of voltage divider (connected to GND)
+        # Low ADC = dark (LDR high resistance), High ADC = bright (LDR low resistance)
+        # 0 ADC = dark (0%), 65535 ADC = bright (100%)
+        return int(raw * 100 / 65535)
 
     def _compute_cap(self, ambient):
         for rule in self._cap_rules:
