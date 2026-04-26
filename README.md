@@ -37,6 +37,18 @@ Built on a custom PCB (Rev0) with:
 
 Full GPIO map and hardware details: [docs/architecture.md](docs/architecture.md)
 
+### LED Channel Capacity
+
+Each of the 8 channels is driven by a PT4115 constant-current buck driver. Assuming a **24V supply** with ~2V of driver headroom (≈22V usable across the LED string), the table below shows how many LEDs can be wired in series per channel for common power and colour options:
+
+| Colour | 1W | 3W | 5W | 10W |
+|--------|----|----|----|-----|
+| Cool white (Vf ≈ 3.2 / 3.4 / 3.6 / 10V) | 6 | 6 | 6 | 2 |
+| Warm white (Vf ≈ 3.0 / 3.2 / 3.4 / 9.6V) | 7 | 6 | 6 | 2 |
+| Amber (Vf ≈ 2.0 / 2.2 / 2.4 / 6.6V) | 11 | 10 | 9 | 3 |
+
+Forward-voltage figures are typical at rated current; check your specific LED's datasheet before finalising a string. The PT4115 will also work down to ~6V input, so smaller strings on a lower supply rail are equally valid — a 12V supply, for example, halves the per-string count but doubles efficiency for short strings.
+
 ---
 
 ## Documentation
