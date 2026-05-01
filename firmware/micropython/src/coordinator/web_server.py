@@ -123,6 +123,8 @@ class WebServer:
             await self._send_all(conn, response.encode())
         except Exception as e:
             log.error(f"[WEB] Handler error: {e}")
+            import sys
+            sys.print_exception(e)
             try:
                 await self._send_all(
                     conn,
@@ -323,8 +325,9 @@ class WebServer:
             method     = parts[0].upper() if len(parts) > 0 else "GET"
             
             # Fix: Add bounds check before accessing parts[1]
-            if len(parts) > 1:
-                path = parts[1].split("?")[0]
+            if len(parts) > 1 and parts[1]:
+                path_parts = parts[1].split("?")
+                path = path_parts[0] if path_parts and path_parts[0] else "/"
             else:
                 path = "/"
             
