@@ -378,7 +378,7 @@ class WebServer:
             "<!DOCTYPE html><html><head>"
             "<meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            f"<title>{title}</title>"
+            "<title>" + title + "</title>"
             "<meta name='color-scheme' content='light dark'>"
             "<style>"
             "*, *::before, *::after{box-sizing:border-box}"
