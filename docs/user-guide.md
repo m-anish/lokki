@@ -15,13 +15,14 @@ Each Lokki unit has a WS2812 RGB status LED on the front of the PCB. It tells yo
 | White | Pulsing (breathing) | Booting up — normal on power-on, lasts a few seconds |
 | Cyan | Solid | Initialising LoRa radio |
 | Blue | Blinking | Connecting to WiFi *(coordinator only)* |
-| Green | Solid (dim) | Running normally — all good |
+| Green | Solid (dim) | Running normally — LoRa not connected or disabled |
+| Green + blue flash | Green solid, brief blue flash every ~4 s | Running normally with LoRa active — healthy operating state |
 | Amber | Solid | One or more leaf units not responding *(coordinator only)* |
 | Purple | Solid (dim) | Manual override active — someone has taken direct control via the dashboard |
 | Red | Blinking | Error — check the serial console or web dashboard for details |
 | Off | — | Unit is off, or status LED pin is not configured |
 
-**Normal operating colour is dim green.** If you walk past a unit and it's green, it's healthy and following its schedule.
+**Normal operating colour is dim green with a brief blue heartbeat flash every ~4 seconds.** The blue flash confirms the LoRa radio is initialised and the unit is in the mesh. If you walk past a unit and it's plain green (no blue flash), LoRa failed to initialise — check the serial console.
 
 **Amber on the coordinator** means at least one leaf unit has missed its heartbeat. This could mean the leaf is powered off, out of LoRa range, or has crashed. Check the fleet dashboard.
 

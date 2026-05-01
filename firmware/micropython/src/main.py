@@ -75,6 +75,11 @@ def _setup_pir_handlers(pir_cfg, scenes):
 # Async tasks
 # ------------------------------------------------------------------
 
+def _ok_led_state():
+    """Return the appropriate steady LED state depending on LoRa connectivity."""
+    return "running_lora_ok" if system_status.lora_connected else "running_ok"
+
+
 async def schedule_task(interval_ms):
     while True:
         try:
@@ -82,6 +87,7 @@ async def schedule_task(interval_ms):
             priority_arbiter.set_schedule(desired)
         except Exception as e:
             log.error(f"[SCHEDULE] {e}")
+            system_status.record_error(f"schedule: {e}")
         await asyncio.sleep_ms(interval_ms)
 
 
@@ -110,6 +116,7 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
             lora_protocol.send_heartbeat(payload)
         except Exception as e:
             log.error(f"[HB] Broadcast error: {e}")
+            system_status.record_error(f"hb: {e}")
         await asyncio.sleep(interval_s)
 
 
@@ -120,7 +127,12 @@ async def fleet_timeout_task(fleet_manager, interval_s=10):
         any_offline = any(
             not u["online"] for u in fleet_manager.get_all().values()
         )
-        status_led.set_state("leaf_offline" if any_offline else "running_ok")
+        if any_offline:
+            status_led.set_state("leaf_offline")
+        elif priority_arbiter.has_manual():
+            status_led.set_state("manual_override")
+        else:
+            status_led.set_state(_ok_led_state())
         await asyncio.sleep(interval_s)
 
 
@@ -176,7 +188,7 @@ def _register_lora_handlers(role, fleet_manager=None):
             for item in relays:
                 if isinstance(item, (list, tuple)) and len(item) == 2:
                     priority_arbiter.set_manual(item[0], item[1], 0, revert_s)
-        status_led.set_state("manual_override" if priority_arbiter.has_manual() else "running_ok")
+        status_led.set_state("manual_override" if priority_arbiter.has_manual() else _ok_led_state())
     lora_protocol.on("MO", on_manual_override)
 
     def on_status_request(src, payload):
@@ -258,6 +270,7 @@ async def main():
     except Exception as e:
         log.error(f"[MAIN] LoRa init failed: {e}")
         system_status.set_connection_status(lora=False)
+        system_status.record_error(f"lora_init: {e}")
 
     # --- Fleet manager init (coordinator) ---
     fleet_mgr = None
@@ -285,10 +298,12 @@ async def main():
                     log.warn("[MAIN] NTP sync failed — continuing with RTC time")
             else:
                 log.warn("[MAIN] WiFi failed — running on RTC")
+                system_status.record_error("wifi_connect failed")
         except Exception as e:
             log.error(f"[MAIN] WiFi/NTP error: {e}")
+            system_status.record_error(f"wifi: {e}")
 
-    status_led.set_state("running_ok")
+    status_led.set_state(_ok_led_state())
 
     # --- Task list ---
     tasks = []

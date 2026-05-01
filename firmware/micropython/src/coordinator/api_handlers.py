@@ -9,6 +9,10 @@ from shared.simple_logger import Logger
 log = Logger()
 
 
+def _ok_led_state():
+    return "running_lora_ok" if system_status.lora_connected else "running_ok"
+
+
 def _ok(data=None):
     if data is None:
         return {"ok": True}
@@ -176,6 +180,8 @@ def handle_manual_override(unit_id, payload):
                 log.info(f"[API] Setting relay {rid}={val}, revert={revert_s}s")
                 priority_arbiter.set_manual(rid, val, 0, revert_s)
             log.info("[API] Manual override applied successfully")
+            from hardware.status_led import status_led
+            status_led.set_state("manual_override" if priority_arbiter.has_manual() else _ok_led_state())
             return _ok({"applied": "local"})
 
         seq = lora_protocol.send_manual_override(unit_id, channels, relays, revert_s)
@@ -193,6 +199,8 @@ def handle_manual_clear(unit_id, output_id=None):
             priority_arbiter.clear_manual(output_id)
         else:
             priority_arbiter.clear_all_manual()
+        from hardware.status_led import status_led
+        status_led.set_state(_ok_led_state())
         return _ok()
 
     seq = lora_protocol.send_manual_override(unit_id, [], [], revert_s=-1)
