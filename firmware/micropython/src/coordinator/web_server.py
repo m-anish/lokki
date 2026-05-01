@@ -347,10 +347,17 @@ class WebServer:
             return None
 
     def _dashboard_html(self):
-        unit_name = config_manager.unit_name
-        role      = config_manager.role
-        unit_id   = config_manager.unit_id
-        uptime    = system_status.get_uptime_string()
+        try:
+            unit_name = config_manager.unit_name or "Lokki"
+            role      = config_manager.role or "coordinator"
+            unit_id   = config_manager.unit_id or 0
+            uptime    = system_status.get_uptime_string() or "0s"
+        except Exception as e:
+            log.error(f"[WEB] Error getting dashboard vars: {e}")
+            unit_name = "Lokki"
+            role = "coordinator"
+            unit_id = 0
+            uptime = "0s"
         return (
             "<!DOCTYPE html><html><head>"
             "<meta charset='utf-8'>"
