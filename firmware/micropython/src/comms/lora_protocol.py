@@ -20,9 +20,10 @@ ERR       = "ERR"
 CFG_START = "CFG_START"
 CFG_CHUNK = "CFG_CHUNK"
 CFG_END   = "CFG_END"
+EO        = "EO"          # Emergency Off — all outputs to zero
 
 # ACK required for these types
-_ACK_REQUIRED = {SC, MO, CFG_END}
+_ACK_REQUIRED = {SC, MO, EO, CFG_END}
 
 _ACK_TIMEOUT_S  = 10
 _CHUNK_SIZE     = 150
@@ -272,6 +273,9 @@ class LoRaProtocol:
 
     def request_status(self, dest):
         self.send(SR, dest)
+
+    def send_emergency_off(self, dest):
+        return self.send(EO, dest)
 
 
 lora_protocol = LoRaProtocol()

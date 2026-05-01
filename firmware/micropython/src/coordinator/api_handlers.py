@@ -220,6 +220,39 @@ def handle_sensors():
 
 
 # ------------------------------------------------------------------
+# Per-unit scenes (from fleet cache, or coordinator config)
+# ------------------------------------------------------------------
+
+def handle_unit_scenes(unit_id):
+    if unit_id == 0:
+        scenes = config_manager.get("scenes")
+        return _ok([s.get("name", "") for s in scenes if isinstance(s, dict)])
+    u = fleet_manager.get(unit_id)
+    if u is None:
+        return _err(f"Unknown unit {unit_id}", 404)
+    return _ok(u.get("scenes", []))
+
+
+# ------------------------------------------------------------------
+# Emergency off — zero all outputs on coordinator + all leaf units
+# ------------------------------------------------------------------
+
+def handle_emergency_off():
+    for ch in config_manager.get("led_channels"):
+        priority_arbiter.set_manual(ch["id"], 0, 0, 0)
+    for r in config_manager.get("relays"):
+        priority_arbiter.set_manual(r["id"], 0, 0, 0)
+    from hardware.status_led import status_led
+    status_led.set_state("manual_override")
+
+    results = {0: "applied_local"}
+    for uid in fleet_manager.get_all():
+        seq = lora_protocol.send_emergency_off(uid)
+        results[uid] = "sent" if seq else "send_failed"
+    return _ok(results)
+
+
+# ------------------------------------------------------------------
 # Request status from a leaf
 # ------------------------------------------------------------------
 

@@ -42,6 +42,7 @@ class FleetManager:
         u["ldr"]       = payload.get("ldr", u["ldr"])
         u["sensors"]   = payload.get("sensors", u["sensors"])
         u["err"]       = payload.get("err", u["err"])
+        u["scenes"]    = payload.get("sc", u["scenes"])
 
         if was_offline:
             log.info(f"[FLEET] Unit {unit_id} is back online")
@@ -92,6 +93,7 @@ class FleetManager:
             "ldr":       None,
             "sensors":   {},
             "err":       0,
+            "scenes":    [],
         }
 
 

@@ -149,11 +149,24 @@ Returns HTTP 502 if the LoRa transfer fails. Returns HTTP 400 with a validation 
 ### Scenes
 
 #### `GET /api/scenes`
-Returns the list of named scenes currently configured on the coordinator.
+Returns the list of named scenes configured on the coordinator.
 
 **Response `data`**
 ```json
 ["evening", "meditation", "motion_bright"]
+```
+
+---
+
+#### `GET /api/units/{id}/scenes`
+Returns the scene names available on a specific unit.
+
+- **id = 0**: reads from the coordinator's live config immediately.
+- **id = 1–8**: returns the scene list cached from the last SRP (status response) received from that leaf. Empty list `[]` if the leaf hasn't responded since boot — open its **Control** modal to trigger a status request, then open again.
+
+**Response `data`**
+```json
+["evening", "security"]
 ```
 
 ---
@@ -165,12 +178,30 @@ Activates a scene by name. Scene names are URL-encoded in the path (e.g. `scene%
 ```json
 { "unit_ids": [0, 1, 2] }
 ```
-Omit `unit_ids` to apply only to the coordinator (id 0). Leaf units receive the scene name over LoRa.
+Omit `unit_ids` to apply only to the coordinator (id 0). Leaf units receive the scene name over LoRa (SC message). The scene must be defined in the leaf's own config — the coordinator sends only the name.
 
 **Response `data`**
 ```json
 { "0": "applied_local", "1": "sent", "2": "sent" }
 ```
+
+---
+
+### Emergency Off
+
+#### `POST /api/emergency-off`
+Immediately zeroes all LED channels and relays on every unit.
+
+- Coordinator: sets all outputs to 0 as a manual override (status LED goes purple).
+- Each leaf: sends an `EO` (Emergency Off) LoRa message; the leaf applies 0% to all its own channels/relays.
+- No request body needed.
+
+**Response `data`**
+```json
+{ "0": "applied_local", "1": "sent", "2": "sent" }
+```
+
+To restore normal operation, use `DELETE /api/units/{id}/manual` (or **Clear All** in the dashboard) for each unit.
 
 ---
 
