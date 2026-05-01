@@ -348,10 +348,17 @@ class WebServer:
 
     def _dashboard_html(self):
         try:
-            unit_name = str(config_manager.unit_name or "Lokki")
-            role      = str(config_manager.role or "coordinator")
-            unit_id   = int(config_manager.unit_id or 0)
-            uptime    = str(system_status.get_uptime_string() or "0s")
+            unit_name_raw = config_manager.unit_name
+            role_raw = config_manager.role
+            unit_id_raw = config_manager.unit_id
+            uptime_raw = system_status.get_uptime_string()
+            
+            log.debug(f"[WEB] Dashboard vars: name={unit_name_raw} ({type(unit_name_raw)}), role={role_raw} ({type(role_raw)}), id={unit_id_raw} ({type(unit_id_raw)}), uptime={uptime_raw} ({type(uptime_raw)})")
+            
+            unit_name = str(unit_name_raw or "Lokki")
+            role      = str(role_raw or "coordinator")
+            unit_id   = int(unit_id_raw or 0)
+            uptime    = str(uptime_raw or "0s")
         except Exception as e:
             log.error(f"[WEB] Error getting dashboard vars: {e}")
             import sys
