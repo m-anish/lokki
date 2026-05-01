@@ -348,17 +348,21 @@ class WebServer:
 
     def _dashboard_html(self):
         try:
-            unit_name = config_manager.unit_name or "Lokki"
-            role      = config_manager.role or "coordinator"
-            unit_id   = config_manager.unit_id or 0
-            uptime    = system_status.get_uptime_string() or "0s"
+            unit_name = str(config_manager.unit_name or "Lokki")
+            role      = str(config_manager.role or "coordinator")
+            unit_id   = int(config_manager.unit_id or 0)
+            uptime    = str(system_status.get_uptime_string() or "0s")
         except Exception as e:
             log.error(f"[WEB] Error getting dashboard vars: {e}")
+            import sys
+            sys.print_exception(e)
             unit_name = "Lokki"
             role = "coordinator"
             unit_id = 0
             uptime = "0s"
-        return (
+        
+        try:
+            html = (
             "<!DOCTYPE html><html><head>"
             "<meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -755,7 +759,13 @@ class WebServer:
             "updateUptime();setInterval(updateUptime,60000);"
             "</script>"
             "</body></html>"
-        )
+            )
+            return html
+        except Exception as e:
+            log.error(f"[WEB] Error building dashboard HTML: {e}")
+            import sys
+            sys.print_exception(e)
+            return "<html><body><h1>Error loading dashboard</h1><p>Please check logs</p></body></html>"
 
     def stop(self):
         self.running = False
