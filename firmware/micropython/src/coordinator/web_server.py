@@ -372,11 +372,13 @@ class WebServer:
         log.info(f"[WEB] Final dashboard vars: name='{unit_name}' (type={type(unit_name).__name__}), id={unit_id} (type={type(unit_id).__name__}), uptime='{uptime}' (type={type(uptime).__name__})")
         
         try:
+            # Build title separately to isolate any f-string issues
+            title = "Lokki - " + str(unit_name)
             html = (
             "<!DOCTYPE html><html><head>"
             "<meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            f"<title>Lokki — {unit_name}</title>"
+            f"<title>{title}</title>"
             "<meta name='color-scheme' content='light dark'>"
             "<style>"
             "*, *::before, *::after{{box-sizing:border-box}}"
@@ -492,15 +494,15 @@ class WebServer:
             "}}"
             "</style></head><body>"
             "<nav>"
-            f"<a href='/' class='nav-logo'>Lokki <span>— {unit_name}</span></a>"
+            "<a href='/' class='nav-logo'>Lokki <span>- " + unit_name + "</span></a>"
             "<div style='margin-left:auto;display:flex;gap:16px;font-size:.85em'>"
             "<span id='currentTime' style='color:var(--muted)'></span>"
-            f"<span id='uptime' style='color:var(--muted)'>Uptime: {uptime}</span>"
+            "<span id='uptime' style='color:var(--muted)'>Uptime: " + uptime + "</span>"
             "</div>"
             "</nav>"
             "<div class='hero'>"
-            f"<h1>{unit_name}</h1>"
-            f"<p>Coordinator • Unit ID {unit_id}</p>"
+            "<h1>" + unit_name + "</h1>"
+            "<p>Coordinator - Unit ID " + str(unit_id) + "</p>"
             "<div id='connStatus' style='margin-top:12px;font-size:.85em;opacity:.8'></div>"
             "</div>"
             "<main>"
