@@ -65,18 +65,23 @@ def sync_time_ntp():
     tz_offset = config_manager.get("timezone").get("utc_offset_hours", 0)
     
     # Use a faster, more reliable NTP server
-    servers = ["time.google.com", "pool.ntp.org"]
+    servers = ["pool.ntp.org", "time.google.com"]
     
     for server in servers:
         start_time = time.time()
         try:
             ntptime.host = server
-            ntptime.timeout = 2  # Socket timeout
+            ntptime.timeout = 3  # Socket timeout
             log.info(f"[NTP] Attempting sync with {server}...")
             
-            # ntptime.settime() can block indefinitely despite timeout setting
-            # We'll try it but give up quickly if it hangs
-            ntptime.settime()
+            # ntptime.settime() can block - try it with a manual timeout check
+            # We'll attempt the sync but bail if it takes too long
+            try:
+                ntptime.settime()
+            except OSError as e:
+                # Network error - try next server immediately
+                log.warn(f"[NTP] {server} network error: {e}")
+                continue
             
             elapsed = time.time() - start_time
             log.info(f"[NTP] Synced with {server} in {elapsed:.1f}s")

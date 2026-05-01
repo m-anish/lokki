@@ -194,14 +194,24 @@ def _register_lora_handlers(role, fleet_manager=None):
     def on_status_request(src, payload):
         response = {
             "uptime":  system_status.get_uptime(),
-            "ch":      pwm_controller.get_all(),  # Already returns sorted list
+            "ch":      pwm_controller.get_all(),
             "rl":      list(relay_controller.get_all().values()),
             "pir":     list(pir_manager.get_all_states().values()),
             "ldr":     ldr_monitor.ambient_percent,
             "err":     system_status.error_count,
+            "sc":      list(scenes.keys()),
         }
         lora_protocol.send("SRP", src, response)
     lora_protocol.on("SR", on_status_request)
+
+    def on_emergency_off(src, _payload):
+        for ch in config_manager.get("led_channels"):
+            priority_arbiter.set_manual(ch["id"], 0, 0, 0)
+        for r in config_manager.get("relays"):
+            priority_arbiter.set_manual(r["id"], 0, 0, 0)
+        status_led.set_state("manual_override")
+        log.info(f"[LORA] Emergency off from {src}")
+    lora_protocol.on("EO", on_emergency_off)
 
 
 async def safe_mode():
@@ -291,11 +301,16 @@ async def main():
             if wifi_ok:
                 log.info("[MAIN] WiFi connected")
                 system_status.set_connection_status(wifi=True)
-                # NTP sync is optional - returns True/False, never blocks indefinitely
-                if sync_time_ntp():
-                    log.info("[MAIN] NTP synced successfully")
+                # NTP sync is optional - can be disabled in config
+                ntp_enabled = cfg.get("timezone", {}).get("ntp_enabled", False)
+                if ntp_enabled:
+                    log.info("[MAIN] NTP enabled, attempting sync...")
+                    if sync_time_ntp():
+                        log.info("[MAIN] NTP synced successfully")
+                    else:
+                        log.warn("[MAIN] NTP sync failed — continuing with RTC time")
                 else:
-                    log.warn("[MAIN] NTP sync failed — continuing with RTC time")
+                    log.info("[MAIN] NTP disabled in config — using RTC time")
             else:
                 log.warn("[MAIN] WiFi failed — running on RTC")
                 system_status.record_error("wifi_connect failed")
