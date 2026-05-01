@@ -22,8 +22,8 @@ _BLINK_OFF_MS  = 200
 _PULSE_STEP_MS = 20
 
 # Heartbeat: hold base colour for BASE ms, then flash blue for FLASH ms
-_HB_BASE_MS  = 3900
-_HB_FLASH_MS = 100
+_HB_BASE_MS  = 3500
+_HB_FLASH_MS = 500
 _HB_R, _HB_G, _HB_B = 0, 80, 255   # blue — same convention as Meshtastic
 _HB_BRIGHTNESS = 0.4
 

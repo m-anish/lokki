@@ -16,7 +16,7 @@ Each Lokki unit has a WS2812 RGB status LED on the front of the PCB. It tells yo
 | Cyan | Solid | Initialising LoRa radio |
 | Blue | Blinking | Connecting to WiFi *(coordinator only)* |
 | Green | Solid (dim) | Running normally — LoRa not connected or disabled |
-| Green + blue flash | Green solid, brief blue flash every ~4 s | Running normally with LoRa active — healthy operating state |
+| Green + blue flash | Green solid, brief blue flash every ~4 s (0.5 s long) | Running normally with LoRa active — healthy operating state |
 | Amber | Solid | One or more leaf units not responding *(coordinator only)* |
 | Purple | Solid (dim) | Manual override active — someone has taken direct control via the dashboard |
 | Red | Blinking | Error — check the serial console or web dashboard for details |

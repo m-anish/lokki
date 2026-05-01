@@ -1671,8 +1671,13 @@ function syncScene(el) {
   }
   if (f==='led_check') {
     const ci=+el.getAttribute('data-ci');
-    if (el.checked) sc.led_channels.push({id:ledState[ci].id,duty_percent:60,fade_ms:0});
-    else sc.led_channels=sc.led_channels.filter(x=>x.id!==ledState[ci].id);
+    const chId=ledState[ci].id;
+    if (el.checked) {
+      if (!sc.led_channels.find(x=>x.id===chId))
+        sc.led_channels.push({id:chId,duty_percent:60,fade_ms:0});
+    } else {
+      sc.led_channels=sc.led_channels.filter(x=>x.id!==chId);
+    }
     renderScenes(); return;
   }
   if (f==='led_duty') {
@@ -1696,8 +1701,13 @@ function syncScene(el) {
   }
   if (f==='rl_check') {
     const ri=+el.getAttribute('data-ri');
-    if (el.checked) sc.relays.push({id:relayState[ri].id,state:'off'});
-    else sc.relays=sc.relays.filter(x=>x.id!==relayState[ri].id);
+    const rId=relayState[ri].id;
+    if (el.checked) {
+      if (!sc.relays.find(x=>x.id===rId))
+        sc.relays.push({id:rId,state:'off'});
+    } else {
+      sc.relays=sc.relays.filter(x=>x.id!==rId);
+    }
     renderScenes(); return;
   }
   if (f==='rl_state') {
@@ -1976,8 +1986,13 @@ function applyConfigToForm(cfg) {
     Object.assign({},relayState[i],r,{time_windows:(r.time_windows||[]).map(w=>({...w}))}); }); renderRelays(); }
   if (cfg.led_channels) { cfg.led_channels.forEach((ch,i)=>{ if(i<ledState.length) ledState[i]=
     Object.assign({},ledState[i],ch,{time_windows:(ch.time_windows||[]).map(w=>({...w}))}); }); renderLEDs(); }
-  if (cfg.scenes) { scenes=cfg.scenes.map(sc=>({name:sc.name,
-    led_channels:(sc.led_channels||[]).map(x=>({...x})),relays:(sc.relays||[]).map(x=>({...x}))})); renderScenes(); }
+  if (cfg.scenes) {
+    const dedup=(arr)=>{ const seen=new Set(); return arr.filter(x=>{ if(seen.has(x.id))return false; seen.add(x.id); return true; }); };
+    scenes=cfg.scenes.map(sc=>({name:sc.name,
+      led_channels:dedup((sc.led_channels||[]).map(x=>({...x}))),
+      relays:dedup((sc.relays||[]).map(x=>({...x})))}));
+    renderScenes();
+  }
 
   const n=cfg.notifications||{};
   setChk('n_enabled', n.mqtt_enabled);

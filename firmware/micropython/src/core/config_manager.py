@@ -74,6 +74,7 @@ class ConfigManager:
             raise ValueError(f"Invalid JSON: {e}")
         old = self._config
         self._config = candidate
+        self._normalize_scenes()
         try:
             self._validate()
         except Exception:
@@ -81,6 +82,20 @@ class ConfigManager:
             raise
         with open(self.config_file, "w") as f:
             json.dump(self._config, f)
+
+    def _normalize_scenes(self):
+        """Remove duplicate channel/relay entries within each scene (keep first)."""
+        for scene in self._config.get("scenes", []):
+            for key in ("led_channels", "relays"):
+                entries = scene.get(key, [])
+                seen = set()
+                deduped = []
+                for entry in entries:
+                    eid = entry.get("id")
+                    if eid is not None and eid not in seen:
+                        seen.add(eid)
+                        deduped.append(entry)
+                scene[key] = deduped
 
     def reload(self):
         self.load()
