@@ -302,7 +302,8 @@ async def main():
                 log.info("[MAIN] WiFi connected")
                 system_status.set_connection_status(wifi=True)
                 # NTP sync is optional - can be disabled in config
-                ntp_enabled = cfg.get("timezone", {}).get("ntp_enabled", False)
+                tz_config = cfg.get("timezone") or {}
+                ntp_enabled = tz_config.get("ntp_enabled", False)
                 if ntp_enabled:
                     log.info("[MAIN] NTP enabled, attempting sync...")
                     if sync_time_ntp():
