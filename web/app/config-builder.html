@@ -1663,7 +1663,12 @@ function renderScenes() {
 function syncScene(el) {
   const i=+el.getAttribute('data-sc'), f=el.getAttribute('data-f');
   const sc=scenes[i];
-  if (f==='name') { sc.name=el.value; renderScenes(); return; }
+  if (f==='name') {
+    sc.name=el.value;
+    const strong=el.closest('.card').querySelector('.card-title strong');
+    if (strong) strong.textContent=sc.name||'(unnamed)';
+    scheduleRender(); return;
+  }
   if (f==='led_check') {
     const ci=+el.getAttribute('data-ci');
     if (el.checked) sc.led_channels.push({id:ledState[ci].id,duty_percent:60,fade_ms:0});
