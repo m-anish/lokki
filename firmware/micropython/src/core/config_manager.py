@@ -58,7 +58,7 @@ class ConfigManager:
         self._config[section] = data
         try:
             with open(self.config_file, "w") as f:
-                json.dump(self._config, f, indent=2)
+                json.dump(self._config, f)
             return True
         except Exception as e:
             _log.error(f"Config save failed: {e}")
@@ -77,7 +77,7 @@ class ConfigManager:
             self._config = old
             raise
         with open(self.config_file, "w") as f:
-            json.dump(self._config, f, indent=2)
+            json.dump(self._config, f)
 
     def reload(self):
         self.load()

@@ -1617,22 +1617,22 @@ function renderScenes() {
               ${ch.name}
               <span class="expert-only-inline" style="font-size:.75em;color:var(--muted)">· GP${ch.gpio_pin}</span>
             </div>
-            ${checked?`<div style="display:flex;align-items:center;gap:16px;margin-top:8px;flex-wrap:wrap">
-              <label style="display:flex;align-items:center;gap:8px;font-size:.8em;color:#374151">
-                Brightness
-                <div class="range-field" style="width:140px">
+            ${checked?`<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:.8em;color:#374151;min-width:64px">Brightness</span>
+                <div class="range-field" style="flex:1">
                   <input type="range" min="0" max="100" value="${entry.duty_percent||0}"
                          data-sc="${i}" data-f="led_duty" data-ci="${ci}" />
                   <span class="range-val">${entry.duty_percent||0}%</span>
                   ${swatchHTML(entry.duty_percent||0)}
                 </div>
-              </label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:.8em;color:#374151">
-                Fade
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:.8em;color:#374151;min-width:64px">Fade</span>
                 <input type="number" min="0" value="${entry.fade_ms||0}"
-                       data-sc="${i}" data-f="led_fade" data-ci="${ci}" style="width:70px" />
-                <span style="color:var(--muted)">ms</span>
-              </label>
+                       data-sc="${i}" data-f="led_fade" data-ci="${ci}" style="width:80px" />
+                <span style="font-size:.8em;color:var(--muted)">ms</span>
+              </div>
             </div>`:''}
           </div>
         </div>`;
@@ -1673,9 +1673,16 @@ function syncScene(el) {
   if (f==='led_duty') {
     const ci=+el.getAttribute('data-ci');
     const e=sc.led_channels.find(x=>x.id===ledState[ci].id);
-    if (e) { e.duty_percent=+el.value;
-      const sp=el.closest('label').querySelector('.range-val');
-      if(sp) sp.textContent=el.value+'%'; }
+    if (e) {
+      e.duty_percent=+el.value;
+      const rf=el.closest('.range-field');
+      if(rf) {
+        const sp=rf.querySelector('.range-val');
+        if(sp) sp.textContent=el.value+'%';
+        const sw=rf.querySelector('.bswatch');
+        if(sw) sw.setAttribute('style', swatchStyle(+el.value));
+      }
+    }
   }
   if (f==='led_fade') {
     const ci=+el.getAttribute('data-ci');
