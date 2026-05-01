@@ -54,6 +54,9 @@ class ConfigManager:
     def get(self, section):
         return self._config.get(section, {})
 
+    def get_all(self):
+        return self._config
+
     def save(self, section, data):
         self._config[section] = data
         try:

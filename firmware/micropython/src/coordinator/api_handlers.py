@@ -94,6 +94,10 @@ async def handle_config_push(unit_id, config_str):
     return _err(f"Config transfer to unit {unit_id} failed — check LoRa link", 502)
 
 
+def handle_full_config():
+    return _ok(config_manager.get_all())
+
+
 def handle_unit_config(unit_id):
     if unit_id == 0:
         # Return coordinator's config including channel/relay details

@@ -58,6 +58,7 @@ Forward-voltage figures are typical at rated current; check your specific LED's 
 | [docs/user-guide.md](docs/user-guide.md) | Status LED meanings, day-to-day operation, troubleshooting |
 | [docs/architecture.md](docs/architecture.md) | System overview, topology, GPIO map, failure modes |
 | [docs/config-schema.md](docs/config-schema.md) | Complete `config.json` structure with examples |
+| [docs/api-reference.md](docs/api-reference.md) | REST API reference, CORS, PWA integration guide |
 | [docs/lora-protocol.md](docs/lora-protocol.md) | LoRa message types, packet format, chunked transfer |
 | [docs/firmware-modules.md](docs/firmware-modules.md) | Module map, interfaces, implementation phases |
 | [ROADMAP.md](ROADMAP.md) | Planned features and future direction |

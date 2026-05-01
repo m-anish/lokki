@@ -114,7 +114,11 @@ class WebServer:
             response = (
                 f"HTTP/1.1 {status}\r\n"
                 f"Content-Type: {ctype}\r\n"
-                "Connection: close\r\n\r\n"
+                "Connection: close\r\n"
+                "Access-Control-Allow-Origin: *\r\n"
+                "Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\n"
+                "Access-Control-Allow-Headers: Content-Type\r\n"
+                "\r\n"
             ) + body_out
             await self._send_all(conn, response.encode())
         except Exception as e:
@@ -190,6 +194,10 @@ class WebServer:
     # ------------------------------------------------------------------
 
     async def _route(self, method, path, headers, body):
+        # --- CORS preflight ---
+        if method == "OPTIONS":
+            return "204 No Content", "text/plain", ""
+
         # --- Static dashboard ---
         if path == "/" and method == "GET":
             return "200 OK", "text/html", self._dashboard_html()
@@ -199,7 +207,7 @@ class WebServer:
             return self._json(api.handle_coordinator_status())
 
         if path == "/api/config" and method == "GET":
-            return self._json(api.handle_unit_config(0))
+            return self._json(api.handle_full_config())
 
         if path == "/api/reboot" and method == "POST":
             return self._json(api.handle_reboot())
