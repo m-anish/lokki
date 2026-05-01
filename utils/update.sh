@@ -26,7 +26,15 @@ pkill -f mpremote 2>/dev/null || true
 sleep 0.5
 
 echo "[update] Flashing firmware $SRC_DIR -> :/ ..."
-mpremote connect auto fs cp -r "$SRC_DIR"/* :
+# Copy firmware files, excluding __pycache__ directories
+find "$SRC_DIR" -type f -name "*.py" | while read -r file; do
+    rel_path="${file#$SRC_DIR/}"
+    dir_path="$(dirname "$rel_path")"
+    if [ "$dir_path" != "." ]; then
+        mpremote connect auto fs mkdir -p ":$dir_path" 2>/dev/null || true
+    fi
+    mpremote connect auto fs cp "$file" ":$rel_path"
+done
 
 echo "[update] Flashing web assets $WEB_DIR -> :/www ..."
 mpremote connect auto fs mkdir www 2>/dev/null || true
