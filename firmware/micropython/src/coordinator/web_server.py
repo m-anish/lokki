@@ -219,6 +219,7 @@ class WebServer:
             scene_name = path[len("/api/scenes/"):]
             if scene_name.endswith("/apply"):
                 scene_name = scene_name[:-len("/apply")]
+            scene_name = self._url_decode(scene_name)
             parsed = self._parse_json_body(body)
             unit_ids = parsed.get("unit_ids") if parsed else None
             return self._json(api.handle_scene_apply(scene_name, unit_ids))
@@ -267,6 +268,25 @@ class WebServer:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _url_decode(self, s):
+        res = []
+        i = 0
+        while i < len(s):
+            if s[i] == '%' and i + 2 < len(s):
+                try:
+                    res.append(chr(int(s[i+1:i+3], 16)))
+                    i += 3
+                    continue
+                except ValueError:
+                    pass
+            elif s[i] == '+':
+                res.append(' ')
+                i += 1
+                continue
+            res.append(s[i])
+            i += 1
+        return ''.join(res)
 
     def _json(self, result):
         status_code = result.pop("_status", 200) if isinstance(result, dict) else 200
