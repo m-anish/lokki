@@ -232,6 +232,9 @@ class WebServer:
             unit_ids = parsed.get("unit_ids") if parsed else None
             return self._json(api.handle_scene_apply(scene_name, unit_ids))
 
+        if path == "/api/emergency-off" and method == "POST":
+            return self._json(api.handle_emergency_off())
+
         # --- Per-unit endpoints  /api/units/<id>/... ---
         if path.startswith("/api/units/"):
             return await self._route_unit(method, path, body)
@@ -271,6 +274,9 @@ class WebServer:
         if sub == "status" and method == "POST":
             return self._json(api.handle_request_status(unit_id))
 
+        if sub == "scenes" and method == "GET":
+            return self._json(api.handle_unit_scenes(unit_id))
+
         return "404 Not Found", "application/json", '{"ok":false,"error":"not found"}'
 
     # ------------------------------------------------------------------
@@ -308,9 +314,20 @@ class WebServer:
             header_raw = raw[:header_end] if header_end >= 0 else raw
             body       = raw[header_end + 4:] if header_end >= 0 else b""
             lines      = header_raw.split(b"\r\n")
+            
+            # Handle empty or malformed requests
+            if not lines or not lines[0]:
+                return "GET", "/", {}, b""
+            
             parts      = lines[0].decode().split(" ")
             method     = parts[0].upper() if len(parts) > 0 else "GET"
-            path       = parts[1].split("?")[0] if len(parts) > 1 else "/"
+            
+            # Fix: Add bounds check before accessing parts[1]
+            if len(parts) > 1:
+                path = parts[1].split("?")[0]
+            else:
+                path = "/"
+            
             headers    = {}
             for line in lines[1:]:
                 if b":" in line:
@@ -463,10 +480,17 @@ class WebServer:
             "<div id='connStatus' style='margin-top:12px;font-size:.85em;opacity:.8'></div>"
             "</div>"
             "<main>"
+            "<div style='margin-bottom:24px;padding:16px 20px;"
+            "background:#fef2f2;border:2px solid #dc2626;border-radius:var(--radius);text-align:center'>"
+            "<button class='btn' onclick='emergencyOff()' "
+            "style='background:#dc2626;color:#fff;border-color:#b91c1c;"
+            "font-size:1.05em;padding:.6em 2.5em;font-weight:800;letter-spacing:.02em'>"
+            "EMERGENCY OFF — All Units</button>"
+            "<div style='font-size:.8em;color:#991b1b;margin-top:6px'>"
+            "Turns off all LEDs and relays on all units immediately</div>"
+            "</div>"
             "<h2 style='font-size:1.2em;margin:0 0 16px;font-weight:700'>Fleet Status</h2>"
             "<div id='fleet'>Loading…</div>"
-            "<h2 style='font-size:1.2em;margin:32px 0 16px;font-weight:700'>Scenes</h2>"
-            "<div id='scenes'>Loading…</div>"
             "<div style='margin-top:40px;padding-top:20px;border-top:1px solid var(--border);font-size:.85em;color:var(--muted)'>"
             "<a href='/api/config' download='config.json' style='color:var(--brand)'>📥 Export Config</a> &middot; "
             "<a href='/index.html' style='color:var(--brand)'>📄 Documentation</a> &middot; "
@@ -532,37 +556,29 @@ class WebServer:
             " }}"
             " if(!Object.keys(units).length) h='<p style=\"color:var(--muted)\">No units detected</p>';"
             " document.getElementById('fleet').innerHTML=h;"
-            " const sc=await fetch('/api/scenes').then(r=>r.json());"
-            " const scenes=sc.data||[];"
-            " let sh=scenes.map(s=>"
-            "  `<button class='btn' onclick='applyScene(\"${{s}}\")'>${{s}}</button> `"
-            " ).join('')||'No scenes defined';"
-            " document.getElementById('scenes').innerHTML=sh;"
             "}}"
             "async function reqStatus(id){{"
             " await fetch(`/api/units/${{id}}/status`,{{method:'POST'}});"
             " setTimeout(load,2000);"
             "}}"
-            "async function applyScene(name){{"
-            " if(!confirm(`Apply scene '${{name}}' to all units?`)) return;"
-            " await fetch(`/api/scenes/${{name}}/apply`,{{method:'POST',"
-            "  headers:{{'Content-Type':'application/json'}},body:'{{}}'}});"
-            " load();"
-            "}}"
             "let currentUnitId=null;"
             "async function openControlModal(id,name){{"
             " currentUnitId=id;"
-            " document.getElementById('modalTitle').textContent=`Control - ${{name}}`;"
+            " document.getElementById('modalTitle').textContent='Control — '+name;"
+            " document.getElementById('modalBody').innerHTML='<p style=\"color:var(--muted)\">Loading…</p>';"
             " document.getElementById('controlModal').style.display='block';"
-            " const cfgUrl=id==0?'/api/config':`/api/units/${{id}}/config`;"
+            " const cfgUrl=id==0?'/api/config':'/api/units/'+id+'/config';"
             " const cfg=await fetch(cfgUrl).then(r=>r.json());"
-            " const config=cfg.data||{{}};"
+            " const config=cfg.data||{};"
             " const channels=config.led_channels||[];"
             " const relays=config.relays||[];"
+            " const scRes=await fetch('/api/units/'+id+'/scenes').then(r=>r.json());"
+            " const unitScenes=scRes.data||[];"
+            " if(id!=0)fetch('/api/units/'+id+'/status',{method:'POST'});"
             " let html='<div class=\"preset-buttons\">';"
             " html+='<button class=\"btn\" onclick=\"applyPreset(100)\">All 100%</button>';"
-            " html+='<button class=\"btn\" onclick=\"applyPreset(75)\">All 75%</button>';"
             " html+='<button class=\"btn\" onclick=\"applyPreset(50)\">All 50%</button>';"
+            " html+='<button class=\"btn\" onclick=\"applyPreset(25)\">All 25%</button>';"
             " html+='<button class=\"btn\" onclick=\"applyPreset(0)\">All Off</button>';"
             " html+='</div>';"
             " if(channels.length){{"
@@ -593,6 +609,14 @@ class WebServer:
             "  }});"
             "  html+='</div>';"
             " }}"
+            " if(unitScenes.length){"
+            "  html+='<div class=\"control-group\"><h3>Scenes</h3>';"
+            "  html+='<div class=\"preset-buttons\">';"
+            "  unitScenes.forEach(function(s){"
+            "   html+='<button class=\"btn scene-btn\" data-scene=\"'+s+'\">'+s+'</button> ';"
+            "  });"
+            "  html+='</div></div>';"
+            " }"
             " html+='<div class=\"options\">';"
             " html+='<label>Auto-revert: <input type=\"number\" id=\"revertTime\" value=\"60\" min=\"0\" max=\"3600\"> sec</label>';"
             " html+='<label>Fade Time (seconds)';"
@@ -607,7 +631,30 @@ class WebServer:
             " html+='<button class=\"btn\" onclick=\"closeModal()\">Close</button>';"
             " html+='</div>';"
             " document.getElementById('modalBody').innerHTML=html;"
+            " document.querySelectorAll('.scene-btn').forEach(function(b){"
+            "  b.onclick=function(){applySceneToUnit(b.dataset.scene);}"
+            " });"
             "}}"
+            "async function applySceneToUnit(name){"
+            " if(!confirm('Apply scene: '+name+'?')) return;"
+            " const enc=encodeURIComponent(name);"
+            " const r=await fetch('/api/scenes/'+enc+'/apply',{"
+            "  method:'POST',headers:{'Content-Type':'application/json'},"
+            "  body:JSON.stringify({unit_ids:[currentUnitId]})"
+            " });"
+            " const j=await r.json();"
+            " if(!j.ok)alert('Error: '+j.error);"
+            " closeModal();setTimeout(load,500);"
+            "}"
+            "async function emergencyOff(){"
+            " if(!confirm('Turn off ALL LEDs and relays on ALL units?')) return;"
+            " try{"
+            "  const r=await fetch('/api/emergency-off',{method:'POST'});"
+            "  const j=await r.json();"
+            "  if(!j.ok)alert('Emergency off error: '+j.error);"
+            "  setTimeout(load,500);"
+            " }catch(e){alert('Emergency off failed: '+e);}"
+            "}"
             "function closeModal(){{"
             " document.getElementById('controlModal').style.display='none';"
             "}}"
