@@ -368,6 +368,9 @@ class WebServer:
             unit_id = 0
             uptime = "0s"
         
+        # Log final values before using them
+        log.info(f"[WEB] Final dashboard vars: name='{unit_name}' (type={type(unit_name).__name__}), id={unit_id} (type={type(unit_id).__name__}), uptime='{uptime}' (type={type(uptime).__name__})")
+        
         try:
             html = (
             "<!DOCTYPE html><html><head>"
