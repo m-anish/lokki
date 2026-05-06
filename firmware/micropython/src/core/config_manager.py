@@ -30,7 +30,14 @@ class ConfigManager:
     def __init__(self, config_file="config.json"):
         self.config_file = config_file
         self._config = {}
-        self.load()
+        self.safe_mode_reason = None
+        try:
+            self.load()
+        except SafeModeError as e:
+            # Capture rather than raise so module import doesn't fail.
+            # main.py inspects safe_mode_reason at boot and enters safe_mode().
+            self.safe_mode_reason = str(e)
+            _log.error(f"Config load failed, will enter safe mode: {e}")
 
     # ------------------------------------------------------------------
     # Public API
@@ -57,16 +64,6 @@ class ConfigManager:
     def get_all(self):
         return self._config
 
-    def save(self, section, data):
-        self._config[section] = data
-        try:
-            with open(self.config_file, "w") as f:
-                json.dump(self._config, f)
-            return True
-        except Exception as e:
-            _log.error(f"Config save failed: {e}")
-            return False
-
     def replace(self, new_config_str):
         try:
             candidate = json.loads(new_config_str)
@@ -80,8 +77,20 @@ class ConfigManager:
         except Exception:
             self._config = old
             raise
-        with open(self.config_file, "w") as f:
-            json.dump(self._config, f)
+        self._atomic_write(self._config)
+
+    def _atomic_write(self, cfg):
+        """Write config via tmp + rename to survive power loss mid-write."""
+        tmp = self.config_file + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(cfg, f)
+        # Best-effort atomic swap. If rename isn't atomic on this VFS,
+        # we still get a tmp file as fallback for manual recovery.
+        try:
+            os.remove(self.config_file)
+        except OSError:
+            pass
+        os.rename(tmp, self.config_file)
 
     def _normalize_scenes(self):
         """Remove duplicate channel/relay entries within each scene (keep first)."""

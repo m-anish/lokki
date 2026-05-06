@@ -108,30 +108,11 @@ class PWMController:
         return ch.duty_percent if ch else 0
 
     def get_all(self):
-        # Return list of duty percentages sorted by channel number
-        # CRITICAL: MicroPython dicts don't maintain insertion order!
-        # Must return values in a list, sorted by channel ID number
-        
-        # Sort channels by numeric ID: ch1=1, ch2=2, ..., ch8=8
-        def sort_key(item):
-            cid, ch = item
-            try:
-                if cid.startswith('ch'):
-                    return int(cid[2:])
-                return 999
-            except (ValueError, IndexError):
-                return 999
-        
-        sorted_items = sorted(self._channels.items(), key=sort_key)
-        
-        # Return list of values in sorted order
-        result = [ch.duty_percent for cid, ch in sorted_items]
-        
-        # Debug: show channel IDs and their values
-        channel_ids = [cid for cid, ch in sorted_items]
-        log.debug(f"[PWM] get_all() channels: {channel_ids} -> values: {result}")
-        
-        return result
+        # Returns duty percentages in config order (insertion order).
+        # MicroPython has guaranteed dict insertion order since the 1.x
+        # series; channels are inserted in the order init_from_config
+        # iterates the led_channels list, which is the user's config order.
+        return [ch.duty_percent for ch in self._channels.values()]
 
     def deinit(self):
         for ch in self._channels.values():

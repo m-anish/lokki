@@ -52,7 +52,11 @@ class SystemStatus:
         from hardware.pir_manager import pir_manager
         from hardware.ldr_monitor import ldr_monitor
         from hardware.i2c_sensors import i2c_sensors
+        from core.config_manager import config_manager
         return {
+            "unit_name": config_manager.unit_name,
+            "unit_id":   config_manager.unit_id,
+            "role":      config_manager.role,
             "uptime_s": self.get_uptime(),
             "uptime": self.get_uptime_string(),
             "connections": {

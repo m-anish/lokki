@@ -31,12 +31,22 @@ _HB_BRIGHTNESS = 0.4
 class StatusLED:
 
     def __init__(self, gpio_pin=5, num_leds=1):
+        self._gpio_pin = gpio_pin
         self._np = neopixel.NeoPixel(Pin(gpio_pin), num_leds)
         self._state_name = "off"
         self._r = self._g = self._b = 0
         self._brightness = 0.0
         self._pattern = "solid"
         self._task = None
+
+    def init_from_config(self, hardware_cfg):
+        pin = hardware_cfg.get("status_led_pin", 5)
+        if pin == self._gpio_pin:
+            return
+        self._gpio_pin = pin
+        self._np = neopixel.NeoPixel(Pin(pin), 1)
+        if self._pattern == "solid":
+            self._write(self._brightness)
 
     def set_state(self, state_name):
         entry = _STATES.get(state_name, _STATES["off"])

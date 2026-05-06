@@ -31,6 +31,9 @@ _CHUNK_DELAY_MS = 200
 _MAX_RETRIES    = 3
 _BROADCAST      = 255
 
+# E220-900T22D maximum payload per packet. Chunked transfers handle larger.
+_MAX_PACKET_BYTES = 200
+
 
 def _crc32(data):
     if isinstance(data, str):
@@ -80,6 +83,15 @@ class LoRaProtocol:
 
         try:
             raw = json.dumps(envelope).encode()
+            # CFG_CHUNK is pre-sized to fit; everything else must stay under the
+            # E220 packet limit or the receiver will see a truncated, unparseable
+            # frame. Drop here with a loud log rather than transmit garbage.
+            if msg_type != CFG_CHUNK and len(raw) > _MAX_PACKET_BYTES:
+                log.error(
+                    f"[LORA_PROTO] {msg_type} dropped: {len(raw)}B exceeds "
+                    f"{_MAX_PACKET_BYTES}B limit"
+                )
+                return None
             lora_transport.send(
                 dest if dest != _BROADCAST else 0xFFFF,
                 raw

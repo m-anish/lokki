@@ -49,6 +49,8 @@ Maximum payload: **200 bytes** per packet at default settings.
 At 2400 bps air data rate, a 200-byte packet takes ~700ms.  
 Messages larger than 200 bytes use the chunked transfer protocol (see Section 5).
 
+`lora_protocol.send()` enforces this limit: any non-`CFG_CHUNK` message whose serialized envelope exceeds 200 bytes is dropped with an error log rather than transmitted truncated. The receive UART buffer is sized at 256 bytes to give headroom for back-to-back frames in the read window.
+
 ---
 
 ## 2. Message Envelope
@@ -82,15 +84,17 @@ Leaf reports its current output states and basic health. Coordinator uses this t
 {
   "s": 1, "d": 0, "t": "HB", "seq": 12,
   "p": {
-    "up":  3600,              // uptime seconds
-    "ch":  [100,80,0,0,0,0,0,0],  // LED channels 1–8 duty% (current actual)
-    "rl":  [1, 0],            // relays 1–2 state (1=on, 0=off)
-    "pir": [0, 0, 0, 0],      // PIR states (1=motion, 0=vacant)
+    "uptime": 3600,           // seconds since boot
+    "ch":  [100,80,0,0,0,0,0,0],  // LED channels duty% — positional, sorted by channel id
+    "rl":  [1, 0],            // relay states (1=on, 0=off) — positional, in config order
+    "pir": [0, 0, 0, 0],      // PIR states (1=motion, 0=vacant) — positional, in config order
     "ldr": 42,                // LDR ambient reading 0–100%
     "err": 0                  // error count since last heartbeat
   }
 }
 ```
+
+**Note on positional lists:** `ch`, `rl`, `pir` are positional arrays, ordered by the unit's local config. The coordinator displays them by index — if a leaf's config has gaps (e.g. only `pir2` enabled), the array element is still at its config-order position, not at index `2`. Keep configs dense (no gaps) for predictable dashboard rendering.
 
 ---
 
@@ -159,12 +163,35 @@ Sets specific outputs immediately, bypassing schedule. Optional `revert_s` auto-
 {
   "s": 0, "d": 1, "t": "MO", "seq": 8,
   "p": {
-    "ch":  [{"id": "ch1", "duty": 75, "fade_ms": 2000}],
-    "rl":  [{"id": "rly1", "state": "on"}],
-    "revert_s": 3600          // 0 = hold indefinitely until next manual or reboot
+    "ch":  [["ch1", 75], ["ch3", 0]],   // [channel_id, duty_percent] pairs
+    "rl":  [["rly1", 1]],               // [relay_id, state] pairs (1=on, 0=off)
+    "revert_s": 3600,                   // 0 = hold indefinitely; -1 = clear all manual
+    "fade_ms": 2000                     // single global fade applied to all channels
   }
 }
 ```
+
+**Special values for `revert_s`:**
+- `0` → hold the override indefinitely (until cleared or replaced)
+- `-1` → clear all manual overrides on the leaf (revert to schedule)
+- `>0` → auto-revert after N seconds
+
+---
+
+### 3.5b `EO` — Emergency Off
+**Direction:** Coordinator → Leaf (per-unit, not broadcast)  
+**Trigger:** Dashboard "Emergency Off" button  
+**ACK required:** Yes
+
+Forces all of the leaf's configured LED channels and relays to 0/off via manual override. Distinct from `MO` because the coordinator doesn't know the leaf's channel/relay IDs — the leaf iterates its own config and zeroes everything.
+
+```json
+{
+  "s": 0, "d": 1, "t": "EO", "seq": 14
+}
+```
+
+No payload. Leaf applies `priority_arbiter.set_manual(id, 0, 0, 0)` for every output and sets the status LED to `manual_override` (purple). Use a subsequent `MO` with `revert_s = -1` to clear and resume schedule.
 
 ---
 
@@ -186,27 +213,30 @@ Sets specific outputs immediately, bypassing schedule. Optional `revert_s` auto-
 **Trigger:** In response to `SR`  
 **ACK required:** No
 
-Same payload structure as `HB` but sent on demand rather than on interval.
+Same payload structure as `HB` plus a `sc` field listing the leaf's configured scene names. The coordinator caches `sc` in fleet state so the dashboard's per-unit Control modal can show scene buttons without round-tripping LoRa each time.
 
 ```json
 {
   "s": 3, "d": 0, "t": "SRP", "seq": 44,
   "p": {
-    "up":  7200,
+    "uptime": 7200,
     "ch":  [0,0,0,0,0,0,0,0],
     "rl":  [0, 0],
     "pir": [0, 0, 0, 0],
     "ldr": 88,
-    "err": 0
+    "err": 0,
+    "sc":  ["evening", "security", "demo"]
   }
 }
 ```
+
+If the scene list would push the envelope past 200 bytes, the leaf truncates entries from the end until it fits. The dashboard sees fewer scenes; user gets all of them after the next SR with whatever scenes survived (deterministic by config order).
 
 ---
 
 ### 3.8 `ACK` — Acknowledgement
 **Direction:** Any → Any  
-**Trigger:** In response to any message that requires ACK (`SC`, `MO`, `CFG_*`)
+**Trigger:** In response to any message that requires ACK (`SC`, `MO`, `EO`, `CFG_END`)
 
 ```json
 {
@@ -309,6 +339,7 @@ Coordinator retries full transfer on failure.
 | `PIR` | On state change | Leaf → Coordinator | No |
 | `SC` | On demand | Coordinator → Leaf | Yes |
 | `MO` | On demand | Coordinator → Leaf | Yes |
+| `EO` | Emergency Off button | Coordinator → Leaf | Yes |
 | `SR` | On demand | Coordinator → Leaf | No |
 | `SRP` | Response to SR | Leaf → Coordinator | No |
 | `ACK` | Response to SC/MO/CFG | Any | — |

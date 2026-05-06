@@ -1,34 +1,28 @@
 # TODO
 
-Active development is on `dev/lokki-v1`. See [docs/firmware-modules.md](docs/firmware-modules.md) for the full phased plan.
+Active development on `dev/lokki-v1`. See [docs/firmware-modules.md](docs/firmware-modules.md) for the full architecture.
 
-## Phase 1 — Core hardware (single unit, no comms)
+## Status
 
-- [ ] `core/config_manager.py` — extend schema for relays, PIR, LDR, scenes, LoRa
-- [ ] `hardware/pwm_control.py` — extend to 8 channels, add fade support
-- [ ] `hardware/relay_control.py` — new: 2-channel GPIO relay driver
-- [ ] `hardware/status_led.py` — replace: WS2812 addressable LED (was simple RGB)
-- [ ] `hardware/pir_manager.py` — new: 4× PIR state machines with debounce
-- [ ] `hardware/ldr_monitor.py` — new: ADC read, rolling average, cap calculation
-- [ ] `core/schedule_engine.py` — new: extract from main.py, extend for relays
-- [ ] `core/priority_arbiter.py` — new: single source of truth for output state
-- [ ] `main.py` — update boot sequence and async task list
+Phases 1–3 are largely implemented and pass on the bench (single-unit). LoRa hardware testing (Phase 2 integration) is still pending.
 
-## Phase 2 — LoRa comms
+## Known gaps to address before LoRa integration testing
 
-- [ ] `comms/lora_transport.py` — new: E220 UART driver
-- [ ] `comms/lora_protocol.py` — new: message encode/decode/dispatch/ACK
-- [ ] `comms/wifi_connect.py` — extend: broadcast TIME_SYNC after NTP sync
+- [ ] End-to-end LoRa test on actual E220-900T22D modules: HB, SR/SRP, MO, EO, SC, CFG_* chunked transfer
+- [ ] Verify SRP packet size stays under 200 B with realistic scene names; the truncation guard in `main.on_status_request` is in place but unverified on the wire
+- [ ] Confirm AUX-disciplined transmit doesn't deadlock under heavy bidirectional traffic (e.g. coordinator broadcasting TS while a leaf is sending HB)
+- [ ] DST handling for `timezone.utc_offset_hours` — currently manual; document the seasonal flip in the user guide
 
-## Phase 3 — Coordinator layer
+## Phase 4 (deferred)
 
-- [ ] `coordinator/fleet_manager.py` — new: heartbeat tracking, unit state
-- [ ] `coordinator/api_handlers.py` — new: REST endpoint handlers
-- [ ] `coordinator/web_server.py` — extend: fleet REST API endpoints
-- [ ] `web/app/` — update helper app for fleet management UI
+- [ ] OTA config push for leaf units over LoRa (already wired via CFG_* — needs field testing)
+- [ ] Persistent error log (ring buffer to flash) — design carefully to avoid wear
+- [ ] Optional auth on web API (HTTP Basic + reverse-proxy TLS as the deployment story)
+- [ ] Auto-discovery of leaf units (any HB → fleet, optionally pending coordinator approval)
+- [ ] Periodic NTP+TS broadcast (currently boot-only)
 
-## Phase 4 — Optional / polish
+## Polish
 
-- [ ] `hardware/i2c_sensors.py` — new: optional BME280/BH1750/SCD40 support
-- [ ] Update `shared/json/config.schema.json` for JSON Schema validation
-- [ ] Update `web/app/config-builder.html` for new schema
+- [ ] Reconcile `_dashboard_html`-era debug behaviour in any remaining scripts
+- [ ] Consolidate per-handler imports in `api_handlers.py` to top-of-file (only if it helps boot RAM)
+- [ ] Add `POST /api/time-sync` to broadcast TS on demand

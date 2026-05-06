@@ -85,7 +85,7 @@ class PIRManager:
             enabled = p.get("enabled", False)
             pid = p["id"]
             pin = p["gpio_pin"]
-            timeout = p.get("vacancy_timeout_s", 300)
+            timeout = p.get("vacancy_timeout_s", 60)
             if not enabled:
                 log.debug(f"[PIR] {pid}: GPIO{pin}, disabled")
                 continue

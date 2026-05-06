@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Lokki Dashboard</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+:root {
+  --brand:#4f46e5; --brand-d:#3730a3; --bg:#f8fafc; --card:#ffffff;
+  --border:#e2e8f0; --text:#0f172a; --muted:#64748b; --radius:10px; --green:#059669;
+}
+body {
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:15px; line-height:1.5;
+}
+nav {
+  background:var(--card); border-bottom:1px solid var(--border);
+  padding:0 24px; display:flex; align-items:center; gap:12px; height:56px;
+}
+.nav-logo {
+  font-size:1.1em; font-weight:700; color:var(--brand);
+  letter-spacing:-.02em; text-decoration:none;
+}
+.nav-logo span { color:var(--text); font-weight:400; }
+.hero {
+  background:linear-gradient(135deg,#312e81 0%,#4f46e5 60%,#7c3aed 100%);
+  color:#fff; text-align:center; padding:40px 24px 36px;
+}
+.hero h1 {
+  margin:0 0 10px; font-size:clamp(1.4em,4vw,2em);
+  font-weight:800; letter-spacing:-.03em;
+}
+.hero p { margin:0 auto; max-width:500px; font-size:.95em; opacity:.85; }
+main { max-width:1000px; margin:0 auto; padding:24px 20px 60px; }
+.unit-card {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); margin-bottom:16px;
+  box-shadow:0 1px 3px rgba(0,0,0,.05);
+}
+.unit-head {
+  display:flex; align-items:center; gap:12px; padding:16px 20px;
+  border-bottom:1px solid var(--border);
+}
+.unit-name { font-size:1.1em; font-weight:700; flex:1; }
+.unit-role {
+  font-size:.75em; padding:3px 10px; border-radius:12px;
+  background:#ede9fe; color:#5b21b6; font-weight:600; text-transform:uppercase;
+}
+.unit-body { padding:16px 20px; }
+.status-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; }
+.status-section { display:flex; flex-direction:column; gap:8px; }
+.status-label {
+  font-size:.75em; font-weight:600; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.05em;
+}
+.led-indicators { display:flex; gap:4px; flex-wrap:nowrap; overflow-x:auto; }
+.bswatch {
+  width:28px; height:28px; border-radius:50%; border:1px solid #475569;
+  display:inline-flex; align-items:center; justify-content:center; transition:all .2s;
+  font-size:.65em; font-weight:700; color:#1e293b;
+  text-shadow:0 0 2px rgba(255,255,255,0.8);
+}
+.relay-indicators { display:flex; gap:8px; }
+.relay-ind {
+  width:32px; height:20px; border-radius:10px; border:1px solid #475569;
+  display:inline-flex; align-items:center; justify-content:center;
+  font-size:.7em; font-weight:700; transition:all .2s;
+}
+.relay-ind.on { background:#10b981; color:#fff; border-color:#10b981; }
+.relay-ind.off { background:#e5e7eb; color:#6b7280; border-color:#9ca3af; }
+.sensor-data { display:flex; gap:16px; flex-wrap:wrap; font-size:.9em; }
+.sensor-item { display:flex; align-items:center; gap:6px; }
+.sensor-value { font-weight:700; color:var(--text); }
+.online { color:var(--green); }
+.offline { color:#dc2626; }
+.btn {
+  display:inline-block; padding:.5em 1em; border:1px solid var(--border);
+  border-radius:6px; cursor:pointer; background:var(--card);
+  font-size:.85em; font-weight:600; color:var(--text); transition:all .2s;
+}
+.btn:hover { background:var(--brand); color:#fff; border-color:var(--brand); }
+.btn-danger { color:#dc2626; border-color:#fca5a5; }
+.btn-danger:hover { background:#dc2626; color:#fff; border-color:#dc2626; }
+.modal {
+  display:none; position:fixed; z-index:1000; left:0; top:0;
+  width:100%; height:100%; background:rgba(0,0,0,0.5); overflow:auto;
+}
+.modal-content {
+  background:var(--card); margin:5% auto; padding:20px; border-radius:8px;
+  max-width:500px; box-shadow:0 4px 6px rgba(0,0,0,0.3);
+}
+.modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; }
+.modal-header h2 { margin:0; font-size:1.2em; }
+.close { cursor:pointer; font-size:1.5em; font-weight:bold; color:#888; }
+.close:hover { color:#000; }
+.control-group { margin:15px 0; padding:10px; background:#f9f9f9; border-radius:4px; }
+.control-group h3 { margin:0 0 10px 0; font-size:1em; color:#555; }
+.channel-control, .relay-control { margin:8px 0; padding:8px; background:#fff; border-radius:3px; }
+.channel-control label { display:block; margin-bottom:5px; font-weight:bold; font-size:0.9em; }
+.slider-container { display:flex; align-items:center; gap:10px; }
+.slider {
+  flex:1; height:6px; -webkit-appearance:none; appearance:none;
+  background:#ddd; border-radius:3px; outline:none;
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance:none; appearance:none; width:18px; height:18px;
+  background:#4CAF50; cursor:pointer; border-radius:50%;
+}
+.slider::-moz-range-thumb {
+  width:18px; height:18px; background:#4CAF50; cursor:pointer; border-radius:50%;
+}
+.slider-value { min-width:45px; text-align:right; font-weight:bold; color:#333; }
+.relay-toggle { position:relative; display:inline-block; width:50px; height:26px; }
+.relay-toggle input { opacity:0; width:0; height:0; }
+.toggle-slider {
+  position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
+  background:#ccc; border-radius:26px; transition:.3s;
+}
+.toggle-slider:before {
+  position:absolute; content:''; height:18px; width:18px; left:4px; bottom:4px;
+  background:white; border-radius:50%; transition:.3s;
+}
+input:checked + .toggle-slider { background:#10b981; }
+input:checked + .toggle-slider:before { transform:translateX(24px); }
+.options { margin:15px 0; padding:10px; background:#f0f0f0; border-radius:4px; }
+.options label { display:block; margin-bottom:10px; font-size:0.9em; }
+.modal-actions { display:flex; gap:10px; margin-top:20px; }
+.modal-actions .btn { flex:1; padding:10px; font-weight:bold; }
+.preset-buttons { display:flex; gap:5px; margin-bottom:10px; flex-wrap:wrap; }
+.preset-buttons .btn { flex:1; min-width:70px; font-size:0.85em; }
+@media (max-width:768px) {
+  .status-grid { grid-template-columns:1fr; }
+  .unit-head { flex-wrap:wrap; }
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:#0f172a; --card:#1e293b; --border:#334155; --text:#f1f5f9;
+    --muted:#94a3b8; --brand:#818cf8; --brand-d:#6366f1; --green:#34d399;
+  }
+  .btn { background:#334155; border-color:#475569; color:var(--text); }
+  .btn:hover { background:#475569; }
+  .modal-content { background:var(--card); color:var(--text); }
+  .control-group { background:#1a2d45; }
+  .channel-control, .relay-control { background:#0f172a; }
+  .options { background:#1a2d45; }
+  .slider { background:#475569; }
+}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-logo">Lokki <span id="navUnitName"></span></a>
+  <div style="margin-left:auto;display:flex;gap:16px;font-size:.85em">
+    <span id="currentTime" style="color:var(--muted)"></span>
+    <span id="uptime" style="color:var(--muted)"></span>
+  </div>
+</nav>
+<div class="hero">
+  <h1 id="heroTitle">Loading…</h1>
+  <p id="heroSubtitle"></p>
+  <div id="connStatus" style="margin-top:12px;font-size:.85em;opacity:.8"></div>
+</div>
+<main>
+  <h2 style="font-size:1.2em;margin:0 0 16px;font-weight:700">Fleet Status</h2>
+  <div id="fleet">Loading…</div>
+  <div style="margin-top:40px;padding-top:20px;border-top:1px solid var(--border);font-size:.85em;color:var(--muted);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <div>
+      <a href="/api/config" download="config.json" style="color:var(--brand)">📥 Export Config</a> ·
+      <a href="/index.html" style="color:var(--brand)">📄 Documentation</a> ·
+      <a href="/config-builder.html" style="color:var(--brand)">⚙️ Config Builder</a> ·
+      <button class="btn btn-danger" onclick="rebootDevice()">🔄 Reboot</button>
+    </div>
+    <button class="btn btn-danger" onclick="emergencyOff()">⚠️ Emergency Off</button>
+  </div>
+</main>
+
+<div id="controlModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="modalTitle">Manual Override</h2>
+      <span class="close" onclick="closeModal()">&times;</span>
+    </div>
+    <div id="modalBody">Loading...</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+let unitName = "Lokki";
+let coordUnitId = 0;
+let currentUnitId = null;
+
+async function fetchJSON(url, opts) {
+  const r = await fetch(url, opts);
+  const ct = r.headers.get("content-type") || "";
+  if (!ct.includes("application/json")) {
+    const text = await r.text();
+    throw new Error("Non-JSON response: " + text.substring(0, 120));
+  }
+  return r.json();
+}
+
+async function init() {
+  try {
+    const s = await fetchJSON("/api/status");
+    if (s.ok) {
+      unitName = s.data.unit_name || "Lokki";
+      coordUnitId = s.data.unit_id || 0;
+      document.title = "Lokki — " + unitName;
+      document.getElementById("navUnitName").textContent = "— " + unitName;
+      document.getElementById("heroTitle").textContent = unitName;
+      document.getElementById("heroSubtitle").textContent = "Coordinator · Unit ID " + coordUnitId;
+    }
+  } catch (e) {
+    console.error("Init failed:", e);
+  }
+}
+
+async function load() {
+  try {
+    const f = await fetchJSON("/api/fleet");
+    const units = f.data || {};
+    let h = "";
+    for (const [id, u] of Object.entries(units)) {
+      const uptime = u.uptime || 0;
+      const hrs = Math.floor(uptime / 3600);
+      const mins = Math.floor((uptime % 3600) / 60);
+      const up = u.online ? `${hrs}h ${mins}m` : "Offline";
+      const name = id == 0 ? unitName : `Unit ${id}`;
+      const roleLabel = id == 0 ? "Coordinator" : "Leaf";
+      h += `<div class="unit-card">`;
+      h += `<div class="unit-head">`;
+      h += `<span class="unit-name">${name}</span>`;
+      h += `<span class="unit-role">${roleLabel}</span>`;
+      h += `<div style="margin-left:auto;display:flex;gap:8px">`;
+      h += `<button class="btn" onclick="openControlModal(${id},'${name}')">Control</button>`;
+      h += `<button class="btn" onclick="reqStatus(${id})">Refresh</button>`;
+      h += `</div></div>`;
+      h += `<div class="unit-body"><div class="status-grid">`;
+      h += `<div class="status-section"><div class="status-label">LED Channels</div>`;
+      h += `<div class="led-indicators">`;
+      const ch = u.ch || [];
+      ch.forEach((v, i) => {
+        h += `<span class="bswatch" style="${swatchStyle(v)}" title="ch${i+1}: ${v}%">${i+1}</span>`;
+      });
+      h += `</div></div>`;
+      h += `<div class="status-section"><div class="status-label">Relays</div>`;
+      h += `<div class="relay-indicators">`;
+      const rl = u.rl || [];
+      rl.forEach((v, i) => {
+        const cls = v ? "on" : "off";
+        h += `<span class="relay-ind ${cls}" title="rly${i+1}: ${v?'ON':'OFF'}">${v?'ON':'OFF'}</span>`;
+      });
+      h += `</div></div>`;
+      h += `<div class="status-section"><div class="status-label">Sensors</div>`;
+      h += `<div class="sensor-data">`;
+      if (u.ldr != null) {
+        const ldrIcon = u.ldr > 70 ? "☀️" : u.ldr > 40 ? "🌤️" : u.ldr > 10 ? "⛅" : "🌙";
+        const ldrLabel = u.ldr > 70 ? "Bright" : u.ldr > 40 ? "Moderate" : u.ldr > 10 ? "Dim" : "Dark";
+        h += `<div class="sensor-item">${ldrIcon} Light: <span class="sensor-value">${u.ldr}%</span> <span style="font-size:.85em;color:var(--muted)">(${ldrLabel})</span></div>`;
+      }
+      h += `</div></div>`;
+      h += `<div class="status-section"><div class="status-label">System</div>`;
+      h += `<div style="font-size:.9em">`;
+      h += `<div>Uptime: <b>${up}</b></div>`;
+      h += `<div>Errors: <b>${u.err || 0}</b></div>`;
+      h += `</div></div>`;
+      h += `</div></div></div>`;
+    }
+    if (!Object.keys(units).length) {
+      h = '<p style="color:var(--muted)">No units detected</p>';
+    }
+    document.getElementById("fleet").innerHTML = h;
+  } catch (e) {
+    console.error("load failed:", e);
+  }
+}
+
+async function reqStatus(id) {
+  await fetch(`/api/units/${id}/status`, { method: "POST" });
+  setTimeout(load, 2000);
+}
+
+async function openControlModal(id, name) {
+  currentUnitId = id;
+  document.getElementById("modalTitle").textContent = "Control — " + name;
+  document.getElementById("modalBody").innerHTML = '<p style="color:var(--muted)">Loading…</p>';
+  document.getElementById("controlModal").style.display = "block";
+
+  const cfgUrl = id == 0 ? "/api/config" : `/api/units/${id}/config`;
+  let config = {};
+  try {
+    const cfg = await fetchJSON(cfgUrl);
+    config = cfg.data || {};
+  } catch (e) {
+    console.error("Config fetch failed:", e);
+  }
+
+  let unitScenes = [];
+  try {
+    const sc = await fetchJSON(`/api/units/${id}/scenes`);
+    unitScenes = sc.data || [];
+  } catch (e) {
+    console.error("Scenes fetch failed:", e);
+  }
+
+  // For leaves, fire-and-forget a status refresh so the next modal open has fresh scenes.
+  if (id != 0) fetch(`/api/units/${id}/status`, { method: "POST" });
+
+  const channels = config.led_channels || [];
+  const relays = config.relays || [];
+
+  let html = "";
+  if (unitScenes.length) {
+    html += '<div class="control-group"><h3>Scene Presets</h3>';
+    html += '<div class="preset-buttons">';
+    unitScenes.forEach(s => {
+      html += `<button class="btn scene-btn" data-scene="${s}">${s}</button>`;
+    });
+    html += "</div></div>";
+  }
+
+  html += '<div class="preset-buttons">';
+  html += '<button class="btn" onclick="applyPreset(100)">All 100%</button>';
+  html += '<button class="btn" onclick="applyPreset(50)">All 50%</button>';
+  html += '<button class="btn" onclick="applyPreset(25)">All 25%</button>';
+  html += '<button class="btn" onclick="applyPreset(0)">All Off</button>';
+  html += "</div>";
+
+  if (channels.length) {
+    html += '<div class="control-group"><h3>LED Channels</h3>';
+    channels.forEach(ch => {
+      const val = ch.default_duty_percent || 0;
+      html += `<div class="channel-control">`;
+      html += `<label>${ch.name} (${ch.id})</label>`;
+      html += `<div class="slider-container">`;
+      html += `<input type="range" class="slider" id="ch_${ch.id}" min="0" max="100" value="${val}" oninput="updateSlider('${ch.id}',this.value)">`;
+      html += `<span class="bswatch" id="sw_${ch.id}" style="${swatchStyle(val)}"></span>`;
+      html += `<span class="slider-value" id="val_${ch.id}">${val}%</span>`;
+      html += `</div></div>`;
+    });
+    html += "</div>";
+  }
+
+  if (relays.length) {
+    html += '<div class="control-group"><h3>Relays</h3>';
+    relays.forEach(r => {
+      const checked = (r.default_state || "off") === "on" ? "checked" : "";
+      html += `<div class="relay-control">`;
+      html += `<label>${r.name} (${r.id})</label>`;
+      html += `<label class="relay-toggle">`;
+      html += `<input type="checkbox" id="rly_${r.id}" ${checked}>`;
+      html += `<span class="toggle-slider"></span>`;
+      html += `</label></div>`;
+    });
+    html += "</div>";
+  }
+
+  html += '<div class="options">';
+  html += '<label style="display:flex;align-items:center;gap:8px">';
+  html += '<input type="checkbox" id="enableRevert" checked onchange="toggleRevert()">';
+  html += "<span>Enable Auto-Revert</span></label>";
+  html += '<div id="revertOptions" style="margin-top:8px">';
+  html += '<label>Revert after: <input type="number" id="revertTime" value="60" min="1" max="3600" style="width:70px"> seconds</label>';
+  html += "</div>";
+  html += '<label style="margin-top:10px;display:block">Fade Duration:';
+  html += '<select id="fadeDuration" style="width:100%;padding:5px;margin-top:5px">';
+  html += '<option value="1">1 second</option>';
+  html += '<option value="5">5 seconds</option>';
+  html += '<option value="15">15 seconds</option>';
+  html += '<option value="30">30 seconds</option>';
+  html += '<option value="60">1 minute</option>';
+  html += '<option value="300">5 minutes</option>';
+  html += '<option value="900">15 minutes</option>';
+  html += '<option value="1800">30 minutes</option>';
+  html += "</select></label>";
+  html += "</div>";
+
+  // Per-unit action buttons. "Revert to Schedule" is the correct name for what
+  // DELETE /api/units/N/manual does — it does NOT turn outputs off, it clears
+  // the manual override and lets the schedule resume.
+  html += '<div class="modal-actions">';
+  html += '<button class="btn" onclick="applyOverride()">Apply Override</button>';
+  html += '<button class="btn" onclick="revertToSchedule()">Revert to Schedule</button>';
+  html += '<button class="btn" onclick="closeModal()">Close</button>';
+  html += "</div>";
+
+  document.getElementById("modalBody").innerHTML = html;
+  document.querySelectorAll(".scene-btn").forEach(b => {
+    b.onclick = () => loadScenePreset(b.dataset.scene);
+  });
+}
+
+async function loadScenePreset(name) {
+  // The leaf-config endpoint doesn't return scene definitions; this only
+  // works for the coordinator. For leaves, scene buttons send the scene
+  // name over LoRa via /api/scenes/{name}/apply (see below).
+  if (currentUnitId != 0) {
+    if (!confirm(`Apply scene "${name}" to Unit ${currentUnitId}?`)) return;
+    try {
+      const r = await fetchJSON(`/api/scenes/${encodeURIComponent(name)}/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unit_ids: [currentUnitId] }),
+      });
+      if (!r.ok) alert("Error: " + r.error);
+      closeModal();
+      setTimeout(load, 500);
+    } catch (e) { alert("Apply failed: " + e); }
+    return;
+  }
+  // Coordinator: load scene values into sliders so the user can preview/tweak before applying.
+  try {
+    const cfg = await fetchJSON("/api/config");
+    if (!cfg.ok) return;
+    const scene = (cfg.data.scenes || []).find(s => s.name === name);
+    if (!scene) { console.error("Scene not found:", name); return; }
+    (scene.led_channels || []).forEach(ch => {
+      const slider = document.getElementById("ch_" + ch.id);
+      if (slider) {
+        slider.value = ch.duty_percent || 0;
+        updateSlider(ch.id, slider.value);
+      }
+    });
+    (scene.relays || []).forEach(r => {
+      const toggle = document.getElementById("rly_" + r.id);
+      if (toggle) toggle.checked = (r.state === "on");
+    });
+  } catch (e) { console.error("Load scene failed:", e); }
+}
+
+function toggleRevert() {
+  const enabled = document.getElementById("enableRevert").checked;
+  document.getElementById("revertOptions").style.display = enabled ? "block" : "none";
+}
+
+async function emergencyOff() {
+  if (!confirm("Turn off ALL LEDs and relays on ALL units?")) return;
+  try {
+    const r = await fetchJSON("/api/emergency-off", { method: "POST" });
+    if (!r.ok) alert("Emergency off error: " + r.error);
+    setTimeout(load, 500);
+  } catch (e) { alert("Emergency off failed: " + e); }
+}
+
+function closeModal() {
+  document.getElementById("controlModal").style.display = "none";
+}
+
+function swatchStyle(pct) {
+  if (pct === 0) return "background:#1e293b;box-shadow:none";
+  const r = Math.round(100 + pct * 1.55);
+  const g = Math.round(80 + pct * 1.4);
+  const b = Math.round(30 + pct * 0.7);
+  const glow = Math.round(pct / 5);
+  return `background:rgb(${r},${g},${b});box-shadow:0 0 ${glow}px rgba(255,200,50,0.6)`;
+}
+
+function updateSlider(id, val) {
+  document.getElementById(`val_${id}`).textContent = val + "%";
+  const sw = document.getElementById(`sw_${id}`);
+  if (sw) sw.setAttribute("style", swatchStyle(parseInt(val)));
+}
+
+function applyPreset(val) {
+  document.querySelectorAll(".slider").forEach(s => {
+    s.value = val;
+    updateSlider(s.id.substring(3), val);
+  });
+}
+
+async function applyOverride() {
+  try {
+    const ch = [];
+    document.querySelectorAll(".slider").forEach(s => {
+      ch.push([s.id.substring(3), parseInt(s.value)]);
+    });
+    const rl = [];
+    document.querySelectorAll(".relay-toggle input").forEach(t => {
+      rl.push([t.id.substring(4), t.checked ? 1 : 0]);
+    });
+    const enableRevert = document.getElementById("enableRevert").checked;
+    const revert = enableRevert ? (parseInt(document.getElementById("revertTime").value) || 0) : 0;
+    const fadeSec = parseInt(document.getElementById("fadeDuration").value) || 1;
+    const payload = { ch, rl, revert_s: revert, fade_ms: fadeSec * 1000 };
+    const result = await fetchJSON(`/api/units/${currentUnitId}/manual`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!result.ok) alert("Error: " + result.error);
+    closeModal();
+    setTimeout(load, 500);
+  } catch (e) {
+    console.error("Apply override error:", e);
+    alert("Failed to apply override: " + e);
+  }
+}
+
+async function revertToSchedule() {
+  if (!confirm("Clear manual overrides and resume schedule?")) return;
+  await fetch(`/api/units/${currentUnitId}/manual`, { method: "DELETE" });
+  closeModal();
+  load();
+}
+
+async function rebootDevice() {
+  if (!confirm("Reboot the coordinator? This will disconnect all clients briefly.")) return;
+  try {
+    await fetch("/api/reboot", { method: "POST" });
+    alert("Rebooting... The page will reload in 10 seconds.");
+    setTimeout(() => window.location.reload(), 10000);
+  } catch (e) { alert("Reboot request failed: " + e); }
+}
+
+function updateClock() {
+  const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  document.getElementById("currentTime").textContent = t;
+}
+
+async function updateStatus() {
+  try {
+    const s = await fetchJSON("/api/status");
+    if (!s.ok) return;
+    if (s.data.uptime) {
+      document.getElementById("uptime").textContent = "Uptime: " + s.data.uptime;
+    }
+    if (s.data.connections) {
+      const c = s.data.connections;
+      let cs = "";
+      if (c.wifi) cs += "📶 WiFi ";
+      if (c.lora) cs += "📡 LoRa ";
+      if (c.mqtt) cs += "🔔 MQTT ";
+      document.getElementById("connStatus").textContent = cs.trim() || "⚠️ No connections";
+    }
+  } catch (e) { /* swallow polling errors */ }
+}
+
+window.onclick = e => { if (e.target.id === "controlModal") closeModal(); };
+
+init().then(() => {
+  updateClock(); setInterval(updateClock, 1000);
+  load(); setInterval(load, 15000);
+  updateStatus(); setInterval(updateStatus, 30000);
+});
+</script>
+</body>
+</html>

@@ -28,24 +28,36 @@ No authentication is required. The coordinator is intended for trusted local-net
 #### `GET /api/status`
 Returns runtime status of the coordinator itself.
 
-**Response `data`**
+**Response `data`** — selected fields:
 ```json
 {
-  "uptime": 3742,
-  "uptime_str": "1h 2m",
-  "connections": { "wifi": true, "lora": true, "mqtt": false },
-  "error_count": 0
+  "unit_name": "Pagoda",
+  "unit_id": 0,
+  "role": "coordinator",
+  "uptime_s": 3742,
+  "uptime": "1h 2m",
+  "connections": { "wifi": true, "lora": true, "web_server": true, "mqtt": false },
+  "led_channels": [100, 50, 0, 0, 0, 20, 20, 20],
+  "relays": { "rly1": false, "rly2": false },
+  "pir": { "pir1": "vacant" },
+  "ldr_ambient": 42,
+  "ldr_cap": null,
+  "sensors": { "temp_c": 28.4, "humidity_pct": 62.1 },
+  "error_count": 0,
+  "last_error": null
 }
 ```
+
+`unit_name`, `unit_id`, and `role` come from `system` config and let the static dashboard set its title and labels without server-side templating. `uptime` is the human string ("1h 2m"), `uptime_s` is the integer second count.
 
 ---
 
 #### `GET /api/config`
-Returns the full `config.json` contents currently running on the coordinator.
+Returns the full `config.json` contents currently running on the coordinator, with `wifi.password` masked as `********`.
 
-Useful for the config builder "Load from Coordinator" flow, and as a config backup/export.
+Useful for the Config Builder's "Load from Coordinator" flow and as a config backup/export. The masking exists because the dashboard is unauthenticated — anything served here is readable by any client on the LAN. See the WiFi password handling note under `POST /api/units/0/config` for how round-tripping the masked value works.
 
-**Response `data`** — complete config object (see [config-schema.md](config-schema.md)).
+**Response `data`** — complete config object (see [config-schema.md](config-schema.md)), with `wifi.password = "********"`.
 
 ---
 
@@ -98,9 +110,12 @@ Returns status for a single unit. `id` = 0 for coordinator, 1–8 for leaf units
 #### `POST /api/units/{id}/status`
 Sends a LoRa status-request to a leaf unit (fire-and-forget). The leaf replies asynchronously; poll `/api/fleet` after ~2 s to see the updated state.
 
+**Throttled** to once per 5 seconds per unit, server-side. Repeat calls within the cooldown return `{"requested": id, "throttled": true}` with HTTP 200 and do **not** transmit anything. This keeps the dashboard from saturating the LoRa channel.
+
 **Response `data`**
 ```json
 { "requested": 1 }
+{ "requested": 1, "throttled": true }   // within cooldown
 ```
 
 ---
@@ -131,8 +146,10 @@ Returns a summary of the unit's channel and relay configuration (id names, enabl
 #### `POST /api/units/{id}/config`
 Pushes a complete new `config.json` to a unit.
 
-- **id = 0**: validates and applies the config locally on the coordinator, then writes `config.json`.
+- **id = 0**: validates and applies the config locally on the coordinator, then writes `config.json` atomically (tmp + rename, survives power loss).
 - **id = 1–8**: sends the config to the leaf unit over LoRa (chunked transfer).
+
+**WiFi password handling.** `GET /api/config` masks `wifi.password` as `********` to keep credentials off the unauthenticated dashboard. When you push a config back via this endpoint, if `wifi.password` is exactly `********`, the coordinator restores the live password before applying — so round-tripping through the Config Builder doesn't break WiFi. To actually change the password, type the new value (anything other than `********`) into the Config Builder's WiFi field.
 
 **Request body** — full config JSON (see [config-schema.md](config-schema.md)).
 

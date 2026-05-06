@@ -33,20 +33,16 @@ def handle_fleet_status():
     from hardware.pir_manager import pir_manager
     from hardware.ldr_monitor import ldr_monitor
     
-    # Get all leaf units
-    fleet = fleet_manager.get_all()
-    
-    # Add coordinator's own status as unit 0
-    fleet[0] = {
+    fleet = {str(uid): u for uid, u in fleet_manager.get_all().items()}
+    fleet["0"] = {
         "online": True,
         "uptime": system_status.get_uptime(),
-        "ch": pwm_controller.get_all(),  # Already returns sorted list
+        "ch": pwm_controller.get_all(),
         "rl": list(relay_controller.get_all().values()),
         "pir": list(pir_manager.get_all_states().values()),
         "ldr": ldr_monitor.ambient_percent,
         "err": system_status.error_count,
     }
-    
     return _ok(fleet)
 
 
@@ -86,6 +82,18 @@ async def handle_config_push(unit_id, config_str):
     if unit_id == 0:
         # Coordinator: apply locally
         try:
+            # If the incoming config has the masked wifi password, restore the
+            # real one from the live config — otherwise we'd silently break wifi.
+            try:
+                incoming = json.loads(config_str)
+            except Exception:
+                incoming = None
+            if (isinstance(incoming, dict)
+                    and isinstance(incoming.get("wifi"), dict)
+                    and incoming["wifi"].get("password") == "********"):
+                live_pw = config_manager.get("wifi").get("password", "")
+                incoming["wifi"]["password"] = live_pw
+                config_str = json.dumps(incoming)
             config_manager.replace(config_str)
             log.info("[API] Local config replaced")
             return _ok({"applied": "local"})
@@ -99,7 +107,20 @@ async def handle_config_push(unit_id, config_str):
 
 
 def handle_full_config():
-    return _ok(config_manager.get_all())
+    """Return full config but mask the wifi password.
+
+    Why: dashboard is unauthenticated; raw config exposes wifi.password to
+    anyone on the LAN. The Config Builder doesn't need the real value to
+    edit other fields — if the user wants to change the password they re-enter it.
+    """
+    cfg = config_manager.get_all()
+    # Shallow-copy + replace the wifi sub-dict so we don't mutate the live config.
+    if isinstance(cfg.get("wifi"), dict) and cfg["wifi"].get("password"):
+        masked = dict(cfg)
+        masked["wifi"] = dict(cfg["wifi"])
+        masked["wifi"]["password"] = "********"
+        return _ok(masked)
+    return _ok(cfg)
 
 
 def handle_unit_config(unit_id):
@@ -150,10 +171,10 @@ def handle_scene_apply(scene_name, unit_ids=None):
     for uid in targets:
         if uid == 0:
             priority_arbiter.apply_scene(scene)
-            results[0] = "applied_local"
+            results["0"] = "applied_local"
         else:
             seq = lora_protocol.send_scene(uid, scene_name)
-            results[uid] = "sent" if seq else "send_failed"
+            results[str(uid)] = "sent" if seq else "send_failed"
     return _ok(results)
 
 
@@ -215,7 +236,7 @@ def handle_sensors():
     from hardware.i2c_sensors import i2c_sensors
     readings = {"coordinator": i2c_sensors.get_readings()}
     for uid, u in fleet_manager.get_all().items():
-        readings[uid] = u.get("sensors", {})
+        readings[str(uid)] = u.get("sensors", {})
     return _ok(readings)
 
 
@@ -245,10 +266,10 @@ def handle_emergency_off():
     from hardware.status_led import status_led
     status_led.set_state("manual_override")
 
-    results = {0: "applied_local"}
+    results = {"0": "applied_local"}
     for uid in fleet_manager.get_all():
         seq = lora_protocol.send_emergency_off(uid)
-        results[uid] = "sent" if seq else "send_failed"
+        results[str(uid)] = "sent" if seq else "send_failed"
     return _ok(results)
 
 
@@ -256,7 +277,19 @@ def handle_emergency_off():
 # Request status from a leaf
 # ------------------------------------------------------------------
 
+# Rate-limit SR per leaf so the dashboard can't saturate LoRa by clicking
+# Refresh repeatedly or opening multiple control modals in quick succession.
+_SR_COOLDOWN_S = 5
+_last_sr_at = {}  # {unit_id: time.time()}
+
+
 def handle_request_status(unit_id):
+    import time
+    now = time.time()
+    last = _last_sr_at.get(unit_id, 0)
+    if now - last < _SR_COOLDOWN_S:
+        return _ok({"requested": unit_id, "throttled": True})
+    _last_sr_at[unit_id] = now
     lora_protocol.request_status(unit_id)
     return _ok({"requested": unit_id})
 

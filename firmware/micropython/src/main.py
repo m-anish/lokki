@@ -2,7 +2,7 @@ import asyncio
 import gc
 import time
 
-from core.config_manager import config_manager, SafeModeError
+from core.config_manager import config_manager
 from core.schedule_engine import schedule_engine
 from core.priority_arbiter import priority_arbiter
 from hardware.pwm_control import pwm_controller
@@ -192,6 +192,9 @@ def _register_lora_handlers(role, fleet_manager=None):
     lora_protocol.on("MO", on_manual_override)
 
     def on_status_request(src, payload):
+        # Base SRP without scenes is ~120B; the 200B E220 limit leaves ~80B for
+        # scene names. If we'd overrun, drop scene names progressively.
+        scene_names = list(scenes.keys())
         response = {
             "uptime":  system_status.get_uptime(),
             "ch":      pwm_controller.get_all(),
@@ -199,8 +202,13 @@ def _register_lora_handlers(role, fleet_manager=None):
             "pir":     list(pir_manager.get_all_states().values()),
             "ldr":     ldr_monitor.ambient_percent,
             "err":     system_status.error_count,
-            "sc":      list(scenes.keys()),
+            "sc":      scene_names,
         }
+        # Rough envelope budget check — drop scenes from the end until it fits.
+        # 30B accounts for the LoRa envelope overhead added by send().
+        import json as _json
+        while len(_json.dumps(response).encode()) > 170 and response["sc"]:
+            response["sc"].pop()
         lora_protocol.send("SRP", src, response)
     lora_protocol.on("SR", on_status_request)
 
@@ -238,18 +246,20 @@ async def main():
     asyncio.create_task(status_led.run_pattern())
 
     # --- Config ---
-    try:
-        cfg = config_manager
-    except SafeModeError as e:
-        log.error(f"[MAIN] SafeModeError: {e}")
+    if config_manager.safe_mode_reason:
+        log.error(f"[MAIN] Config load failed: {config_manager.safe_mode_reason}")
         await safe_mode()
         return
+    cfg = config_manager
 
     hw  = cfg.get("hardware")
     sys = cfg.get("system")
     role = cfg.role
 
     log.info(f"[MAIN] Lokki booting — role={role} unit_id={cfg.unit_id} name={cfg.unit_name}")
+
+    # Re-bind status LED to configured pin (default singleton uses GPIO 5)
+    status_led.init_from_config(hw)
 
     # --- Hardware init ---
     freq_hz = hw.get("pwm_freq_hz", 1000)
