@@ -56,6 +56,11 @@ class LoRaProtocol:
         self._handlers = {}          # {msg_type: handler_fn}
         self._pending  = {}          # {seq: {msg, sent_at, retries}}
         self._unit_id  = 0
+        # RSSI of the most recent received packet in dBm (signed int) or None.
+        # Populated by the transport when E220 RSSI-byte append is enabled
+        # (see TODO in lora-protocol.md). Leaves include this in HB so the
+        # coordinator can show link quality on the dashboard.
+        self.last_rx_rssi = None
 
     def init(self):
         self._unit_id = config_manager.unit_id

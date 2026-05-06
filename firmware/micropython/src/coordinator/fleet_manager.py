@@ -36,16 +36,18 @@ class FleetManager:
         u["online"]    = True
         u["last_seen"] = time.time()
         u["uptime"]    = payload.get("uptime", 0)
+        u["name"]      = payload.get("name", u.get("name") or "")
         u["ch"]        = payload.get("ch", u["ch"])
         u["rl"]        = payload.get("rl", u["rl"])
         u["pir"]       = payload.get("pir", u["pir"])
         u["ldr"]       = payload.get("ldr", u["ldr"])
         u["sensors"]   = payload.get("sensors", u["sensors"])
         u["err"]       = payload.get("err", u["err"])
+        u["rssi"]      = payload.get("rssi", u.get("rssi"))
         u["scenes"]    = payload.get("sc", u["scenes"])
 
         if was_offline:
-            log.info(f"[FLEET] Unit {unit_id} is back online")
+            log.info(f"[FLEET] Unit {unit_id} ({u['name'] or unit_id}) is back online")
 
     # ------------------------------------------------------------------
     # Queries
@@ -84,6 +86,7 @@ class FleetManager:
     def _empty(unit_id):
         return {
             "unit_id":   unit_id,
+            "name":      "",
             "online":    False,
             "last_seen": 0,
             "uptime":    0,
@@ -93,6 +96,7 @@ class FleetManager:
             "ldr":       None,
             "sensors":   {},
             "err":       0,
+            "rssi":      None,
             "scenes":    [],
         }
 

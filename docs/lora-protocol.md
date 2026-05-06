@@ -84,12 +84,14 @@ Leaf reports its current output states and basic health. Coordinator uses this t
 {
   "s": 1, "d": 0, "t": "HB", "seq": 12,
   "p": {
+    "name":   "South Wing",   // leaf's unit_name (lets coordinator label fleet without a separate config push)
     "uptime": 3600,           // seconds since boot
     "ch":  [100,80,0,0,0,0,0,0],  // LED channels duty% — positional, sorted by channel id
     "rl":  [1, 0],            // relay states (1=on, 0=off) — positional, in config order
     "pir": [0, 0, 0, 0],      // PIR states (1=motion, 0=vacant) — positional, in config order
     "ldr": 42,                // LDR ambient reading 0–100%
-    "err": 0                  // error count since last heartbeat
+    "err": 0,                 // error count since last heartbeat
+    "rssi": -78               // dBm of the last LoRa packet THIS leaf received (or null until E220 RSSI append is enabled)
   }
 }
 ```
@@ -219,12 +221,14 @@ Same payload structure as `HB` plus a `sc` field listing the leaf's configured s
 {
   "s": 3, "d": 0, "t": "SRP", "seq": 44,
   "p": {
+    "name":   "South Wing",
     "uptime": 7200,
     "ch":  [0,0,0,0,0,0,0,0],
     "rl":  [0, 0],
     "pir": [0, 0, 0, 0],
     "ldr": 88,
     "err": 0,
+    "rssi": -78,
     "sc":  ["evening", "security", "demo"]
   }
 }

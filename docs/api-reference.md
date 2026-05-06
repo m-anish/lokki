@@ -80,23 +80,41 @@ Returns live status for all units — coordinator (id 0) and all leaf units that
 ```json
 {
   "0": {
+    "name": "Pagoda",
     "online": true,
+    "last_seen": 1746521580,
     "uptime": 3742,
     "ch": [100, 50, 0, 0, 0, 20, 20, 20],
     "rl": [false, false],
     "pir": [false, false, false, false],
     "ldr": 12,
-    "err": 0
+    "err": 0,
+    "rssi": null
   },
-  "1": { "online": true, "uptime": 2810, "ch": [...], ... }
+  "1": {
+    "name": "South Wing",
+    "online": true,
+    "last_seen": 1746521552,
+    "uptime": 2810,
+    "ch": [100, 0, 0, 0, 0, 0, 0, 0],
+    "rl": [false],
+    "pir": [false],
+    "ldr": 30,
+    "err": 0,
+    "rssi": -78
+  }
 }
 ```
 
-- `ch` — array of 8 brightness values (0–100 %) in channel order
-- `rl` — array of 2 relay states (boolean)
-- `pir` — array of up to 4 motion-sensor states (boolean)
-- `ldr` — ambient light level 0–100 %
-- `err` — error counter since boot
+- `name` — unit's `system.unit_name`. For leaves, populated from the HB payload — empty until the first HB arrives after boot.
+- `online` — heartbeat received within `heartbeat_timeout_s`.
+- `last_seen` — Unix epoch seconds of the last HB (or, for unit 0, the time of this request). Dashboard renders as "12s ago" with a 1s ticker.
+- `ch` — array of brightness values (0–100 %) in channel order. Coordinator entry is sorted by channel id.
+- `rl` — array of relay states (boolean or 0/1) in config order.
+- `pir` — array of motion-sensor states in config order.
+- `ldr` — ambient light level 0–100 %.
+- `err` — error counter since boot.
+- `rssi` — dBm of the last LoRa packet THIS unit received from the coordinator (leaves only). `null` for the coordinator and until the E220 RSSI-byte append is wired up (see TODO).
 
 ---
 
@@ -123,9 +141,13 @@ Sends a LoRa status-request to a leaf unit (fire-and-forget). The leaf replies a
 ### Config push
 
 #### `GET /api/units/{id}/config`
-Returns a summary of the unit's channel and relay configuration (id names, enabled state, defaults). For the coordinator (id 0) this is drawn from live config. For leaf units the coordinator has no copy — the response notes that.
+Returns a summary of the unit's channel and relay configuration (ids, names, enabled state, defaults).
 
-**Response `data` (coordinator)**
+- **id 0**: drawn live from the coordinator's `config_manager`. `source` = `"live"`.
+- **id 1–8**: returned from the coordinator's leaf-config cache. The cache is populated whenever the user pushes a config to that leaf via `POST /api/units/{id}/config`, so the dashboard's Control modal works without round-tripping the leaf over LoRa each time. `source` = `"cached"`.
+- **id 1–8 with no cache**: empty `led_channels`/`relays` arrays plus `source: "none"` and a `note` explaining what to do. The dashboard renders an inline hint pointing to the Config Builder.
+
+**Response `data` (coordinator, live)**
 ```json
 {
   "version": "1.0",
@@ -137,9 +159,24 @@ Returns a summary of the unit's channel and relay configuration (id names, enabl
   ],
   "relays": [
     { "id": "rly1", "name": "Relay 1", "enabled": false, "default_state": "off" }
-  ]
+  ],
+  "source": "live"
 }
 ```
+
+**Response `data` (leaf, no cache)**
+```json
+{
+  "unit_id": 1,
+  "unit_name": "South Wing",
+  "led_channels": [],
+  "relays": [],
+  "source": "none",
+  "note": "No config metadata cached on coordinator. Push the leaf's config via the Config Builder once to populate."
+}
+```
+
+The cache is RAM-only — it's lost on coordinator reboot and needs to be re-populated by re-pushing each leaf's config.
 
 ---
 

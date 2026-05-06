@@ -103,15 +103,19 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
     """Leaf task: send HB to coordinator at regular intervals with jitter."""
     jitter_ms = unit_id * 500
     await asyncio.sleep_ms(jitter_ms)
+    # Cached at task entry so we don't pay config_manager attribute lookups every HB.
+    name = config_manager.unit_name
     while True:
         try:
             payload = {
+                "name":    name,
                 "uptime":  system_status.get_uptime(),
-                "ch":      pwm_controller.get_all(),  # Already returns sorted list
+                "ch":      pwm_controller.get_all(),
                 "rl":      list(relay_controller.get_all().values()),
                 "pir":     list(pir_manager.get_all_states().values()),
                 "ldr":     ldr_monitor.ambient_percent,
                 "err":     system_status.error_count,
+                "rssi":    lora_protocol.last_rx_rssi,
             }
             lora_protocol.send_heartbeat(payload)
         except Exception as e:
@@ -192,16 +196,18 @@ def _register_lora_handlers(role, fleet_manager=None):
     lora_protocol.on("MO", on_manual_override)
 
     def on_status_request(src, payload):
-        # Base SRP without scenes is ~120B; the 200B E220 limit leaves ~80B for
+        # Base SRP is ~120B with name+rssi; the 200B E220 limit leaves ~50B for
         # scene names. If we'd overrun, drop scene names progressively.
         scene_names = list(scenes.keys())
         response = {
+            "name":    config_manager.unit_name,
             "uptime":  system_status.get_uptime(),
             "ch":      pwm_controller.get_all(),
             "rl":      list(relay_controller.get_all().values()),
             "pir":     list(pir_manager.get_all_states().values()),
             "ldr":     ldr_monitor.ambient_percent,
             "err":     system_status.error_count,
+            "rssi":    lora_protocol.last_rx_rssi,
             "sc":      scene_names,
         }
         # Rough envelope budget check — drop scenes from the end until it fits.
@@ -297,6 +303,9 @@ async def main():
     if role == "coordinator":
         from coordinator.fleet_manager import fleet_manager as fleet_mgr
         fleet_mgr.init()
+        # Re-hydrate any leaf configs cached on flash from prior pushes.
+        from coordinator.api_handlers import load_leaf_cache_from_flash
+        load_leaf_cache_from_flash()
 
     # --- Register LoRa message handlers ---
     _register_lora_handlers(role, fleet_mgr)

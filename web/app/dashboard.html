@@ -220,61 +220,117 @@ async function init() {
   }
 }
 
+// Cache of the last fleet response so the 1s relative-time ticker can re-render
+// "last seen" labels without refetching the whole fleet from the device.
+let lastFleet = {};
+
+function fmtUptime(sec) {
+  if (!sec) return "0s";
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m`;
+  return `${sec}s`;
+}
+
+function fmtAgo(epochSec) {
+  if (!epochSec) return "—";
+  const delta = Math.max(0, Math.floor(Date.now() / 1000) - epochSec);
+  if (delta < 60) return `${delta}s ago`;
+  if (delta < 3600) return `${Math.floor(delta / 60)}m ${delta % 60}s ago`;
+  if (delta < 86400) {
+    const h = Math.floor(delta / 3600);
+    const m = Math.floor((delta % 3600) / 60);
+    return `${h}h ${m}m ago`;
+  }
+  return `${Math.floor(delta / 86400)}d ago`;
+}
+
+function fmtRssi(rssi) {
+  if (rssi == null) return "—";
+  return `${rssi} dBm`;
+}
+
+function unitDisplayName(id, u) {
+  if (id == 0) return unitName;
+  if (u && u.name) return u.name;
+  return `Unit ${id}`;
+}
+
+function renderFleet(units) {
+  let h = "";
+  for (const [id, u] of Object.entries(units)) {
+    const name = unitDisplayName(id, u);
+    const roleLabel = id == 0 ? "Coordinator" : "Leaf";
+    const up = u.online ? fmtUptime(u.uptime || 0) : "Offline";
+    const onclickName = name.replace(/'/g, "\\'");
+    h += `<div class="unit-card">`;
+    h += `<div class="unit-head">`;
+    h += `<span class="unit-name">${name}</span>`;
+    h += `<span class="unit-role">${roleLabel}</span>`;
+    h += `<div style="margin-left:auto;display:flex;gap:8px">`;
+    h += `<button class="btn" onclick="openControlModal(${id},'${onclickName}')">Control</button>`;
+    h += `<button class="btn" onclick="reqStatus(${id})">Refresh</button>`;
+    h += `</div></div>`;
+    h += `<div class="unit-body"><div class="status-grid">`;
+
+    h += `<div class="status-section"><div class="status-label">LED Channels</div>`;
+    h += `<div class="led-indicators">`;
+    (u.ch || []).forEach((v, i) => {
+      h += `<span class="bswatch" style="${swatchStyle(v)}" title="ch${i+1}: ${v}%">${i+1}</span>`;
+    });
+    h += `</div></div>`;
+
+    h += `<div class="status-section"><div class="status-label">Relays</div>`;
+    h += `<div class="relay-indicators">`;
+    (u.rl || []).forEach((v, i) => {
+      const cls = v ? "on" : "off";
+      h += `<span class="relay-ind ${cls}" title="rly${i+1}: ${v?'ON':'OFF'}">${v?'ON':'OFF'}</span>`;
+    });
+    h += `</div></div>`;
+
+    h += `<div class="status-section"><div class="status-label">Sensors</div>`;
+    h += `<div class="sensor-data">`;
+    if (u.ldr != null) {
+      const ldrIcon = u.ldr > 70 ? "☀️" : u.ldr > 40 ? "🌤️" : u.ldr > 10 ? "⛅" : "🌙";
+      const ldrLabel = u.ldr > 70 ? "Bright" : u.ldr > 40 ? "Moderate" : u.ldr > 10 ? "Dim" : "Dark";
+      h += `<div class="sensor-item">${ldrIcon} Light: <span class="sensor-value">${u.ldr}%</span> <span style="font-size:.85em;color:var(--muted)">(${ldrLabel})</span></div>`;
+    }
+    h += `</div></div>`;
+
+    h += `<div class="status-section"><div class="status-label">System</div>`;
+    h += `<div style="font-size:.9em">`;
+    h += `<div>Uptime: <b>${up}</b></div>`;
+    // last_seen: data-last-seen lets the 1s ticker update this in place
+    // without re-rendering the whole fleet.
+    const lastSeen = u.last_seen || 0;
+    h += `<div>Last seen: <b class="last-seen-cell" data-last-seen="${lastSeen}">${id == 0 ? "now" : fmtAgo(lastSeen)}</b></div>`;
+    if (id != 0) {
+      h += `<div>Signal: <b>${fmtRssi(u.rssi)}</b></div>`;
+    }
+    h += `<div>Errors: <b>${u.err || 0}</b></div>`;
+    h += `</div></div>`;
+
+    h += `</div></div></div>`;
+  }
+  if (!Object.keys(units).length) {
+    h = '<p style="color:var(--muted)">No units detected</p>';
+  }
+  document.getElementById("fleet").innerHTML = h;
+}
+
+function tickLastSeen() {
+  document.querySelectorAll(".last-seen-cell").forEach(el => {
+    const ts = parseInt(el.dataset.lastSeen, 10);
+    if (ts > 0) el.textContent = fmtAgo(ts);
+  });
+}
+
 async function load() {
   try {
     const f = await fetchJSON("/api/fleet");
-    const units = f.data || {};
-    let h = "";
-    for (const [id, u] of Object.entries(units)) {
-      const uptime = u.uptime || 0;
-      const hrs = Math.floor(uptime / 3600);
-      const mins = Math.floor((uptime % 3600) / 60);
-      const up = u.online ? `${hrs}h ${mins}m` : "Offline";
-      const name = id == 0 ? unitName : `Unit ${id}`;
-      const roleLabel = id == 0 ? "Coordinator" : "Leaf";
-      h += `<div class="unit-card">`;
-      h += `<div class="unit-head">`;
-      h += `<span class="unit-name">${name}</span>`;
-      h += `<span class="unit-role">${roleLabel}</span>`;
-      h += `<div style="margin-left:auto;display:flex;gap:8px">`;
-      h += `<button class="btn" onclick="openControlModal(${id},'${name}')">Control</button>`;
-      h += `<button class="btn" onclick="reqStatus(${id})">Refresh</button>`;
-      h += `</div></div>`;
-      h += `<div class="unit-body"><div class="status-grid">`;
-      h += `<div class="status-section"><div class="status-label">LED Channels</div>`;
-      h += `<div class="led-indicators">`;
-      const ch = u.ch || [];
-      ch.forEach((v, i) => {
-        h += `<span class="bswatch" style="${swatchStyle(v)}" title="ch${i+1}: ${v}%">${i+1}</span>`;
-      });
-      h += `</div></div>`;
-      h += `<div class="status-section"><div class="status-label">Relays</div>`;
-      h += `<div class="relay-indicators">`;
-      const rl = u.rl || [];
-      rl.forEach((v, i) => {
-        const cls = v ? "on" : "off";
-        h += `<span class="relay-ind ${cls}" title="rly${i+1}: ${v?'ON':'OFF'}">${v?'ON':'OFF'}</span>`;
-      });
-      h += `</div></div>`;
-      h += `<div class="status-section"><div class="status-label">Sensors</div>`;
-      h += `<div class="sensor-data">`;
-      if (u.ldr != null) {
-        const ldrIcon = u.ldr > 70 ? "☀️" : u.ldr > 40 ? "🌤️" : u.ldr > 10 ? "⛅" : "🌙";
-        const ldrLabel = u.ldr > 70 ? "Bright" : u.ldr > 40 ? "Moderate" : u.ldr > 10 ? "Dim" : "Dark";
-        h += `<div class="sensor-item">${ldrIcon} Light: <span class="sensor-value">${u.ldr}%</span> <span style="font-size:.85em;color:var(--muted)">(${ldrLabel})</span></div>`;
-      }
-      h += `</div></div>`;
-      h += `<div class="status-section"><div class="status-label">System</div>`;
-      h += `<div style="font-size:.9em">`;
-      h += `<div>Uptime: <b>${up}</b></div>`;
-      h += `<div>Errors: <b>${u.err || 0}</b></div>`;
-      h += `</div></div>`;
-      h += `</div></div></div>`;
-    }
-    if (!Object.keys(units).length) {
-      h = '<p style="color:var(--muted)">No units detected</p>';
-    }
-    document.getElementById("fleet").innerHTML = h;
+    lastFleet = f.data || {};
+    renderFleet(lastFleet);
   } catch (e) {
     console.error("load failed:", e);
   }
@@ -315,6 +371,18 @@ async function openControlModal(id, name) {
   const relays = config.relays || [];
 
   let html = "";
+
+  // If the coordinator has no cached metadata for this leaf, the back-end
+  // signals it via source==="none". Show a clear hint instead of an empty modal.
+  if (config.source === "none") {
+    html += '<div class="control-group" style="border-left:3px solid #f59e0b;background:#fffbeb;color:#92400e">';
+    html += '<h3 style="color:#92400e">No config metadata for this leaf</h3>';
+    html += '<p style="margin:0">The coordinator hasn\'t seen a config push for this unit yet. ';
+    html += 'Open <a href="/config-builder.html">Config Builder</a>, load or build this leaf\'s config, ';
+    html += 'and push it via "Save to device" with the leaf selected. The Control modal will work afterwards.</p>';
+    html += '</div>';
+  }
+
   if (unitScenes.length) {
     html += '<div class="control-group"><h3>Scene Presets</h3>';
     html += '<div class="preset-buttons">';
@@ -324,12 +392,14 @@ async function openControlModal(id, name) {
     html += "</div></div>";
   }
 
-  html += '<div class="preset-buttons">';
-  html += '<button class="btn" onclick="applyPreset(100)">All 100%</button>';
-  html += '<button class="btn" onclick="applyPreset(50)">All 50%</button>';
-  html += '<button class="btn" onclick="applyPreset(25)">All 25%</button>';
-  html += '<button class="btn" onclick="applyPreset(0)">All Off</button>';
-  html += "</div>";
+  if (channels.length || relays.length) {
+    html += '<div class="preset-buttons">';
+    html += '<button class="btn" onclick="applyPreset(100)">All 100%</button>';
+    html += '<button class="btn" onclick="applyPreset(50)">All 50%</button>';
+    html += '<button class="btn" onclick="applyPreset(25)">All 25%</button>';
+    html += '<button class="btn" onclick="applyPreset(0)">All Off</button>';
+    html += "</div>";
+  }
 
   if (channels.length) {
     html += '<div class="control-group"><h3>LED Channels</h3>';
@@ -546,6 +616,9 @@ init().then(() => {
   updateClock(); setInterval(updateClock, 1000);
   load(); setInterval(load, 15000);
   updateStatus(); setInterval(updateStatus, 30000);
+  // Tick "last seen" labels every second — the underlying data only refreshes
+  // on /api/fleet polls (15 s), but the relative-time string moves every second.
+  setInterval(tickLastSeen, 1000);
 });
 </script>
 </body>

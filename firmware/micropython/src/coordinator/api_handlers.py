@@ -9,6 +9,97 @@ from shared.simple_logger import Logger
 log = Logger()
 
 
+# ----------------------------------------------------------------------
+# Leaf-config cache
+# ----------------------------------------------------------------------
+# The coordinator is the source of truth for every leaf's config. Every
+# time the user pushes a config to leaf N (via POST /api/units/N/config),
+# we cache the full parsed config here AND mirror it to flash at
+# /leaf-configs/N.json. On coord boot we re-hydrate from flash so the
+# dashboard's Control modal and Config Builder's "Load Leaf N" both work
+# without needing the leaf to be online.
+#
+# {unit_id: {full config dict}}
+
+_leaf_config_cache = {}
+_LEAF_CFG_DIR = "/leaf-configs"
+
+
+def _ensure_leaf_cfg_dir():
+    try:
+        import os
+        os.mkdir(_LEAF_CFG_DIR)
+    except OSError:
+        pass  # already exists
+
+
+def _persist_leaf_cfg(unit_id, cfg):
+    """Atomic write of the leaf cache to flash. Best-effort — failure is logged but not raised."""
+    try:
+        import os
+        _ensure_leaf_cfg_dir()
+        path = f"{_LEAF_CFG_DIR}/{unit_id}.json"
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(cfg, f)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        os.rename(tmp, path)
+    except Exception as e:
+        log.warn(f"[API] Could not persist leaf {unit_id} cache: {e}")
+
+
+def load_leaf_cache_from_flash():
+    """Called once at coord boot from main.py. Re-hydrates _leaf_config_cache."""
+    try:
+        import os
+        try:
+            entries = os.listdir(_LEAF_CFG_DIR)
+        except OSError:
+            return  # dir doesn't exist yet — nothing cached
+        for name in entries:
+            if not name.endswith(".json"):
+                continue
+            try:
+                uid = int(name[:-5])  # strip ".json"
+            except ValueError:
+                continue
+            try:
+                with open(f"{_LEAF_CFG_DIR}/{name}", "r") as f:
+                    _leaf_config_cache[uid] = json.load(f)
+                log.info(f"[API] Restored cached config for leaf {uid}")
+            except Exception as e:
+                log.warn(f"[API] Could not load leaf {uid} cache: {e}")
+    except Exception as e:
+        log.warn(f"[API] Leaf cache hydrate failed: {e}")
+
+
+def _extract_leaf_meta(cfg):
+    """Channel/relay metadata for the dashboard Control modal."""
+    return {
+        "led_channels": [
+            {
+                "id":   c["id"],
+                "name": c.get("name", c["id"]),
+                "enabled": c.get("enabled", True),
+                "default_duty_percent": c.get("default_duty_percent", 0),
+            }
+            for c in cfg.get("led_channels", []) if isinstance(c, dict) and "id" in c
+        ],
+        "relays": [
+            {
+                "id":   r["id"],
+                "name": r.get("name", r["id"]),
+                "enabled": r.get("enabled", True),
+                "default_state": r.get("default_state", "off"),
+            }
+            for r in cfg.get("relays", []) if isinstance(r, dict) and "id" in r
+        ],
+    }
+
+
 def _ok_led_state():
     return "running_lora_ok" if system_status.lora_connected else "running_ok"
 
@@ -28,20 +119,24 @@ def _err(msg, code=400):
 # ------------------------------------------------------------------
 
 def handle_fleet_status():
+    import time
     from hardware.pwm_control import pwm_controller
     from hardware.relay_control import relay_controller
     from hardware.pir_manager import pir_manager
     from hardware.ldr_monitor import ldr_monitor
-    
+
     fleet = {str(uid): u for uid, u in fleet_manager.get_all().items()}
     fleet["0"] = {
+        "name": config_manager.unit_name,
         "online": True,
+        "last_seen": time.time(),         # coordinator is "always now"
         "uptime": system_status.get_uptime(),
         "ch": pwm_controller.get_all(),
         "rl": list(relay_controller.get_all().values()),
         "pir": list(pir_manager.get_all_states().values()),
         "ldr": ldr_monitor.ambient_percent,
         "err": system_status.error_count,
+        "rssi": None,                     # local, no link
     }
     return _ok(fleet)
 
@@ -100,6 +195,20 @@ async def handle_config_push(unit_id, config_str):
         except Exception as e:
             return _err(str(e))
 
+    # Cache the FULL leaf config BEFORE the LoRa send so:
+    #  (a) the dashboard's Control modal works even if LoRa is flaky now,
+    #  (b) the Config Builder can later "Load from Leaf N" to edit it,
+    #  (c) the cache survives a coord reboot via flash.
+    # The user clearly intended this config for this leaf, so we persist
+    # before attempting the radio transfer.
+    try:
+        cfg = json.loads(config_str)
+        _leaf_config_cache[unit_id] = cfg
+        _persist_leaf_cfg(unit_id, cfg)
+        log.info(f"[API] Cached leaf {unit_id} config")
+    except Exception as e:
+        log.warn(f"[API] Could not cache leaf {unit_id} config: {e}")
+
     ok = await lora_protocol.send_config(unit_id, config_str)
     if ok:
         return _ok({"sent_to": unit_id})
@@ -124,23 +233,44 @@ def handle_full_config():
 
 
 def handle_unit_config(unit_id):
+    """Return the full config for a unit — coordinator reads its live config,
+    leaves return the coordinator's cached copy. Used by both the dashboard
+    Control modal (which reads led_channels/relays) AND the Config Builder
+    (which reads every section to populate its form)."""
     if unit_id == 0:
-        # Return coordinator's config including channel/relay details
-        led_channels = config_manager.get("led_channels")
-        relays = config_manager.get("relays")
-        
-        return _ok({
-            "version":   config_manager.version,
-            "role":      config_manager.role,
-            "unit_id":   config_manager.unit_id,
-            "unit_name": config_manager.unit_name,
-            "led_channels": [{"id": ch["id"], "name": ch.get("name", ch["id"]), "enabled": ch.get("enabled", True), "default_duty_percent": ch.get("default_duty_percent", 0)} for ch in led_channels],
-            "relays": [{"id": r["id"], "name": r.get("name", r["id"]), "enabled": r.get("enabled", True), "default_state": r.get("default_state", "off")} for r in relays],
-        })
+        cfg = config_manager.get_all()
+        # Reuse the same wifi-password masking as /api/config so the Builder
+        # round-trip works identically whether the user picks "Coordinator"
+        # or unit 0 from the unit selector.
+        if isinstance(cfg.get("wifi"), dict) and cfg["wifi"].get("password"):
+            masked = dict(cfg)
+            masked["wifi"] = dict(cfg["wifi"])
+            masked["wifi"]["password"] = "********"
+            cfg = masked
+        out = dict(cfg)
+        out["source"] = "live"
+        return _ok(out)
+
+    cached = _leaf_config_cache.get(unit_id)
+    if cached:
+        out = dict(cached)
+        out["source"] = "cached"
+        return _ok(out)
+
+    # No cache. Either the leaf was set up via USB only, or the coord just
+    # rebooted and the user hasn't re-pushed yet. Return a minimal stub the
+    # dashboard hint logic and Config Builder can both detect.
     u = fleet_manager.get(unit_id)
     if u is None:
         return _err(f"Unknown unit {unit_id}", 404)
-    return _ok({"unit_id": unit_id, "note": "fetch config via direct connection to leaf"})
+    return _ok({
+        "unit_id":      unit_id,
+        "unit_name":    u.get("name", "") or f"Unit {unit_id}",
+        "led_channels": [],
+        "relays":       [],
+        "source":       "none",
+        "note":         "No config cached on the coordinator for this leaf. Open the Config Builder, fill in this leaf's config, and Save to device.",
+    })
 
 
 # ------------------------------------------------------------------

@@ -51,12 +51,36 @@ Once the coordinator is running:
 
 The new config takes effect after reboot.
 
-### Updating a leaf unit's config
+### Provisioning a brand-new leaf
 
-Leaf units don't have WiFi. Options:
+Leaf units don't have WiFi, so the very first config has to land on them via USB. After that, every subsequent edit flows through the coordinator over LoRa.
 
-- **USB** — connect with Thonny or `mpremote`, overwrite `config.json` on the device, reboot
-- **Future: remote push** — OTA config push over LoRa is on the roadmap (Phase 2)
+1. Connect the leaf via USB. Use Thonny or `mpremote` to push a *minimal* `config.json` containing at least:
+   - `system.role = "leaf"`
+   - `system.unit_id = N` (matching one of the coordinator's `system.peers`)
+   - `lora.frequency_mhz` and `lora.channel` matching the coordinator
+   - `wifi` may be omitted (leaves don't use it)
+2. Reboot the leaf. It'll come up, initialise LoRa, and start sending heartbeats.
+3. On the coordinator, open **Config Builder**.
+4. From the **Load from device** dropdown next to the button, pick **Leaf N**, click the button.
+   - On a fresh setup the coordinator has no cached config for that leaf yet, so you'll see a hint to that effect.
+5. Fill in the full config in the form — make sure `system.unit_id` is set to N and `system.role` is `leaf`.
+6. Click **Save to device**. The coordinator does two things atomically:
+   - Pushes the config to the leaf over LoRa (chunked).
+   - Caches a copy on its own flash at `/leaf-configs/N.json`.
+7. From now on, **Load from device → Leaf N** brings back the cached copy for editing. Save again to push updates.
+
+### Editing a leaf's config later
+
+Same as steps 3–6 above. The coordinator keeps the most recent pushed config on flash (in `/leaf-configs/`), so it survives coord reboots. If the cache is ever lost, the leaf is still running its own copy — just rebuild the config in the Builder and push again.
+
+### Updating the coordinator's own config
+
+1. Open the dashboard at `http://<coordinator-ip>/`
+2. Open **Config Builder**, click **Load from device** (Coordinator selected by default)
+3. Make changes
+4. Click **Save to device**
+5. Reboot the coordinator for the new config to take effect (power cycle, or use the dashboard's Reboot button)
 
 ---
 

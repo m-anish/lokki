@@ -367,11 +367,15 @@
         <button class="btn coordinator-only" id="rebootBtn" onclick="rebootDevice()" style="display:none;color:#dc2626;border-color:#fca5a5">🔄 Reboot</button>
         <button class="btn" id="dlSunTimesBtn" onclick="downloadSunTimes()" style="display:none" disabled>⬇ Download sun_times.json</button>
         <button class="btn" id="uploadBtn">↑ Load existing config</button>
-        <button class="btn coordinator-only" id="loadFromCoordinatorBtn" onclick="loadFromCoordinator()" style="display:none">📡 Load from Coordinator</button>
+        <button class="btn coordinator-only" id="loadFromDeviceBtn" onclick="loadFromDevice()" style="display:none">📡 Load from device</button>
+        <select class="coordinator-only" id="loadTargetUnit" style="display:none;padding:.4em .6em;border-radius:6px;border:1px solid var(--border)">
+          <option value="0">Coordinator (this device)</option>
+        </select>
         <input id="uploadInput" type="file" accept=".json,application/json"
                style="position:absolute;width:1px;height:1px;clip:rect(0,0,0,0)" />
       </div>
       <div id="uploadMsg" style="font-size:.78em;color:var(--muted);margin-top:6px"></div>
+      <div id="loadHint" style="font-size:.78em;color:var(--muted);margin-top:4px"></div>
     </div>
 
     <!-- ── SYSTEM ── -->
@@ -808,29 +812,73 @@ const ON_DEVICE = (() => {
 if (ON_DEVICE) {
   document.getElementById('saveDeviceBtn').style.display = '';
   document.getElementById('saveDeviceBtn2').style.display = '';
-  document.getElementById('loadFromCoordinatorBtn').style.display = '';
+  document.getElementById('loadFromDeviceBtn').style.display = '';
+  document.getElementById('loadTargetUnit').style.display = '';
   document.getElementById('dashboardLink').style.display = '';
+  // Populate the unit selector from the coordinator's own config peers.
+  populateUnitSelector();
 }
 
 // ============================================================
-// Load from Coordinator
+// Populate "Load from device" unit selector
 // ============================================================
-async function loadFromCoordinator() {
-  const btn = document.getElementById('loadFromCoordinatorBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+// The coordinator's config has system.peers — the leaf unit_ids it tracks.
+// We let the user load any of those (provided their config has been pushed
+// at least once and is therefore cached on the coordinator). Coord itself
+// is always the first option.
+async function populateUnitSelector() {
+  const sel = document.getElementById('loadTargetUnit');
+  if (!sel) return;
   try {
     const r = await fetch('/api/config');
     const data = await r.json();
-    if (r.ok && data.ok !== false && data.data) {
-      applyConfigToForm(data.data);
-      showToast('Loaded config from coordinator ✓', 'ok');
-    } else {
-      showToast('Failed to load: ' + (data.error || `HTTP ${r.status}`), 'err');
-    }
+    const peers = (data && data.data && data.data.system && data.data.system.peers) || [];
+    peers.forEach(uid => {
+      const opt = document.createElement('option');
+      opt.value = String(uid);
+      opt.textContent = `Leaf ${uid}`;
+      sel.appendChild(opt);
+    });
   } catch (e) {
-    showToast('Could not reach coordinator: ' + e.message, 'err');
+    // Non-fatal: dropdown just stays at the single Coordinator option.
+    console.warn('Unit selector populate failed:', e);
+  }
+}
+
+// ============================================================
+// Load from device (coordinator OR a cached leaf config)
+// ============================================================
+async function loadFromDevice() {
+  const sel = document.getElementById('loadTargetUnit');
+  const btn = document.getElementById('loadFromDeviceBtn');
+  const hint = document.getElementById('loadHint');
+  const unitId = sel ? parseInt(sel.value, 10) : 0;
+  const url = unitId === 0 ? '/api/config' : `/api/units/${unitId}/config`;
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading…'; }
+  if (hint) hint.textContent = '';
+  try {
+    const r = await fetch(url);
+    const data = await r.json();
+    if (!r.ok || data.ok === false || !data.data) {
+      showToast('Failed to load: ' + (data.error || `HTTP ${r.status}`), 'err');
+      return;
+    }
+    // Leaf with no cached config — back-end signals via source==="none".
+    // Don't apply (would wipe the user's current form); just hint.
+    if (data.data.source === 'none') {
+      if (hint) {
+        hint.textContent = `No config cached on coordinator for Leaf ${unitId}. Build it here and "Save to device" — that pushes via LoRa AND caches it.`;
+        hint.style.color = '#92400e';
+      }
+      return;
+    }
+    applyConfigToForm(data.data);
+    const label = unitId === 0 ? 'coordinator' : `leaf ${unitId} (${data.data.source})`;
+    showToast(`Loaded config from ${label} ✓`, 'ok');
+  } catch (e) {
+    showToast('Could not reach device: ' + e.message, 'err');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '📡 Load from Coordinator'; }
+    if (btn) { btn.disabled = false; btn.textContent = '📡 Load from device'; }
   }
 }
 
