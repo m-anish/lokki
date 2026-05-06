@@ -7,6 +7,11 @@ SRC_DIR="$REPO_ROOT/firmware/micropython/src"
 WEB_DIR="$REPO_ROOT/web/app"
 SAMPLE_CFG="$SRC_DIR/config/samples/config.json.sample"
 
+# Network key cache. Lives in the repo root (gitignored) so subsequent leaf
+# provisioning can pick it up without the user having to re-enter it. Treat
+# this like an SSH private key — keep it off cloud storage.
+NETKEY_FILE="$REPO_ROOT/.lokki-network-key"
+
 # ---------------------------------------------------------------------------
 # Argument parsing
 #   no flags             → push code + web assets, preserve existing config.json
@@ -26,15 +31,20 @@ usage() {
 Usage: $0 [--fresh --role=coordinator|leaf [--id=N] [--wifi]]
 
 Without flags:
-    Push code + web assets only. Preserves /config.json on the device.
+    Push code + web assets only. Preserves /config.json and /secrets.json
+    on the device.
 
 With --fresh:
     --role=coordinator         Push the coordinator starter config from
                                 $SAMPLE_CFG. WiFi credentials are placeholders
                                 and MUST be edited before the unit comes up.
-    --role=leaf --id=N         Push a minimal leaf config with unit_id=N (1-8).
-                                The coordinator will overwrite it via LoRa once
-                                you push a real config from the Config Builder.
+                                Generates a network HMAC key (or reuses an
+                                existing $NETKEY_FILE) and pushes secrets.json.
+    --role=leaf --id=N         Push a minimal leaf config with unit_id=N (1-8)
+                                AND the network HMAC key from $NETKEY_FILE.
+                                Errors if no key file exists yet (provision a
+                                coordinator first, or copy the key from the
+                                machine that did).
 EOF
 }
 
@@ -157,7 +167,41 @@ mpremote connect auto fs cp -r "$WEB_DIR/vendor" :www/
 # ---------------------------------------------------------------------------
 if [ "$FRESH" = "1" ]; then
     TMP_CFG="$(mktemp -t lokki-cfg.XXXXXX)"
-    trap 'rm -f "$TMP_CFG"' EXIT
+    TMP_SECRETS="$(mktemp -t lokki-secrets.XXXXXX)"
+    trap 'rm -f "$TMP_CFG" "$TMP_SECRETS"' EXIT
+
+    # ------------------------------------------------------------------
+    # Network key handling
+    # ------------------------------------------------------------------
+    # Coordinator: if no key file exists, generate one and persist locally.
+    # Leaf: require an existing key file (must have provisioned coord first).
+    #       Refuse to push a leaf with no key — that would create a unit
+    #       that silently runs unsigned and won't talk to the signed mesh.
+    if [ "$ROLE" = "coordinator" ]; then
+        if [ ! -f "$NETKEY_FILE" ]; then
+            echo "[update] No network key found at $NETKEY_FILE — generating a new one."
+            python3 -c "import secrets; print(secrets.token_hex(16))" > "$NETKEY_FILE"
+            chmod 600 "$NETKEY_FILE"
+            echo "[update] Wrote new key. Keep $NETKEY_FILE safe — it's the only copy."
+        else
+            echo "[update] Reusing network key from $NETKEY_FILE"
+        fi
+    else
+        if [ ! -f "$NETKEY_FILE" ]; then
+            echo "[update] ERROR: no network key at $NETKEY_FILE — provision a coordinator first" >&2
+            echo "[update]        (or copy the key file from the machine that did)." >&2
+            exit 3
+        fi
+    fi
+
+    NETKEY="$(tr -d '[:space:]' < "$NETKEY_FILE")"
+    if ! [[ "$NETKEY" =~ ^[0-9a-fA-F]{32}$ ]]; then
+        echo "[update] ERROR: network key in $NETKEY_FILE is not 32 hex chars" >&2
+        exit 3
+    fi
+    cat > "$TMP_SECRETS" <<EOF
+{ "lora_key_hex": "$NETKEY" }
+EOF
 
     if [ "$ROLE" = "coordinator" ]; then
         echo "[update] Pushing coordinator starter config from sample..."
@@ -191,6 +235,8 @@ if [ "$FRESH" = "1" ]; then
         fi
         
         mpremote connect auto fs cp "$TMP_CFG" :config.json
+        echo "[update] Pushing secrets.json (network HMAC key)..."
+        mpremote connect auto fs cp "$TMP_SECRETS" :secrets.json
         echo
         if [ "$SETUP_WIFI" = "0" ]; then
             echo "[update] !! WiFi credentials in the pushed config are placeholders."
@@ -250,8 +296,10 @@ if [ "$FRESH" = "1" ]; then
 }
 EOF
         mpremote connect auto fs cp "$TMP_CFG" :config.json
+        echo "[update] Pushing secrets.json (matching coordinator network key)..."
+        mpremote connect auto fs cp "$TMP_SECRETS" :secrets.json
         echo
-        echo "[update] Leaf $LEAF_ID stub config pushed."
+        echo "[update] Leaf $LEAF_ID stub config + network key pushed."
         echo "[update] LoRa frequency/channel must match the coordinator before leaf will join."
         echo "[update] On the coordinator, open Config Builder → 'Load from device' → 'Leaf $LEAF_ID'"
         echo "[update] to fill in the full config."

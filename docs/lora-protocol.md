@@ -104,15 +104,52 @@ All messages use a compact JSON envelope. Short keys keep packets small.
 
 ```json
 {
-  "s":   1,          // source unit_id (0–8)
-  "d":   0,          // destination unit_id (0–8, or 255 for broadcast)
-  "t":   "HB",       // message type (see Section 3)
-  "seq": 42,         // rolling sequence number 0–255, per source
-  "p":   { ... }     // payload — type-specific, may be omitted
+  "s":   1,                // source unit_id (0–8)
+  "d":   0,                // destination unit_id (0–8, or 255 for broadcast)
+  "t":   "HB",             // message type (see Section 3)
+  "seq": 42,               // rolling sequence number 0–255, per source
+  "p":   { ... },          // payload — type-specific, may be omitted
+  "mac": "5d880ad7452b9a02" // 8-byte HMAC-SHA256 tag (see §2.1), 16 hex chars
 }
 ```
 
-**Sequence numbers** are per-source rolling 8-bit counters. The coordinator tracks last-seen seq per leaf to detect dropped packets. No retransmit on drop for fire-and-forget messages; ACK-required messages handle retransmit explicitly.
+**Sequence numbers** are per-source rolling 8-bit counters. The coordinator and every leaf track the last *authenticated* seq per source and reject anything ≤ last-seen (with a small rollover window — see §2.2). This is replay protection, not delivery accounting; ACK-required messages handle retransmit explicitly.
+
+### 2.1 Authentication — network HMAC key
+
+Lokki defends against a stray/malicious LoRa node in radio range using a **network-wide pre-shared key**. The threat is real: anyone with a Pico + E220 module on the same `frequency_mhz`/`channel` can otherwise sniff every frame and forge commands (EO blackouts, malicious CFG_* pushes, scene applies, etc.).
+
+- The key is 16 random bytes, generated once during coordinator provisioning by `utils/update.sh --fresh --role=coordinator`.
+- It lives in `/secrets.json` on every unit:
+  ```json
+  { "lora_key_hex": "<32 hex chars>" }
+  ```
+- `secrets.json` is **never** served by the web server (explicitly blocked in `_BLOCKED_PATHS`) and is **never** included in `/api/config` responses. There is no API to read it back. The only way to extract it is direct filesystem access via USB.
+- Every outbound frame is signed: the sender JSON-serialises the envelope *without* the `mac` field, computes `HMAC-SHA256(key, body)`, takes the first 8 bytes, hex-encodes it, and inserts it as `mac`.
+- Every inbound frame is verified: the receiver pops `mac`, re-serialises the rest the same way, recomputes the tag, and constant-time-compares. Mismatch → silent drop. No error reply (a probing attacker should learn nothing).
+- Frames *without* a `mac` field are dropped if the receiver has a key configured. This means a network with a key won't accept legacy unsigned frames — every unit must have the same key.
+
+**Why HMAC-SHA256 truncated to 8 bytes?**
+- 8 bytes = 64 bits → ~10⁻¹⁹ forgery probability per attempt. Adequate against any realistic attacker on a slow LoRa link.
+- Hex-encoded the field is 16 chars; with the JSON key, comma, and quotes, ~22 B of envelope overhead. Every other budget (200 B packet limit, SRP truncation thresholds) accounts for this.
+
+**Failure mode if `secrets.json` is missing:**
+- `LoRaProtocol.init()` logs a `WARN` and runs in unsigned mode.
+- A unit in unsigned mode will accept ANY frame that parses, AND its outbound frames will be rejected by every signed peer.
+- This is intentional — it lets you bring up a development board without secrets, but a production deployment without secrets is loudly visible in the logs.
+
+**Key rotation:** out of scope for v1. The `CFG_*` chunked transfer can carry a new `secrets.json` to each leaf, but coordinated cut-over needs care. Captured as a follow-up in TODO.
+
+### 2.2 Replay protection
+
+The 8-bit `seq` counter rolls every 256 frames. To distinguish "fresh frame after rollover" from "real replay attack", receivers track per-source `last_seq` and accept new `seq` if either:
+
+- `seq > last_seq` (normal forward progress), OR
+- `last_seq ≥ 240` AND `seq < 16` (legitimate rollover window).
+
+Anything else is dropped. The window is 16 frames: small enough that an attacker can't easily land a replay, big enough to tolerate occasional packet loss around the rollover boundary.
+
+After a coord or leaf reboot, `last_seq` resets to "unknown" and the *first* frame from each source is accepted unconditionally. This is a documented gap — a captured frame replayed within a short window after a reboot can land. Mitigation: the attacker has to *know* the reboot happened, and the worst they can do is replay one specific MO/SC. Adding monotonic timestamps to defeat this is on the roadmap.
 
 ---
 

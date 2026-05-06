@@ -195,8 +195,9 @@ def _register_lora_handlers(role, fleet_manager=None):
     lora_protocol.on("MO", on_manual_override)
 
     def on_status_request(src, payload):
-        # Base SRP is ~120B with name+rssi; the 200B E220 limit leaves ~50B for
-        # scene names. If we'd overrun, drop scene names progressively.
+        # Wire budget: 200B E220 packet limit minus envelope (~30B) minus
+        # HMAC field (~24B when signed) leaves ~146B for the payload dict.
+        # Drop scene names from the end until we fit.
         scene_names = list(scenes.keys())
         response = {
             "name":    config_manager.unit_name,
@@ -209,10 +210,8 @@ def _register_lora_handlers(role, fleet_manager=None):
             "rssi":    lora_protocol.last_rx_rssi,
             "sc":      scene_names,
         }
-        # Rough envelope budget check — drop scenes from the end until it fits.
-        # 30B accounts for the LoRa envelope overhead added by send().
         import json as _json
-        while len(_json.dumps(response).encode()) > 170 and response["sc"]:
+        while len(_json.dumps(response).encode()) > 146 and response["sc"]:
             response["sc"].pop()
         lora_protocol.send("SRP", src, response)
     lora_protocol.on("SR", on_status_request)

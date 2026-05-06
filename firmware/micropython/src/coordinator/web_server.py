@@ -158,7 +158,16 @@ class WebServer:
     # Static file serving
     # ------------------------------------------------------------------
 
+    # Paths that must NEVER be served, even if they appear under /www/ or
+    # somewhere else accessible to the static handler. Defense in depth —
+    # _is_static already returns True only for the allowlist, but adding an
+    # explicit deny means any future bug that broadens the allowlist still
+    # can't expose these.
+    _BLOCKED_PATHS = ("/secrets.json", "/config.json")
+
     def _is_static(self, path):
+        if path in self._BLOCKED_PATHS:
+            return False
         if path == "/" or path in _STATIC_PATHS:
             return True
         if path.startswith("/vendor/"):

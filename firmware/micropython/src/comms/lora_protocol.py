@@ -1,8 +1,11 @@
 import asyncio
+import binascii
 import json
 import time
 from comms.lora_transport import lora_transport, LoRaTimeoutError
 from core.config_manager import config_manager
+from shared.hmac_sha256 import hmac_sha256
+from shared.secrets_loader import get_lora_key
 from shared.simple_logger import Logger
 
 log = Logger()
@@ -34,6 +37,34 @@ _BROADCAST      = 255
 # E220-900T22D maximum payload per packet. Chunked transfers handle larger.
 _MAX_PACKET_BYTES = 200
 
+# HMAC parameters. Truncated to 8 bytes — gives ~2^-64 forgery prob per attempt.
+# Hex-encoded the tag is 16 chars; envelope overhead with quotes/key is ~24 B.
+_MAC_BYTES = 8
+_MAC_FIELD = "mac"
+
+# Replay window. We track the highest seq we've seen from each source. Frames
+# with seq <= last_seq are dropped UNLESS we detect rollover (last seq was near
+# 255 and incoming seq is small). The 8-bit seq rolls every 256 messages, so
+# we must allow that without re-opening the door to true replays. Use a
+# window of WINDOW after rollover: anything in (last_high .. 255] OR [0 ..
+# WINDOW) is acceptable for one tick following last_seq > 255-WINDOW.
+_REPLAY_WINDOW = 16
+
+
+def _ct_eq(a, b):
+    """Constant-time bytes comparison.
+
+    Avoids timing oracle on the HMAC check. Pure-Python on MicroPython is
+    slow enough that the timing leak is dwarfed by everything else, but it
+    costs nothing to do this right.
+    """
+    if len(a) != len(b):
+        return False
+    diff = 0
+    for x, y in zip(a, b):
+        diff |= x ^ y
+    return diff == 0
+
 
 def _crc32(data):
     if isinstance(data, str):
@@ -61,9 +92,21 @@ class LoRaProtocol:
         # (see TODO in lora-protocol.md). Leaves include this in HB so the
         # coordinator can show link quality on the dashboard.
         self.last_rx_rssi = None
+        # Network key (bytes) loaded from /secrets.json, or None if unsigned
+        # mode. When set, every outbound frame carries an HMAC tag and every
+        # inbound frame is verified before dispatch.
+        self._key = None
+        # Replay protection: highest seq seen per source unit_id.
+        # {src_id: last_seq_int}. Updated only on successfully verified frames.
+        self._last_seq = {}
 
     def init(self):
         self._unit_id = config_manager.unit_id
+        self._key = get_lora_key()
+        if self._key:
+            log.info(f"[LORA_PROTO] Network key loaded ({len(self._key)} B) — frames will be HMAC-signed")
+        else:
+            log.warn("[LORA_PROTO] No network key — running unsigned. Add secrets.json to enable.")
         lora_transport.init()
         log.info(f"[LORA_PROTO] Init, unit_id={self._unit_id}")
 
@@ -85,6 +128,14 @@ class LoRaProtocol:
         envelope = {"s": self._unit_id, "d": dest, "t": msg_type, "seq": seq}
         if payload:
             envelope["p"] = payload
+
+        # HMAC-sign before serialising the final wire frame. The tag covers
+        # the canonical envelope WITHOUT the "mac" field so receiver and
+        # sender can re-derive the same input deterministically.
+        if self._key is not None:
+            body = json.dumps(envelope).encode()
+            tag = hmac_sha256(self._key, body)[:_MAC_BYTES]
+            envelope[_MAC_FIELD] = binascii.hexlify(tag).decode()
 
         try:
             raw = json.dumps(envelope).encode()
@@ -254,12 +305,35 @@ class LoRaProtocol:
             log.error(f"[LORA_PROTO] Parse error: {e}")
             return
 
+        # ---- HMAC verification ----
+        # When a network key is configured, every accepted frame must carry a
+        # valid tag. Frames without a tag, with a malformed tag, or with a tag
+        # that doesn't match are silently dropped — the only signal we leak
+        # to a would-be attacker is "your frame did nothing", which is the
+        # whole point.
+        if self._key is not None:
+            mac_hex = msg.pop(_MAC_FIELD, None)
+            if not mac_hex:
+                log.debug("[LORA_PROTO] dropped unsigned frame")
+                return
+            try:
+                given = binascii.unhexlify(mac_hex)
+            except Exception:
+                log.debug("[LORA_PROTO] dropped frame with malformed mac")
+                return
+            body = json.dumps(msg).encode()
+            expected = hmac_sha256(self._key, body)[:_MAC_BYTES]
+            if not _ct_eq(expected, given):
+                log.debug(f"[LORA_PROTO] dropped frame with bad mac from {msg.get('s')}")
+                return
+
         msg_type = msg.get("t")
         src      = msg.get("s", 0)
         dest     = msg.get("d", 0)
         seq      = msg.get("seq", 0)
         payload  = msg.get("p", {})
 
+<<<<<<< HEAD
         # Application-layer destination filtering. The E220 modules run in
         # transparent mode (no hardware-level address filter), so every unit
         # on the same channel sees every packet. Drop frames not addressed
@@ -269,6 +343,18 @@ class LoRaProtocol:
             return
 
         log.debug(f"[LORA_PROTO] RX {msg_type} from {src} → {dest} seq={seq}")
+=======
+        # ---- Replay protection ----
+        # Once a frame is authenticated, refuse to process it twice. The seq
+        # is 8-bit so we accept rollover: a small seq following a near-255
+        # last_seq is treated as a fresh increment, not a replay.
+        if not self._seq_is_fresh(src, seq):
+            log.debug(f"[LORA_PROTO] dropped replay {msg_type} from {src} seq={seq}")
+            return
+        self._last_seq[src] = seq
+
+        log.debug(f"[LORA_PROTO] RX {msg_type} from {src} seq={seq}")
+>>>>>>> f10194a (Feature: Network HMAC authentication + replay protection for LoRa)
 
         # Handle ACKs internally — resolve pending
         if msg_type == ACK:
@@ -298,6 +384,25 @@ class LoRaProtocol:
                 handler(src, payload)
             except Exception as e:
                 log.error(f"[LORA_PROTO] Handler error for {msg_type}: {e}")
+
+    def _seq_is_fresh(self, src, seq):
+        """Return True if `seq` from `src` should be accepted as new.
+
+        Rolling 8-bit window: accept seq strictly greater than last_seen, OR
+        a small seq when last_seen was near 255 (rollover). Reject everything
+        else.
+        """
+        if not isinstance(seq, int) or seq < 0 or seq > 255:
+            return False
+        last = self._last_seq.get(src)
+        if last is None:
+            return True
+        if seq > last:
+            return True
+        # Rollover: last was near top, incoming small.
+        if last >= 256 - _REPLAY_WINDOW and seq < _REPLAY_WINDOW:
+            return True
+        return False
 
     # ------------------------------------------------------------------
     # ACK tracking
