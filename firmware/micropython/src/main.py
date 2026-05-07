@@ -80,6 +80,46 @@ def _ok_led_state():
     return "running_lora_ok" if system_status.lora_connected else "running_ok"
 
 
+# ----------------------------------------------------------------------
+# LoRa init auto-reset retry counter
+# ----------------------------------------------------------------------
+# RP2350's RTC has a small block of RAM that survives machine.reset()
+# (a hard chip reset) but not a real power cycle. We use it to bound
+# the auto-reset recovery: if N hard resets in a row haven't gotten
+# LoRa config to stick, we give up and run without the radio rather
+# than boot-loop forever. A real power cycle clears the counter.
+
+_MAX_LORA_AUTO_RESETS = 2
+_LORA_RTC_TAG = b"LRC:"  # RTC-memory key prefix
+
+def _get_lora_reset_counter():
+    try:
+        import machine
+        mem = machine.RTC().memory()
+        if mem and mem.startswith(_LORA_RTC_TAG):
+            try:
+                return int(mem[len(_LORA_RTC_TAG):])
+            except ValueError:
+                return 0
+    except Exception:
+        pass
+    return 0
+
+def _set_lora_reset_counter(n):
+    try:
+        import machine
+        machine.RTC().memory(_LORA_RTC_TAG + str(n).encode())
+    except Exception as e:
+        log.warn(f"[MAIN] Could not persist lora reset counter: {e}")
+
+def _clear_lora_reset_counter():
+    try:
+        import machine
+        machine.RTC().memory(b"")
+    except Exception:
+        pass
+
+
 async def schedule_task(interval_ms):
     while True:
         try:
@@ -294,16 +334,40 @@ async def main():
     # the init code path ran. Otherwise the dashboard / status LED would
     # claim a healthy link even when the module is silently running on
     # factory defaults (wrong channel, wrong address, transparent mode).
+    #
+    # Auto-reset on persistent failure: field-observed that a HARD chip
+    # reset (`mpremote reset` or `machine.reset()`) recovers a module that
+    # in-process retries can't unstick. Hardware reset fully resets the
+    # RP2350's UART/PIO/DMA/GPIO peripherals — which MicroPython's own
+    # peripheral teardown can't replicate. So if config_ok is False, we
+    # call machine.reset() and try again on the next boot. The retry count
+    # is stored in RTC memory which survives machine.reset() but not a
+    # power cycle, so a real hardware fault eventually falls through to
+    # "give up and run without LoRa" rather than boot-looping forever.
     status_led.set_state("lora_init")
     try:
         lora_protocol.init()
         from comms.lora_transport import lora_transport
         if lora_transport.config_ok:
             system_status.set_connection_status(lora=True)
+            _clear_lora_reset_counter()  # success, don't carry stale count forward
         else:
+            count = _get_lora_reset_counter()
+            if count < _MAX_LORA_AUTO_RESETS:
+                _set_lora_reset_counter(count + 1)
+                log.warn(f"[MAIN] LoRa config failed; triggering hard chip reset "
+                         f"(auto-recovery attempt {count + 1}/{_MAX_LORA_AUTO_RESETS})")
+                # Brief delay so the log line gets out the USB CDC before reset.
+                time.sleep_ms(500)
+                import machine
+                machine.reset()
+                # Unreachable, but explicit:
+                return
+            log.error(f"[MAIN] LoRa config failed after {_MAX_LORA_AUTO_RESETS} auto-resets — "
+                      "running with no radio link. Power-cycle (full power off) to retry.")
+            _clear_lora_reset_counter()
             system_status.set_connection_status(lora=False)
             system_status.record_error("lora_init: register-mode config not acknowledged")
-            log.error("[MAIN] LoRa transport up but module config FAILED — running with no radio link")
     except Exception as e:
         log.error(f"[MAIN] LoRa init failed: {e}")
         system_status.set_connection_status(lora=False)
