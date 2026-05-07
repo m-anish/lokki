@@ -83,44 +83,75 @@ def _ok_led_state():
 # ----------------------------------------------------------------------
 # LoRa init auto-reset retry counter
 # ----------------------------------------------------------------------
-# RP2350's RTC has a small block of RAM that survives machine.reset()
-# (a hard chip reset) but not a real power cycle. We use it to bound
-# the auto-reset recovery: if N hard resets in a row haven't gotten
-# LoRa config to stick, we give up and run without the radio rather
-# than boot-loop forever. A real power cycle clears the counter.
+# We need the counter to:
+#   - SURVIVE machine.reset() (a hard chip reset triggered from firmware)
+#   - CLEAR on a real power cycle (cut VCC) so a power-cycle is a fresh start
+#
+# An earlier version used machine.RTC().memory() which we believed had
+# those semantics. Field observation showed the counter wasn't actually
+# persisting — units boot-looped well past the 2-attempt cap without
+# user intervention, only succeeding when one boot happened to land on
+# a working module state. RP2/RP2350's MicroPython RTC.memory backing
+# SRAM is wiped during MicroPython's own startup, so by the time
+# `_get_lora_reset_counter()` runs it's already zero again.
+#
+# The correct persistence on RP2350 is a WATCHDOG SCRATCH REGISTER.
+# Per RP2350 datasheet §9.3 the watchdog peripheral exposes 8 scratch
+# registers (SCRATCH0..7) at offsets 0x0C..0x28 from base 0x400D8000.
+# These survive machine.reset() and watchdog reset but are cleared by
+# power-on reset (POR) — exactly what we want.
+#
+# We use SCRATCH4 (RP2350 bootloader uses 0..2 for its own purposes, 7
+# for chip info; 3-6 are application-free per common convention).
 
-# Empirically (field-observed): some boots take 4-5 hard resets before the
-# module's internal state machine recovers. 5 auto-resets ≈ 30 s of boot
-# loop in the worst case, after which we give up and run without the radio
-# rather than spin forever on a genuinely dead module. A real power cycle
-# (cut VCC) clears the counter and starts a fresh recovery cycle.
 _MAX_LORA_AUTO_RESETS = 5
-_LORA_RTC_TAG = b"LRC:"  # RTC-memory key prefix
+
+# RP2350 watchdog SCRATCH4. (RP2040 has the same register at a different
+# base — see _detect_scratch_addr below for the runtime lookup.)
+_RP2350_WD_SCRATCH4 = 0x400D801C
+_RP2040_WD_SCRATCH4 = 0x4005801C
+
+# Magic stored in the upper 24 bits so we can tell our counter apart
+# from random garbage that the register might hold on the very first
+# boot after flash. On read: if magic doesn't match, treat as 0.
+_LORA_RST_MAGIC = 0xC0FFEE00
+
+
+def _scratch_addr():
+    """Pick the right watchdog scratch register address for this chip."""
+    try:
+        import os
+        m = os.uname().machine
+        if "RP2350" in m or "Pico 2" in m:
+            return _RP2350_WD_SCRATCH4
+    except Exception:
+        pass
+    return _RP2040_WD_SCRATCH4
+
 
 def _get_lora_reset_counter():
     try:
         import machine
-        mem = machine.RTC().memory()
-        if mem and mem.startswith(_LORA_RTC_TAG):
-            try:
-                return int(mem[len(_LORA_RTC_TAG):])
-            except ValueError:
-                return 0
+        v = machine.mem32[_scratch_addr()]
+        if (v & 0xFFFFFF00) == _LORA_RST_MAGIC:
+            return v & 0xFF
     except Exception:
         pass
     return 0
 
+
 def _set_lora_reset_counter(n):
     try:
         import machine
-        machine.RTC().memory(_LORA_RTC_TAG + str(n).encode())
+        machine.mem32[_scratch_addr()] = _LORA_RST_MAGIC | (n & 0xFF)
     except Exception as e:
         log.warn(f"[MAIN] Could not persist lora reset counter: {e}")
+
 
 def _clear_lora_reset_counter():
     try:
         import machine
-        machine.RTC().memory(b"")
+        machine.mem32[_scratch_addr()] = 0
     except Exception:
         pass
 
@@ -308,6 +339,12 @@ async def main():
     role = cfg.role
 
     log.info(f"[MAIN] Lokki booting — role={role} unit_id={cfg.unit_id} name={cfg.unit_name}")
+    # Surface the auto-reset counter immediately so it's visible whether
+    # this is a fresh boot (counter=0) or part of a recovery cycle.
+    _existing_lora_retry = _get_lora_reset_counter()
+    if _existing_lora_retry:
+        log.info(f"[MAIN] LoRa auto-reset counter: {_existing_lora_retry} "
+                 f"(this boot follows {_existing_lora_retry} earlier failed init(s))")
 
     # Re-bind status LED to configured pin (default singleton uses GPIO 5)
     status_led.init_from_config(hw)
