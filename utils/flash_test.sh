@@ -16,23 +16,29 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-TEST_SRC="$REPO_ROOT/tests/lora_e220_test.py"
 
 UNIT_ID=""
+SCRIPT_NAME="baseline"
 while [ $# -gt 0 ]; do
     case "$1" in
         --id=*) UNIT_ID="${1#--id=}" ;;
         --id)   shift; UNIT_ID="${1:-}" ;;
+        --script=*) SCRIPT_NAME="${1#--script=}" ;;
+        --script)   shift; SCRIPT_NAME="${1:-}" ;;
         --help|-h)
             cat <<EOF
-Usage: $0 --id=N
+Usage: $0 --id=N [--script=baseline|step1]
 
-Wipes the connected Pico's filesystem and installs ONLY the LoRa test
-loop as main.py. UNIT_ID (0 = coordinator, 1..8 = leaf) is patched into
-the script's first lines before flashing.
+  --id=N            UNIT_ID to patch into the script (0=coord, 1..8=leaf).
+  --script=NAME     Which test script to flash (default: baseline). Choices:
+                      baseline  — tests/lora_e220_test.py
+                                  (zero config, factory defaults, transparent)
+                      step1     — tests/lora_e220_step1_config.py
+                                  (baseline + minimal register-mode write)
 
-Run on each Pico in turn (cable + USB). After both are flashed, both
-should auto-boot into the test loop and start broadcasting PINGs.
+Wipes the connected Pico's filesystem and installs the chosen test
+script as main.py. Run on each Pico in turn (cable + USB). After both
+are flashed, both should auto-boot into the test loop.
 EOF
             exit 0
             ;;
@@ -40,6 +46,12 @@ EOF
     esac
     shift
 done
+
+case "$SCRIPT_NAME" in
+    baseline) TEST_SRC="$REPO_ROOT/tests/lora_e220_test.py" ;;
+    step1)    TEST_SRC="$REPO_ROOT/tests/lora_e220_step1_config.py" ;;
+    *) echo "[flash_test] --script must be 'baseline' or 'step1' (got '$SCRIPT_NAME')" >&2; exit 2 ;;
+esac
 
 if ! [[ "$UNIT_ID" =~ ^[0-8]$ ]]; then
     echo "[flash_test] --id is required, must be 0..8 (got '${UNIT_ID:-}')" >&2
