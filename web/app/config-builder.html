@@ -109,7 +109,12 @@
     .expert-only-flex { display: none; }
     body.expert .expert-only-flex { display: flex; }
 
-    /* LEAF MODE — hide coordinator-only sections */
+    /* LEAF MODE — hide config sections that only apply when role=coordinator
+       (e.g. wifi credentials, peers list). NOTE: this CSS class is for FORM
+       SECTIONS only. Action buttons that need the page to be served from a
+       coordinator are gated separately by the ON_DEVICE JS block — those
+       must NOT have this class or they'd vanish whenever the user edits a
+       leaf config, which is the most common reason to use this builder. */
     body.leaf .coordinator-only { display: none !important; }
     .leaf-note { display: none; background: #fffbeb; border: 1px solid #fde68a;
                   border-radius: 8px; padding: 10px 14px; font-size: .82em; color: #92400e;
@@ -363,12 +368,12 @@
       <div class="dl-area-title">Config actions</div>
       <div class="dl-actions">
         <button class="btn btn-primary" id="dlBtn" onclick="downloadJSON()">⬇ Download config.json</button>
-        <button class="btn btn-success coordinator-only" id="saveDeviceBtn" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
-        <button class="btn coordinator-only" id="rebootBtn" onclick="rebootDevice()" style="display:none;color:#dc2626;border-color:#fca5a5">🔄 Reboot</button>
+        <button class="btn btn-success" id="saveDeviceBtn" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
+        <button class="btn" id="rebootBtn" onclick="rebootDevice()" style="display:none;color:#dc2626;border-color:#fca5a5">🔄 Reboot</button>
         <button class="btn" id="dlSunTimesBtn" onclick="downloadSunTimes()" style="display:none" disabled>⬇ Download sun_times.json</button>
-        <button class="btn" id="uploadBtn">↑ Load existing config</button>
-        <button class="btn coordinator-only" id="loadFromDeviceBtn" onclick="loadFromDevice()" style="display:none">📡 Load from device</button>
-        <select class="coordinator-only" id="loadTargetUnit" style="display:none;padding:.4em .6em;border-radius:6px;border:1px solid var(--border)">
+        <button class="btn" id="uploadBtn">📂 Load from file</button>
+        <button class="btn" id="loadFromDeviceBtn" onclick="loadFromDevice()" style="display:none">📡 Load from device</button>
+        <select id="loadTargetUnit" style="display:none;padding:.4em .6em;border-radius:6px;border:1px solid var(--border)">
           <option value="0">Coordinator (this device)</option>
         </select>
         <input id="uploadInput" type="file" accept=".json,application/json"
@@ -790,7 +795,7 @@
     <div class="preview-title">config.json preview</div>
     <div class="preview-actions">
       <button class="btn btn-primary btn-sm" onclick="downloadJSON()">⬇ Download</button>
-      <button class="btn btn-success btn-sm coordinator-only" id="saveDeviceBtn2" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
+      <button class="btn btn-success btn-sm" id="saveDeviceBtn2" onclick="saveToDevice()" style="display:none">↑ Save to device</button>
     </div>
     <pre id="preview"></pre>
   </div>
