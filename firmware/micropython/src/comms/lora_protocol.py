@@ -208,10 +208,19 @@ class LoRaProtocol:
 
         msg_type = msg.get("t")
         src      = msg.get("s", 0)
+        dest     = msg.get("d", 0)
         seq      = msg.get("seq", 0)
         payload  = msg.get("p", {})
 
-        log.debug(f"[LORA_PROTO] RX {msg_type} from {src} seq={seq}")
+        # Application-layer destination filtering. The E220 modules run in
+        # transparent mode (no hardware-level address filter), so every unit
+        # on the same channel sees every packet. Drop frames not addressed
+        # to us — except broadcasts (dest == _BROADCAST or 0xFFFF) and our
+        # own ACKs (which can come from anywhere).
+        if msg_type != ACK and dest != self._unit_id and dest != _BROADCAST and dest != 0xFFFF:
+            return
+
+        log.debug(f"[LORA_PROTO] RX {msg_type} from {src} → {dest} seq={seq}")
 
         # Handle ACKs internally — resolve pending
         if msg_type == ACK:

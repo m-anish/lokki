@@ -1,6 +1,5 @@
 import asyncio
 import gc
-import time
 
 from core.config_manager import config_manager
 from core.schedule_engine import schedule_engine
@@ -78,82 +77,6 @@ def _setup_pir_handlers(pir_cfg, scenes):
 def _ok_led_state():
     """Return the appropriate steady LED state depending on LoRa connectivity."""
     return "running_lora_ok" if system_status.lora_connected else "running_ok"
-
-
-# ----------------------------------------------------------------------
-# LoRa init auto-reset retry counter
-# ----------------------------------------------------------------------
-# We need the counter to:
-#   - SURVIVE machine.reset() (a hard chip reset triggered from firmware)
-#   - CLEAR on a real power cycle (cut VCC) so a power-cycle is a fresh start
-#
-# An earlier version used machine.RTC().memory() which we believed had
-# those semantics. Field observation showed the counter wasn't actually
-# persisting — units boot-looped well past the 2-attempt cap without
-# user intervention, only succeeding when one boot happened to land on
-# a working module state. RP2/RP2350's MicroPython RTC.memory backing
-# SRAM is wiped during MicroPython's own startup, so by the time
-# `_get_lora_reset_counter()` runs it's already zero again.
-#
-# The correct persistence on RP2350 is a WATCHDOG SCRATCH REGISTER.
-# Per RP2350 datasheet §9.3 the watchdog peripheral exposes 8 scratch
-# registers (SCRATCH0..7) at offsets 0x0C..0x28 from base 0x400D8000.
-# These survive machine.reset() and watchdog reset but are cleared by
-# power-on reset (POR) — exactly what we want.
-#
-# We use SCRATCH4 (RP2350 bootloader uses 0..2 for its own purposes, 7
-# for chip info; 3-6 are application-free per common convention).
-
-_MAX_LORA_AUTO_RESETS = 5
-
-# RP2350 watchdog SCRATCH4. (RP2040 has the same register at a different
-# base — see _detect_scratch_addr below for the runtime lookup.)
-_RP2350_WD_SCRATCH4 = 0x400D801C
-_RP2040_WD_SCRATCH4 = 0x4005801C
-
-# Magic stored in the upper 24 bits so we can tell our counter apart
-# from random garbage that the register might hold on the very first
-# boot after flash. On read: if magic doesn't match, treat as 0.
-_LORA_RST_MAGIC = 0xC0FFEE00
-
-
-def _scratch_addr():
-    """Pick the right watchdog scratch register address for this chip."""
-    try:
-        import os
-        m = os.uname().machine
-        if "RP2350" in m or "Pico 2" in m:
-            return _RP2350_WD_SCRATCH4
-    except Exception:
-        pass
-    return _RP2040_WD_SCRATCH4
-
-
-def _get_lora_reset_counter():
-    try:
-        import machine
-        v = machine.mem32[_scratch_addr()]
-        if (v & 0xFFFFFF00) == _LORA_RST_MAGIC:
-            return v & 0xFF
-    except Exception:
-        pass
-    return 0
-
-
-def _set_lora_reset_counter(n):
-    try:
-        import machine
-        machine.mem32[_scratch_addr()] = _LORA_RST_MAGIC | (n & 0xFF)
-    except Exception as e:
-        log.warn(f"[MAIN] Could not persist lora reset counter: {e}")
-
-
-def _clear_lora_reset_counter():
-    try:
-        import machine
-        machine.mem32[_scratch_addr()] = 0
-    except Exception:
-        pass
 
 
 async def schedule_task(interval_ms):
@@ -339,12 +262,6 @@ async def main():
     role = cfg.role
 
     log.info(f"[MAIN] Lokki booting — role={role} unit_id={cfg.unit_id} name={cfg.unit_name}")
-    # Surface the auto-reset counter immediately so it's visible whether
-    # this is a fresh boot (counter=0) or part of a recovery cycle.
-    _existing_lora_retry = _get_lora_reset_counter()
-    if _existing_lora_retry:
-        log.info(f"[MAIN] LoRa auto-reset counter: {_existing_lora_retry} "
-                 f"(this boot follows {_existing_lora_retry} earlier failed init(s))")
 
     # Re-bind status LED to configured pin (default singleton uses GPIO 5)
     status_led.init_from_config(hw)
@@ -371,52 +288,19 @@ async def main():
     priority_arbiter.init_from_config(cfg.get("led_channels"), cfg.get("relays"))
 
     # --- LoRa init ---
-    # We mark lora_connected=True only when the module's register-mode
-    # configuration was actually acknowledged by the hardware, not just when
-    # the init code path ran. Otherwise the dashboard / status LED would
-    # claim a healthy link even when the module is silently running on
-    # factory defaults (wrong channel, wrong address, transparent mode).
+    # No runtime register writes any more. The LoRa module is provisioned
+    # ONCE via utils/e220_provisioner_cli.py (over a Pico-side bridge) and
+    # then runs forever in NVRAM-set state. lora_transport.init() just
+    # opens the UART, drives M0=0/M1=0, and waits for AUX HIGH.
     #
-    # Auto-reset on persistent failure: field-observed that a HARD chip
-    # reset (`mpremote reset` or `machine.reset()`) recovers a module that
-    # in-process retries can't unstick. Hardware reset fully resets the
-    # RP2350's UART/PIO/DMA/GPIO peripherals — which MicroPython's own
-    # peripheral teardown can't replicate. So if config_ok is False, we
-    # call machine.reset() and try again on the next boot. The retry count
-    # is stored in RTC memory which survives machine.reset() but not a
-    # power cycle, so a real hardware fault eventually falls through to
-    # "give up and run without LoRa" rather than boot-looping forever.
+    # Modules MUST be provisioned with --rssi-byte (REG3 bit 7 = 1) — the
+    # transport's recv() unconditionally strips a trailing byte and treats
+    # it as RSSI. Without that provisioning the strip eats real payload
+    # data and JSON parsing fails.
     status_led.set_state("lora_init")
     try:
         lora_protocol.init()
-        from comms.lora_transport import lora_transport
-        if lora_transport.config_ok:
-            system_status.set_connection_status(lora=True)
-            _clear_lora_reset_counter()  # success, don't carry stale count forward
-        else:
-            count = _get_lora_reset_counter()
-            if count < _MAX_LORA_AUTO_RESETS:
-                _set_lora_reset_counter(count + 1)
-                # Pre-reset delay grows with each attempt — gives the module
-                # progressively longer quiet intervals to settle. Capped so
-                # we don't sit forever on a permanently broken unit.
-                # Sequence: 500 ms, 1.5 s, 3 s, 5 s, 8 s.
-                _delays_ms = (500, 1500, 3000, 5000, 8000)
-                idx = min(count, len(_delays_ms) - 1)
-                backoff_ms = _delays_ms[idx]
-                log.warn(f"[MAIN] LoRa config failed; triggering hard chip reset "
-                         f"(auto-recovery attempt {count + 1}/{_MAX_LORA_AUTO_RESETS}, "
-                         f"settling for {backoff_ms} ms first)")
-                time.sleep_ms(backoff_ms)
-                import machine
-                machine.reset()
-                # Unreachable, but explicit:
-                return
-            log.error(f"[MAIN] LoRa config failed after {_MAX_LORA_AUTO_RESETS} auto-resets — "
-                      "running with no radio link. Power-cycle (full power off) to retry.")
-            _clear_lora_reset_counter()
-            system_status.set_connection_status(lora=False)
-            system_status.record_error("lora_init: register-mode config not acknowledged")
+        system_status.set_connection_status(lora=True)
     except Exception as e:
         log.error(f"[MAIN] LoRa init failed: {e}")
         system_status.set_connection_status(lora=False)
