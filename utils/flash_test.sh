@@ -37,6 +37,9 @@ Usage: $0 --id=N [--script=baseline|step1] [--no-writes]
                                   (zero config, factory defaults, transparent)
                       step1     — tests/lora_e220_step1_config.py
                                   (baseline + minimal register-mode write)
+                      xreef     — tests/lora_e220_xreef.py
+                                  (uses xreef's E220 library directly;
+                                   pushes tests/xreef/ alongside as :/xreef/)
   --no-writes       (step1 only) Patches DO_REGISTER_WRITES=False — mode-
                     bounce through CONFIG and back without any UART config
                     commands. Used to isolate whether mode bouncing itself
@@ -50,9 +53,10 @@ EOF
 done
 
 case "$SCRIPT_NAME" in
-    baseline) TEST_SRC="$REPO_ROOT/tests/lora_e220_test.py" ;;
-    step1)    TEST_SRC="$REPO_ROOT/tests/lora_e220_step1_config.py" ;;
-    *) echo "[flash_test] --script must be 'baseline' or 'step1' (got '$SCRIPT_NAME')" >&2; exit 2 ;;
+    baseline) TEST_SRC="$REPO_ROOT/tests/lora_e220_test.py"; PUSH_XREEF=0 ;;
+    step1)    TEST_SRC="$REPO_ROOT/tests/lora_e220_step1_config.py"; PUSH_XREEF=0 ;;
+    xreef)    TEST_SRC="$REPO_ROOT/tests/lora_e220_xreef.py"; PUSH_XREEF=1 ;;
+    *) echo "[flash_test] --script must be 'baseline', 'step1', or 'xreef' (got '$SCRIPT_NAME')" >&2; exit 2 ;;
 esac
 
 if ! [[ "$UNIT_ID" =~ ^[0-8]$ ]]; then
@@ -124,6 +128,20 @@ if [ "$NO_WRITES" = "1" ]; then
         exit 1
     fi
     echo "[flash_test] patched DO_REGISTER_WRITES=False"
+fi
+
+# If the test depends on the xreef library, push the package directory first.
+if [ "$PUSH_XREEF" = "1" ]; then
+    echo "[flash_test] Pushing xreef library to /xreef/ ..."
+    mpremote connect auto fs mkdir :xreef 2>/dev/null || true
+    for f in lora_e220.py lora_e220_constants.py lora_e220_operation_constant.py; do
+        mpremote connect auto fs cp "$REPO_ROOT/tests/xreef/$f" ":xreef/$f"
+    done
+    # An empty __init__.py to make /xreef/ a package
+    EMPTY="$(mktemp -t lokki-empty.XXXXXX)"
+    : > "$EMPTY"
+    mpremote connect auto fs cp "$EMPTY" :xreef/__init__.py
+    rm -f "$EMPTY"
 fi
 
 echo "[flash_test] Pushing test script as main.py (UNIT_ID=$UNIT_ID)..."
