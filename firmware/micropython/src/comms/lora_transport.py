@@ -44,10 +44,15 @@ _MODE_DELAY_MS = 250
 _BAUD          = 9600
 _BROADCAST_ADDR = 0xFFFF
 
-# Register-mode commands
+# Register-mode commands.
+# We use 0xC2 (volatile / RAM-only) by design. _configure() is called on every
+# boot so persisting to NVRAM (0xC0) buys nothing, costs flash wear, and on
+# some E220 firmware variants leaves AUX stuck LOW for a noticeable interval
+# after the commit — manifesting as runtime "AUX timeout" errors that look
+# like the radio link is dead.
 _CMD_SET_NV  = 0xC0  # write to non-volatile memory (persists across power cycles)
 _CMD_READ    = 0xC1
-_CMD_SET_VOL = 0xC2  # volatile, lost on power cycle (handy for safe testing)
+_CMD_SET_VOL = 0xC2  # volatile, lost on power cycle — preferred for our use
 _CMD_REPLY   = 0xC1  # module's reply prefix to a successful set/get
 
 # Register addresses
@@ -85,6 +90,20 @@ def _freq_mhz_to_channel(freq_mhz):
     return max(0, min(80, ch))
 
 
+def _aux_pin_label(pin):
+    """Best-effort label for a Pin object for diagnostic messages.
+    MicroPython exposes the GPIO number in str(pin) like 'Pin(GPIO4, ...)'."""
+    try:
+        s = str(pin)
+        # Snip out "GPIO<n>" if it's there.
+        i = s.find("GPIO")
+        if i >= 0:
+            return s[i+4:].split(",")[0].strip(" )")
+    except Exception:
+        pass
+    return "?"
+
+
 class LoRaTransport:
 
     def __init__(self):
@@ -118,6 +137,14 @@ class LoRaTransport:
             self._uart = UART(uart_id, baudrate=_BAUD,
                              tx=Pin(tx_pin), rx=Pin(rx_pin))
             self._channel = lora.get("channel", 0)
+
+            # Sample AUX before doing anything. With the module powered and
+            # not yet commanded, AUX should be HIGH (idle). If it reads 0
+            # here, the pin is either floating (read as 0 with no pull-up)
+            # or shorted/wired wrong — every subsequent timeout will trace
+            # back to this. Worth shouting about up front.
+            log.info(f"[LORA] Pin readback at boot: AUX={self._aux.value()} "
+                     f"(should be 1; if 0, check wiring on GP{hw.get('lora_aux_pin',4)})")
 
             self._configure(lora)
             self._ready = True
@@ -202,11 +229,13 @@ class LoRaTransport:
             time.sleep_ms(50)
 
         # Build the 10-byte parameter write covering registers 0x00..0x06:
-        #   [CMD_SET_NV] [start=0x00] [len=7] [ADDH ADDL NETID REG0 REG1 REG2 REG3]
+        #   [CMD_SET_VOL] [start=0x00] [len=7] [ADDH ADDL NETID REG0 REG1 REG2 REG3]
+        # Volatile (0xC2): config takes effect immediately, no flash latency,
+        # no NVRAM wear. We re-configure on every boot anyway.
         addh = (unit_id >> 8) & 0xFF
         addl = unit_id & 0xFF
         cmd = bytes([
-            _CMD_SET_NV,
+            _CMD_SET_VOL,
             _REG_ADDH,
             7,
             addh, addl,
@@ -217,9 +246,16 @@ class LoRaTransport:
             _REG3_BYTE,
         ])
 
+        # Log AUX/M0/M1 state up front so wiring problems are obvious. If
+        # AUX reads LOW immediately after switching to config mode, the leaf
+        # is either not actually wired or the module isn't responding.
+        log.debug(f"[LORA] Pre-write state: AUX={self._aux.value()} M0={self._m0.value()} M1={self._m1.value()}")
         log.debug("[LORA] TX config: " + " ".join("{:02x}".format(b) for b in cmd))
         if not self._wait_aux_settled(timeout_s=2):
-            log.warn("[LORA] AUX did not settle before config write — module may be busy")
+            log.warn("[LORA] AUX did not settle HIGH within 2s before config write. "
+                     "Possible causes: (a) AUX not wired to the configured GPIO, "
+                     "(b) M0/M1 not wired so the module never entered config mode, "
+                     "(c) module power/ground problem. Continuing anyway.")
         self._uart.write(cmd)
 
         # Module replies with the same length back, prefixed C1 (or echoes C0).
@@ -277,11 +313,32 @@ class LoRaTransport:
     # ------------------------------------------------------------------
 
     def _wait_aux(self):
+        """Block until AUX reads HIGH (module idle). Raises LoRaTimeoutError
+        if AUX stays LOW past _AUX_TIMEOUT_S.
+
+        Diagnostic logging at 1 Hz so a stuck-low pin is loudly visible —
+        without it, "Send timeout: <type>" gives no clue whether the wait
+        was 5s of actual busy-but-clearing AUX or 5s of a floating pin
+        reading 0 the whole time.
+        """
         deadline = time.time() + _AUX_TIMEOUT_S
+        polls = 0
         while self._aux.value() == 0:
             if time.time() > deadline:
+                log.error(
+                    f"[LORA] AUX stuck LOW for {_AUX_TIMEOUT_S}s — "
+                    f"verify wiring (AUX→GP{_aux_pin_label(self._aux)}). "
+                    "If AUX reads 0 with the module powered and idle, the pin "
+                    "is either disconnected or shorted to GND."
+                )
                 raise LoRaTimeoutError("AUX timeout — channel busy")
             time.sleep_ms(_AUX_POLL_MS)
+            polls += 1
+            # Every full second of waiting, log at DEBUG so the diagnostic
+            # trail makes it clear whether AUX ever flickered HIGH or just
+            # stayed flat-LOW the whole time.
+            if polls * _AUX_POLL_MS % 1000 == 0:
+                log.debug(f"[LORA] AUX still LOW after {polls * _AUX_POLL_MS}ms")
 
     def _set_mode(self, m0, m1):
         log.debug(f"[LORA] Setting mode: M0={m0}, M1={m1}")
