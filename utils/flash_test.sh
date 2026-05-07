@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
         --no-writes) NO_WRITES=1 ;;
         --help|-h)
             cat <<EOF
-Usage: $0 --id=N [--script=baseline|step1] [--no-writes]
+Usage: $0 [--id=N] [--script=baseline|step1|xreef|bridge] [--no-writes]
 
   --id=N            UNIT_ID to patch into the script (0=coord, 1..8=leaf).
   --script=NAME     Which test script to flash (default: baseline). Choices:
@@ -40,6 +40,11 @@ Usage: $0 --id=N [--script=baseline|step1] [--no-writes]
                       xreef     — tests/lora_e220_xreef.py
                                   (uses xreef's E220 library directly;
                                    pushes tests/xreef/ alongside as :/xreef/)
+                      bridge    — tests/pico_e220_bridge.py
+                                  (Pico holds E220 in CONFIG mode and bridges
+                                   USB-CDC ↔ UART for the host-side
+                                   utils/e220_provisioner.py GUI.
+                                   --id is ignored.)
   --no-writes       (step1 only) Patches DO_REGISTER_WRITES=False — mode-
                     bounce through CONFIG and back without any UART config
                     commands. Used to isolate whether mode bouncing itself
@@ -53,11 +58,17 @@ EOF
 done
 
 case "$SCRIPT_NAME" in
-    baseline) TEST_SRC="$REPO_ROOT/tests/lora_e220_test.py"; PUSH_XREEF=0 ;;
-    step1)    TEST_SRC="$REPO_ROOT/tests/lora_e220_step1_config.py"; PUSH_XREEF=0 ;;
-    xreef)    TEST_SRC="$REPO_ROOT/tests/lora_e220_xreef.py"; PUSH_XREEF=1 ;;
-    *) echo "[flash_test] --script must be 'baseline', 'step1', or 'xreef' (got '$SCRIPT_NAME')" >&2; exit 2 ;;
+    baseline) TEST_SRC="$REPO_ROOT/tests/lora_e220_test.py"; PUSH_XREEF=0; NEEDS_ID=1 ;;
+    step1)    TEST_SRC="$REPO_ROOT/tests/lora_e220_step1_config.py"; PUSH_XREEF=0; NEEDS_ID=1 ;;
+    xreef)    TEST_SRC="$REPO_ROOT/tests/lora_e220_xreef.py"; PUSH_XREEF=1; NEEDS_ID=1 ;;
+    bridge)   TEST_SRC="$REPO_ROOT/tests/pico_e220_bridge.py"; PUSH_XREEF=0; NEEDS_ID=0 ;;
+    *) echo "[flash_test] --script must be 'baseline', 'step1', 'xreef', or 'bridge' (got '$SCRIPT_NAME')" >&2; exit 2 ;;
 esac
+
+# Bridge has no UNIT_ID; default it for the patch step below.
+if [ "$NEEDS_ID" = "0" ] && [ -z "$UNIT_ID" ]; then
+    UNIT_ID=0
+fi
 
 if ! [[ "$UNIT_ID" =~ ^[0-8]$ ]]; then
     echo "[flash_test] --id is required, must be 0..8 (got '${UNIT_ID:-}')" >&2
@@ -109,14 +120,15 @@ PYEOF
 # ----------------------------------------------------------------------
 TMP="$(mktemp -t lokki-test.XXXXXX)"
 trap 'rm -f "$TMP"' EXIT
-sed "s/^UNIT_ID  = .*/UNIT_ID  = $UNIT_ID         # patched by flash_test.sh/" \
-    "$TEST_SRC" > "$TMP"
-
-# Sanity: verify the substitution actually happened
-if ! grep -qE "^UNIT_ID  = $UNIT_ID\b" "$TMP"; then
-    echo "[flash_test] sed substitution failed — UNIT_ID line not patched" >&2
-    head -20 "$TMP" >&2
-    exit 1
+cp "$TEST_SRC" "$TMP"
+if [ "$NEEDS_ID" = "1" ]; then
+    sed -i.bak "s/^UNIT_ID  = .*/UNIT_ID  = $UNIT_ID         # patched by flash_test.sh/" "$TMP"
+    rm -f "$TMP.bak"
+    if ! grep -qE "^UNIT_ID  = $UNIT_ID\b" "$TMP"; then
+        echo "[flash_test] sed substitution failed — UNIT_ID line not patched" >&2
+        head -20 "$TMP" >&2
+        exit 1
+    fi
 fi
 
 # Optional: also patch DO_REGISTER_WRITES=False (only meaningful in step1).
