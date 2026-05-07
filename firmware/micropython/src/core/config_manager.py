@@ -224,6 +224,13 @@ class ConfigManager:
         if not isinstance(i2c, int) or i2c not in (100000, 400000, 1000000):
             errors.append("hardware.i2c_freq_hz must be 100000, 400000, or 1000000")
 
+        # Optional. WS2812 chip variants disagree on byte order. Standard
+        # parts are GRB; some clones are RGB. If the status LED shows green
+        # where you expect red (or vice versa), set this to "RGB".
+        order = hw.get("led_color_order", "GRB")
+        if order not in ("GRB", "RGB"):
+            errors.append("hardware.led_color_order must be 'GRB' or 'RGB'")
+
     def _validate_lora(self, errors):
         lora = self._config.get("lora", {})
         if not isinstance(lora, dict):

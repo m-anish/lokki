@@ -38,13 +38,22 @@ class StatusLED:
         self._brightness = 0.0
         self._pattern = "solid"
         self._task = None
+        # Byte order on the wire. MicroPython's neopixel writes in GRB which
+        # matches standard WS2812 chips. Some clones / variants are RGB-native
+        # — same wire bytes get interpreted with R and G swapped, so what we
+        # call green displays as red and vice-versa. The config field
+        # hardware.led_color_order = "RGB" tells us to swap them ourselves.
+        self._color_order = "GRB"
 
     def init_from_config(self, hardware_cfg):
         pin = hardware_cfg.get("status_led_pin", 5)
-        if pin == self._gpio_pin:
-            return
-        self._gpio_pin = pin
-        self._np = neopixel.NeoPixel(Pin(pin), 1)
+        order = hardware_cfg.get("led_color_order", "GRB")
+        if order not in ("GRB", "RGB"):
+            order = "GRB"
+        self._color_order = order
+        if pin != self._gpio_pin:
+            self._gpio_pin = pin
+            self._np = neopixel.NeoPixel(Pin(pin), 1)
         if self._pattern == "solid":
             self._write(self._brightness)
 
@@ -70,11 +79,16 @@ class StatusLED:
 
     def _write(self, brightness):
         b = max(0.0, min(1.0, brightness))
-        self._np[0] = (
-            int(self._r * b),
-            int(self._g * b),
-            int(self._b * b),
-        )
+        r = int(self._r * b)
+        g = int(self._g * b)
+        bb = int(self._b * b)
+        # MicroPython's neopixel writes whatever 3-tuple we give it in GRB
+        # wire order. For an RGB-native chip we swap r and g so the wire
+        # bytes come out correct from the chip's perspective.
+        if self._color_order == "RGB":
+            self._np[0] = (g, r, bb)
+        else:
+            self._np[0] = (r, g, bb)
         self._np.write()
 
     async def run_pattern(self):
@@ -101,12 +115,15 @@ class StatusLED:
                     if self._pattern != "heartbeat":
                         break
                 else:
-                    # State unchanged — fire the blue flash
-                    self._np[0] = (
-                        int(_HB_R * _HB_BRIGHTNESS),
-                        int(_HB_G * _HB_BRIGHTNESS),
-                        int(_HB_B * _HB_BRIGHTNESS),
-                    )
+                    # State unchanged — fire the blue flash. Honour the same
+                    # color-order swap the rest of the LED uses.
+                    fr = int(_HB_R * _HB_BRIGHTNESS)
+                    fg = int(_HB_G * _HB_BRIGHTNESS)
+                    fb = int(_HB_B * _HB_BRIGHTNESS)
+                    if self._color_order == "RGB":
+                        self._np[0] = (fg, fr, fb)
+                    else:
+                        self._np[0] = (fr, fg, fb)
                     self._np.write()
                     await asyncio.sleep_ms(_HB_FLASH_MS)
             else:

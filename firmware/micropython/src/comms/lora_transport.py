@@ -56,6 +56,12 @@ _CONFIG_WRITE_RETRIES    = 3
 # states that 250 ms doesn't.
 _RESET_DELAY_MS          = 500
 
+# UART drain loop bounds. Read repeatedly with poll_ms gaps until two
+# consecutive reads come back empty (RX buffer genuinely quiescent), or
+# we hit max_loops as a safety net.
+_DRAIN_POLL_MS           = 30
+_DRAIN_MAX_LOOPS         = 20
+
 # Register-mode commands.
 # We use 0xC2 (volatile / RAM-only) by design. _configure() is called on every
 # boot so persisting to NVRAM (0xC0) buys nothing, costs flash wear, and on
@@ -164,6 +170,12 @@ class LoRaTransport:
             log.info(f"[LORA] Pin readback at boot: AUX={self._aux.value()} "
                      f"(should be 1; if 0, check wiring on GP{hw.get('lora_aux_pin',4)})")
 
+            # Stash UART params on the lora_cfg dict so _configure can
+            # reinitialise the UART between retry attempts (sometimes needed
+            # to clear a stuck RX FIFO).
+            lora["_uart_id_cache"] = uart_id
+            lora["_tx_pin_cache"]  = tx_pin
+            lora["_rx_pin_cache"]  = rx_pin
             self._configure(lora)
             self._ready = True
             log.info("[LORA] Transport ready")
@@ -255,31 +267,55 @@ class LoRaTransport:
             _REG3_BYTE,
         ])
 
+        # Cache config we'll need to reinitialise the UART between attempts.
+        uart_id = lora_cfg.get("_uart_id_cache") or 0
+        tx_pin  = lora_cfg.get("_tx_pin_cache")  or 0
+        rx_pin  = lora_cfg.get("_rx_pin_cache")  or 1
+
         success = False
         for attempt in range(1, _CONFIG_WRITE_RETRIES + 1):
-            # Full mode-pin reset before EVERY attempt. The E220 has no
-            # software-reset command; the only way to dislodge a wedged
-            # state machine is to bounce M0/M1 through Normal → Config.
-            # Field-observed: a retry that just re-writes without a mode
-            # cycle has identical odds of success to the previous attempt
-            # (i.e. zero, if the first try failed). The mode bounce is
-            # what actually exercises the module's state.
+            # Full reset sequence between attempts. The E220 has no software-
+            # reset command, so we lean on three things:
+            #   1. Bounce M0/M1 through NORMAL → CONFIG to dislodge a wedged
+            #      module state machine.
+            #   2. Reinitialise the Pico's UART. Bytes can sit in the RX FIFO
+            #      from a half-completed previous attempt; just calling
+            #      .read() doesn't always drain them on RP2. A fresh UART()
+            #      object is guaranteed clean.
+            #   3. Generous settle delays. Datasheet says ≥50 ms but in
+            #      practice some modules need much longer to recover from
+            #      a bad state.
             if attempt > 1:
-                log.debug(f"[LORA] Resetting module via mode-pin bounce before attempt {attempt}")
+                log.debug(f"[LORA] Recovery sequence before attempt {attempt}: "
+                          "mode bounce + UART reinit")
             self._set_mode(*_MODE_NORMAL)
             time.sleep_ms(_RESET_DELAY_MS)
+            # Reinit the UART. On retries this clears any junk in the RX FIFO
+            # that survived our drain loop.
+            self._uart = UART(uart_id, baudrate=_BAUD,
+                              tx=Pin(tx_pin), rx=Pin(rx_pin))
+            time.sleep_ms(50)
             self._set_mode(*_MODE_CONFIG)
             time.sleep_ms(_RESET_DELAY_MS)
 
-            # Drain any UART bytes that came across during the mode transitions.
-            for _ in range(3):
-                self._uart.read()
-                time.sleep_ms(50)
+            # Drain hard. Attempt to read repeatedly until two consecutive
+            # reads come back empty — guarantees the RX buffer is genuinely
+            # quiescent before we send our command, even if the module
+            # emitted late banner bytes.
+            empty_streak = 0
+            for _ in range(_DRAIN_MAX_LOOPS):
+                if self._uart.read():
+                    empty_streak = 0
+                else:
+                    empty_streak += 1
+                    if empty_streak >= 2:
+                        break
+                time.sleep_ms(_DRAIN_POLL_MS)
 
             log.debug(f"[LORA] Pre-write state: AUX={self._aux.value()} "
                       f"M0={self._m0.value()} M1={self._m1.value()}")
-            if not self._wait_aux_settled(timeout_s=2):
-                log.warn(f"[LORA] AUX did not settle HIGH within 2s on attempt {attempt}")
+            if not self._wait_aux_settled(timeout_s=3):
+                log.warn(f"[LORA] AUX did not settle HIGH within 3s on attempt {attempt}")
 
             log.debug(f"[LORA] TX config (attempt {attempt}/{_CONFIG_WRITE_RETRIES}): "
                       + " ".join("{:02x}".format(b) for b in cmd))
@@ -310,7 +346,7 @@ class LoRaTransport:
             log.error(f"[LORA] Configuration FAILED after {_CONFIG_WRITE_RETRIES} attempts. "
                       "Module is in an unknown state — LoRa link will NOT work this boot. "
                       "Status LED will reflect the failure (no blue heartbeat). "
-                      "Power-cycle the unit to retry.")
+                      "Power-cycle the unit (full power off, not just reboot) to retry.")
 
         # Switch to normal mode for runtime traffic.
         self._set_mode(*_MODE_NORMAL)
