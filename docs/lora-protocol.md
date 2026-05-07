@@ -14,9 +14,50 @@ The E220 is controlled via M0/M1 GPIO pins:
 | M0 | M1 | Mode | Used for |
 |----|-----|------|----------|
 | 0 | 0 | Normal — fixed-point transmission | All runtime messaging |
-| 1 | 1 | Sleep / AT config | Initial module configuration only |
+| 1 | 1 | Sleep / register-mode config | Initial module configuration only |
 
-Firmware configures the E220 on boot via AT commands (sleep mode), then switches to normal mode for all runtime operation.
+Firmware configures the E220 on boot via the **register-mode binary protocol** (NOT AT commands — those are for Reyax RYLR modules; sending them to a real EBYTE E220 is a silent no-op that leaves the module in factory defaults). Once registers are written, the module is switched to normal mode for all runtime traffic.
+
+### Register-Mode Configuration
+
+In sleep mode (M0=1, M1=1), the module accepts these binary commands over the UART:
+
+| Bytes | Meaning |
+|---|---|
+| `C0 <reg> <len> <values...>` | Write `len` registers starting at `<reg>`, persist to NVRAM |
+| `C2 <reg> <len> <values...>` | Same, but volatile (lost on power cycle) |
+| `C1 <reg> <len>` | Read `len` registers starting at `<reg>` |
+
+The module replies with `C1 <reg> <len> <values>` (echo back the current contents).
+
+**Register layout** (per E220-900T22D datasheet):
+
+| Reg | Field | Bits | Meaning |
+|---|---|---|---|
+| 0x00 | ADDH | 7-0 | High byte of unit address |
+| 0x01 | ADDL | 7-0 | Low byte of unit address |
+| 0x02 | NETID | 7-0 | Network ID (peers must match; we use 0) |
+| 0x03 | REG0 | 7-5 | UART baud rate (0b011 = 9600) |
+| | | 4-3 | Parity (0b00 = 8N1) |
+| | | 2-0 | Air data rate (0b010 = 2.4 kbps — longest range) |
+| 0x04 | REG1 | 7-6 | Sub-packet size (0b00 = 200 B) |
+| | | 5 | Ambient RSSI enable |
+| | | 1-0 | TX power (0b00 = 22 dBm, 01 = 17 dBm, 10 = 13, 11 = 10) |
+| 0x05 | REG2 | 7-0 | Channel — frequency = 850.125 + REG2 MHz, range 0..80 |
+| 0x06 | REG3 | 7 | **RSSI byte append** (1 = trailing RSSI byte on every received packet) |
+| | | 6 | **Transmission method** (1 = fixed-point — required for our addressing) |
+
+The firmware writes registers 0x00..0x06 in a single `C0 00 07 <values>` command on boot. Frequency-to-channel conversion: `channel = round(frequency_mhz - 850)`. So 868 MHz → channel 18 → effective 868.125 MHz.
+
+### RSSI Byte Append
+
+With REG3 bit 7 set, every received packet has a single trailing byte appended by the module before delivery to the MCU UART:
+
+```
+RSSI_dBm = -(256 - rssi_byte)
+```
+
+`lora_transport.recv()` strips this byte and stores the decoded value on `lora_transport.last_rssi_dbm`. The protocol layer surfaces it as `lora_protocol.last_rx_rssi`. The coordinator's fleet manager records the locally-measured value per-frame so the dashboard can show a per-leaf signal indicator.
 
 ### Fixed-Point Transmission
 In normal mode, each transmitted packet is prefixed with a 3-byte routing header that the E220 hardware handles transparently:

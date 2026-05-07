@@ -27,7 +27,15 @@ class FleetManager:
     # ------------------------------------------------------------------
 
     def update(self, unit_id, payload):
-        """Called by lora_protocol HB handler."""
+        """Called by lora_protocol HB and SRP handlers.
+
+        Note on RSSI: we prefer the coordinator's *locally measured* RSSI of
+        this very frame (from `lora_protocol.last_rx_rssi`) over whatever the
+        remote unit reported in the payload. Coord-side RSSI tells us "how
+        well the coord is hearing this leaf right now", which is what the
+        dashboard signal column should reflect. The leaf-reported value
+        (their view of the coord) is kept on `rssi_remote` for diagnostics.
+        """
         if unit_id not in self._units:
             self._units[unit_id] = self._empty(unit_id)
 
@@ -43,8 +51,16 @@ class FleetManager:
         u["ldr"]       = payload.get("ldr", u["ldr"])
         u["sensors"]   = payload.get("sensors", u["sensors"])
         u["err"]       = payload.get("err", u["err"])
-        u["rssi"]      = payload.get("rssi", u.get("rssi"))
         u["scenes"]    = payload.get("sc", u["scenes"])
+        # Pull coord-side RSSI from the protocol layer; fall back to whatever
+        # the remote put in the payload (or what we already had) if absent.
+        from comms.lora_protocol import lora_protocol as _proto
+        local_rssi = _proto.last_rx_rssi
+        if local_rssi is not None:
+            u["rssi"] = local_rssi
+        elif "rssi" in payload:
+            u["rssi"] = payload.get("rssi")
+        u["rssi_remote"] = payload.get("rssi", u.get("rssi_remote"))
 
         if was_offline:
             log.info(f"[FLEET] Unit {unit_id} ({u['name'] or unit_id}) is back online")

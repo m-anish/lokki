@@ -5,21 +5,84 @@ from shared.simple_logger import Logger
 
 log = Logger()
 
-# E220 operating modes via M0/M1
-_MODE_NORMAL = (0, 0)   # data transmission
-_MODE_SLEEP  = (1, 1)   # AT command configuration
+# -----------------------------------------------------------------------------
+# EBYTE E220-900T22D register-mode driver.
+#
+# These modules do NOT speak AT commands. Earlier code did, which silently
+# left the modules in factory defaults (transparent transmission, channel 23,
+# fresh address) — explaining why nothing on the wire ever made it through.
+#
+# Configuration protocol (in sleep mode M0=1, M1=1):
+#   Host → module:   [0xC0] [start_reg] [length] [reg0..regN]   write to NVRAM
+#                    [0xC2] [start_reg] [length] [reg0..regN]   write volatile
+#                    [0xC1] [start_reg] [length]                read
+#   Module → host:   [0xC1] [start_reg] [length] [reg0..regN]   reply with current values
+#
+# Register layout (E220-900T22D, datasheet v1.x):
+#   0x00 ADDH       address high byte
+#   0x01 ADDL       address low byte
+#   0x02 NETID      network id (0..255), peers must match
+#   0x03 REG0       UART baud [7:5] | parity [4:3] | air rate [2:0]
+#   0x04 REG1       sub-packet [7:6] | RSSI ambient [5] | reserved | TX power [1:0]
+#   0x05 REG2       channel (frequency = 850.125 + REG2 MHz, range 0..80)
+#   0x06 REG3       RSSI byte append [7] | transmit method [6] | reserved | LBT | WOR
+#   0x07 CRYPT_H    AES-key high byte
+#   0x08 CRYPT_L    AES-key low byte
+#
+# After a frame is received in fixed-point mode WITH RSSI byte enabled, the
+# module appends one trailing byte: rssi_byte. RSSI_dBm = -(256 - rssi_byte).
+# -----------------------------------------------------------------------------
+
+_MODE_NORMAL = (0, 0)   # transmit/receive
+_MODE_CONFIG = (1, 1)   # M0=M1=1 → sleep / register-mode config
+# Keep the old name for any external import — they're aliases now.
+_MODE_SLEEP  = _MODE_CONFIG
 
 _AUX_POLL_MS   = 10
-_AUX_TIMEOUT_S = 5        # increased for hot reboots
-_AT_TIMEOUT_MS = 150      # increased for reliability
-_MODE_DELAY_MS = 250      # delay after mode switch
-_AT_RETRIES    = 3        # number of retries for AT commands
+_AUX_TIMEOUT_S = 5
+_MODE_DELAY_MS = 250
 _BAUD          = 9600
 _BROADCAST_ADDR = 0xFFFF
+
+# Register-mode commands
+_CMD_SET_NV  = 0xC0  # write to non-volatile memory (persists across power cycles)
+_CMD_READ    = 0xC1
+_CMD_SET_VOL = 0xC2  # volatile, lost on power cycle (handy for safe testing)
+_CMD_REPLY   = 0xC1  # module's reply prefix to a successful set/get
+
+# Register addresses
+_REG_ADDH    = 0x00
+_REG_NETID   = 0x02
+_REG0_OFF    = 0x03
+_REG3_OFF    = 0x06
+
+# REG0: 9600 baud (0b011) | 8N1 (0b00) | 2.4kbps air rate (0b010) → 0x62
+# 2.4kbps gives the longest range; faster rates trade range for throughput.
+_REG0_BYTE   = 0b01100010
+
+# REG1 base: sub-packet 200B (0b00) | ambient RSSI off (0b0) | reserved (0b00)
+# TX power bits [1:0] are filled in at runtime from lora.tx_power_dbm.
+_REG1_BASE   = 0b00000000
+_TX_POWER_BITS = {22: 0b00, 17: 0b01, 13: 0b10, 10: 0b11}
+
+# REG3: bit7=1 → append RSSI byte to every received packet
+#       bit6=1 → fixed-point transmission (sender prepends [ADDH][ADDL][CHAN])
+#       Everything else off.
+_REG3_BYTE   = 0b11000000  # 0xC0
+
+# Channel arithmetic. The E220-900T22D covers 850.125 MHz + (channel × 1 MHz),
+# channels 0..80. We derive from lora.frequency_mhz.
+_CHAN_BASE_MHZ = 850
 
 
 class LoRaTimeoutError(Exception):
     pass
+
+
+def _freq_mhz_to_channel(freq_mhz):
+    """Map an MHz centre frequency to the E220's channel index."""
+    ch = int(round(freq_mhz - _CHAN_BASE_MHZ))
+    return max(0, min(80, ch))
 
 
 class LoRaTransport:
@@ -31,6 +94,10 @@ class LoRaTransport:
         self._aux    = None
         self._channel = 0
         self._ready  = False
+        # RSSI of the most recently received frame, in dBm. None if either
+        # nothing has been received yet or RSSI byte append is disabled.
+        # Populated in recv() by stripping the trailing byte the E220 appends.
+        self.last_rssi_dbm = None
 
     def init(self):
         log.info("[LORA] Starting initialization...")
@@ -79,80 +146,131 @@ class LoRaTransport:
         return True
 
     def recv(self):
-        """Return bytes from UART buffer, or None if empty."""
+        """Return application-payload bytes from the UART buffer, or None if empty.
+
+        With RSSI byte append enabled (bit 7 of REG3), the E220 tacks one byte
+        of RSSI onto the end of every received frame. We strip it, decode it
+        (`RSSI_dBm = -(256 - byte)`), and stash on `self.last_rssi_dbm` for
+        the protocol layer to surface upstream.
+
+        Note: this assumes one frame per UART read. With the E220's 200-byte
+        sub-packet and our protocol's strict <200B envelope cap, that holds —
+        the module never delivers two frames concatenated to a single read.
+        """
         if not self._ready or not self._uart.any():
             return None
-        # Read all available bytes (up to 256)
-        return self._uart.read(256)
+        raw = self._uart.read(256)
+        if not raw:
+            return None
+        if len(raw) >= 2:
+            # Last byte is RSSI; strip it from what the protocol layer sees.
+            rssi_byte = raw[-1]
+            self.last_rssi_dbm = -(256 - rssi_byte)
+            return raw[:-1]
+        # Single-byte frame is junk (probably a stray noise byte) — drop.
+        return None
 
     def available(self):
         return self._ready and self._uart.any() > 0
 
     # ------------------------------------------------------------------
-    # E220 configuration (runs in sleep mode via AT commands)
+    # E220 configuration (register-mode binary protocol, NOT AT)
     # ------------------------------------------------------------------
 
     def _configure(self, lora_cfg):
         unit_id  = config_manager.unit_id
-        freq_hz  = int(lora_cfg.get("frequency_mhz", 868) * 1_000_000)
+        freq_mhz = lora_cfg.get("frequency_mhz", 868)
         tx_power = lora_cfg.get("tx_power_dbm", 22)
-        channel  = lora_cfg.get("channel", 0)
+        channel  = _freq_mhz_to_channel(freq_mhz)
+        # Cache for the runtime header prepend — see send().
+        self._channel = channel
 
-        self._set_mode(*_MODE_SLEEP)
+        # Build REG1 with the requested TX power.
+        tx_bits = _TX_POWER_BITS.get(tx_power, 0b00)
+        reg1_byte = (_REG1_BASE & ~0b11) | tx_bits
+
+        log.debug(f"[LORA] Configuring (register-mode): unit_id={unit_id} "
+                  f"freq={freq_mhz}MHz → ch={channel} tx={tx_power}dBm")
+
+        # Enter config mode (M0=1, M1=1) and let the module settle.
+        self._set_mode(*_MODE_CONFIG)
         time.sleep_ms(_MODE_DELAY_MS)
-
-        # Aggressive UART flushing for hot reboots
+        # Drain any leftover bytes from the UART — keeps stale data from
+        # earlier modes out of the reply parsing.
         for _ in range(3):
             self._uart.read()
             time.sleep_ms(50)
-        
-        log.debug(f"[LORA] Configuring: unit_id={unit_id}, freq={freq_hz}Hz, tx_power={tx_power}dBm, ch={channel}")
 
-        cmds = [
-            f"AT+ADDRESS={unit_id}",
-            f"AT+NETWORKID=0",
-            f"AT+BAND={freq_hz}",
-            f"AT+CHANNEL={channel}",
-            f"AT+PARAMETER=9,7,1,4",     # SF9, BW125kHz, CR4/5, preamble 4
-            f"AT+CRFOP={tx_power}",       # TX power
-            "AT+MODE=1",                  # fixed-point transmission mode
-        ]
+        # Build the 10-byte parameter write covering registers 0x00..0x06:
+        #   [CMD_SET_NV] [start=0x00] [len=7] [ADDH ADDL NETID REG0 REG1 REG2 REG3]
+        addh = (unit_id >> 8) & 0xFF
+        addl = unit_id & 0xFF
+        cmd = bytes([
+            _CMD_SET_NV,
+            _REG_ADDH,
+            7,
+            addh, addl,
+            0,                # NETID
+            _REG0_BYTE,
+            reg1_byte,
+            channel,
+            _REG3_BYTE,
+        ])
 
-        for cmd in cmds:
-            resp = self._at(cmd)
-            if resp and "+ERR" in resp:
-                log.warn(f"[LORA] AT warn: {cmd} → {resp}")
+        log.debug("[LORA] TX config: " + " ".join("{:02x}".format(b) for b in cmd))
+        if not self._wait_aux_settled(timeout_s=2):
+            log.warn("[LORA] AUX did not settle before config write — module may be busy")
+        self._uart.write(cmd)
+
+        # Module replies with the same length back, prefixed C1 (or echoes C0).
+        resp = self._read_with_timeout(expected_len=len(cmd), timeout_ms=400)
+        if not resp:
+            log.error("[LORA] No reply to register write — wrong module variant or wiring fault")
+        else:
+            log.debug("[LORA] RX config: " + " ".join("{:02x}".format(b) for b in resp))
+            if resp[0] not in (_CMD_REPLY, _CMD_SET_NV):
+                log.warn(f"[LORA] Unexpected reply prefix 0x{resp[0]:02x} — config may not have taken")
+            elif len(resp) >= 10 and (resp[3] != addh or resp[4] != addl or resp[5] != 0
+                                      or resp[8] != channel):
+                log.warn("[LORA] Reply values don't match what we asked for — verify with AT+RD")
             else:
-                log.debug(f"[LORA] {cmd} → {resp}")
+                log.info(f"[LORA] Module configured: addr={unit_id} ch={channel} "
+                         f"freq~{_CHAN_BASE_MHZ + channel}.125 MHz tx={tx_power}dBm "
+                         f"(RSSI append + fixed-point ON)")
 
+        # Switch to normal mode for runtime traffic.
         self._set_mode(*_MODE_NORMAL)
         time.sleep_ms(_MODE_DELAY_MS)
-        
-        # Wait for AUX to settle HIGH after mode switch
-        log.debug(f"[LORA] Waiting for AUX to settle (timeout={_AUX_TIMEOUT_S}s)...")
-        deadline = time.time() + _AUX_TIMEOUT_S
-        while self._aux.value() == 0 and time.time() < deadline:
-            time.sleep_ms(10)
-        
-        if self._aux.value() == 0:
-            log.warn("[LORA] AUX still LOW after timeout, but continuing...")
-        else:
-            log.debug("[LORA] AUX settled HIGH")
 
-    def _at(self, cmd):
-        try:
-            self._uart.write((cmd + "\r\n").encode())
-            time.sleep_ms(_AT_TIMEOUT_MS)
-            raw = self._uart.read()
-            if raw:
-                try:
-                    return raw.decode("utf-8", "ignore").strip()
-                except Exception:
-                    return ""
-            return ""
-        except Exception as e:
-            log.error(f"[LORA] AT command failed: {e}")
-            return ""
+        log.debug(f"[LORA] Waiting for AUX to settle after mode switch (timeout={_AUX_TIMEOUT_S}s)...")
+        if self._wait_aux_settled(timeout_s=_AUX_TIMEOUT_S):
+            log.debug("[LORA] AUX settled HIGH")
+        else:
+            log.warn("[LORA] AUX still LOW after timeout, continuing anyway")
+
+    def _read_with_timeout(self, expected_len, timeout_ms=400, poll_ms=20):
+        """Block up to timeout_ms for the UART to give us at least expected_len
+        bytes (or whatever it has when the timer expires)."""
+        deadline_ms = time.ticks_ms() + timeout_ms
+        buf = b""
+        while time.ticks_diff(deadline_ms, time.ticks_ms()) > 0:
+            chunk = self._uart.read()
+            if chunk:
+                buf += chunk
+                if len(buf) >= expected_len:
+                    break
+            time.sleep_ms(poll_ms)
+        return buf
+
+    def _wait_aux_settled(self, timeout_s):
+        """Wait for AUX to go HIGH (idle) within timeout_s seconds. Returns True
+        if it did, False on timeout."""
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            if self._aux.value() == 1:
+                return True
+            time.sleep_ms(10)
+        return False
 
     # ------------------------------------------------------------------
     # AUX discipline and mode control

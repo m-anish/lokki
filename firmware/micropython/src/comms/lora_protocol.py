@@ -179,6 +179,12 @@ class LoRaProtocol:
             try:
                 raw = lora_transport.recv()
                 if raw:
+                    # The transport stripped the trailing RSSI byte the E220
+                    # appends and stashed it on lora_transport.last_rssi_dbm.
+                    # Surface it to the protocol layer so handlers (e.g. the
+                    # leaf's HB task) can include it in payloads, and so the
+                    # coordinator's fleet_manager can record it per-frame.
+                    self.last_rx_rssi = lora_transport.last_rssi_dbm
                     self._dispatch(raw)
                 self._check_pending_acks()
             except Exception as e:
