@@ -289,10 +289,21 @@ async def main():
     priority_arbiter.init_from_config(cfg.get("led_channels"), cfg.get("relays"))
 
     # --- LoRa init ---
+    # We mark lora_connected=True only when the module's register-mode
+    # configuration was actually acknowledged by the hardware, not just when
+    # the init code path ran. Otherwise the dashboard / status LED would
+    # claim a healthy link even when the module is silently running on
+    # factory defaults (wrong channel, wrong address, transparent mode).
     status_led.set_state("lora_init")
     try:
         lora_protocol.init()
-        system_status.set_connection_status(lora=True)
+        from comms.lora_transport import lora_transport
+        if lora_transport.config_ok:
+            system_status.set_connection_status(lora=True)
+        else:
+            system_status.set_connection_status(lora=False)
+            system_status.record_error("lora_init: register-mode config not acknowledged")
+            log.error("[MAIN] LoRa transport up but module config FAILED — running with no radio link")
     except Exception as e:
         log.error(f"[MAIN] LoRa init failed: {e}")
         system_status.set_connection_status(lora=False)

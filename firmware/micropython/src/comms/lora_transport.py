@@ -50,6 +50,12 @@ _BROADCAST_ADDR = 0xFFFF
 _CONFIG_REPLY_TIMEOUT_MS = 1000
 _CONFIG_WRITE_RETRIES    = 3
 
+# Delay between M0/M1 toggles when bouncing the module to reset its state
+# machine before a config write attempt. The datasheet specifies ≥50 ms;
+# 500 ms is a generous margin that's been observed to recover from wedged
+# states that 250 ms doesn't.
+_RESET_DELAY_MS          = 500
+
 # Register-mode commands.
 # We use 0xC2 (volatile / RAM-only) by design. _configure() is called on every
 # boot so persisting to NVRAM (0xC0) buys nothing, costs flash wear, and on
@@ -119,6 +125,12 @@ class LoRaTransport:
         self._aux    = None
         self._channel = 0
         self._ready  = False
+        # True only if the register-mode write was actually acknowledged by
+        # the module with matching values. False = module is running on
+        # factory defaults (or unknown state) and the radio link won't work
+        # even though the rest of the firmware will still come up. Surfaced
+        # to lora_protocol → system_status so the status LED reflects reality.
+        self.config_ok = False
         # RSSI of the most recently received frame, in dBm. None if either
         # nothing has been received yet or RSSI byte append is disabled.
         # Populated in recv() by stripping the trailing byte the E220 appends.
@@ -225,15 +237,6 @@ class LoRaTransport:
         log.debug(f"[LORA] Configuring (register-mode): unit_id={unit_id} "
                   f"freq={freq_mhz}MHz → ch={channel} tx={tx_power}dBm")
 
-        # Enter config mode (M0=1, M1=1) and let the module settle.
-        self._set_mode(*_MODE_CONFIG)
-        time.sleep_ms(_MODE_DELAY_MS)
-        # Drain any leftover bytes from the UART — keeps stale data from
-        # earlier modes out of the reply parsing.
-        for _ in range(3):
-            self._uart.read()
-            time.sleep_ms(50)
-
         # Build the 10-byte parameter write covering registers 0x00..0x06:
         #   [CMD_SET_VOL] [start=0x00] [len=7] [ADDH ADDL NETID REG0 REG1 REG2 REG3]
         # Volatile (0xC2): config takes effect immediately, no flash latency,
@@ -252,50 +255,62 @@ class LoRaTransport:
             _REG3_BYTE,
         ])
 
-        # Log AUX/M0/M1 state up front so wiring problems are obvious. If
-        # AUX reads LOW immediately after switching to config mode, the leaf
-        # is either not actually wired or the module isn't responding.
-        log.debug(f"[LORA] Pre-write state: AUX={self._aux.value()} M0={self._m0.value()} M1={self._m1.value()}")
-        if not self._wait_aux_settled(timeout_s=2):
-            log.warn("[LORA] AUX did not settle HIGH within 2s before config write. "
-                     "Possible causes: (a) AUX not wired to the configured GPIO, "
-                     "(b) M0/M1 not wired so the module never entered config mode, "
-                     "(c) module power/ground problem. Continuing anyway.")
-
-        # Retry the register write a few times. The first reply after a cold
-        # power-on can take ≈1 s (observed on hardware) and occasionally goes
-        # missing entirely — drain races with stray UART noise from the
-        # mode-switch window. Re-issuing the same write is safe (idempotent
-        # for 0xC2) and almost always succeeds on the second attempt.
-        resp = b""
+        success = False
         for attempt in range(1, _CONFIG_WRITE_RETRIES + 1):
+            # Full mode-pin reset before EVERY attempt. The E220 has no
+            # software-reset command; the only way to dislodge a wedged
+            # state machine is to bounce M0/M1 through Normal → Config.
+            # Field-observed: a retry that just re-writes without a mode
+            # cycle has identical odds of success to the previous attempt
+            # (i.e. zero, if the first try failed). The mode bounce is
+            # what actually exercises the module's state.
+            if attempt > 1:
+                log.debug(f"[LORA] Resetting module via mode-pin bounce before attempt {attempt}")
+            self._set_mode(*_MODE_NORMAL)
+            time.sleep_ms(_RESET_DELAY_MS)
+            self._set_mode(*_MODE_CONFIG)
+            time.sleep_ms(_RESET_DELAY_MS)
+
+            # Drain any UART bytes that came across during the mode transitions.
+            for _ in range(3):
+                self._uart.read()
+                time.sleep_ms(50)
+
+            log.debug(f"[LORA] Pre-write state: AUX={self._aux.value()} "
+                      f"M0={self._m0.value()} M1={self._m1.value()}")
+            if not self._wait_aux_settled(timeout_s=2):
+                log.warn(f"[LORA] AUX did not settle HIGH within 2s on attempt {attempt}")
+
             log.debug(f"[LORA] TX config (attempt {attempt}/{_CONFIG_WRITE_RETRIES}): "
                       + " ".join("{:02x}".format(b) for b in cmd))
             self._uart.write(cmd)
             resp = self._read_with_timeout(expected_len=len(cmd),
                                            timeout_ms=_CONFIG_REPLY_TIMEOUT_MS)
-            if resp:
-                break
-            log.warn(f"[LORA] No reply to register write (attempt {attempt}). "
-                     "Draining UART and retrying.")
-            for _ in range(2):
-                self._uart.read()
-                time.sleep_ms(80)
+            if not resp:
+                log.warn(f"[LORA] No reply on attempt {attempt}")
+                continue
 
-        if not resp:
-            log.error(f"[LORA] No reply after {_CONFIG_WRITE_RETRIES} attempts — "
-                      "module may be a non-EBYTE variant, wiring fault, or power issue")
-        else:
             log.debug("[LORA] RX config: " + " ".join("{:02x}".format(b) for b in resp))
             if resp[0] not in (_CMD_REPLY, _CMD_SET_NV, _CMD_SET_VOL):
-                log.warn(f"[LORA] Unexpected reply prefix 0x{resp[0]:02x} — config may not have taken")
-            elif len(resp) >= 10 and (resp[3] != addh or resp[4] != addl or resp[5] != 0
-                                      or resp[8] != channel):
-                log.warn("[LORA] Reply values don't match what we asked for — module rejected the write")
-            else:
-                log.info(f"[LORA] Module configured: addr={unit_id} ch={channel} "
-                         f"freq~{_CHAN_BASE_MHZ + channel}.125 MHz tx={tx_power}dBm "
-                         f"(RSSI append + fixed-point ON)")
+                log.warn(f"[LORA] Unexpected reply prefix 0x{resp[0]:02x} on attempt {attempt}")
+                continue
+            if len(resp) < 10 or (resp[3] != addh or resp[4] != addl or resp[5] != 0
+                                  or resp[8] != channel):
+                log.warn(f"[LORA] Reply values don't match request on attempt {attempt}")
+                continue
+
+            log.info(f"[LORA] Module configured: addr={unit_id} ch={channel} "
+                     f"freq~{_CHAN_BASE_MHZ + channel}.125 MHz tx={tx_power}dBm "
+                     f"(RSSI append + fixed-point ON)")
+            success = True
+            break
+
+        self.config_ok = success
+        if not success:
+            log.error(f"[LORA] Configuration FAILED after {_CONFIG_WRITE_RETRIES} attempts. "
+                      "Module is in an unknown state — LoRa link will NOT work this boot. "
+                      "Status LED will reflect the failure (no blue heartbeat). "
+                      "Power-cycle the unit to retry.")
 
         # Switch to normal mode for runtime traffic.
         self._set_mode(*_MODE_NORMAL)
