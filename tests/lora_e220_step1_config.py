@@ -56,12 +56,28 @@ PING_INTERVAL_MS = 2500
 # ============================================================
 CHANNEL = max(0, min(80, round(FREQ_MHZ - 850)))   # 868 → 18
 
-# REG0: 9600 baud + 8N1 + 2.4 kbps air rate (factory default = 0x62)
-# REG1: 200 B sub-pkt + ambient off + 22 dBm (factory default = 0x00)
-# REG3: transparent + no RSSI byte append + no LBT, WOR cycle 0 → 0x00
-_REG0 = 0x62
-_REG1 = 0x00
-_REG3 = 0x00
+# E220-900T22D register layout (per datasheet AND per xreef's library —
+# we previously got this WRONG by inserting a phantom NETID register that
+# doesn't actually exist on E220):
+#
+#   0x00  ADDH       module high address byte
+#   0x01  ADDL       module low address byte
+#   0x02  SPED       UART baud (bits 7:5) | parity (bits 4:3) | air rate (bits 2:0)
+#   0x03  OPTION     sub-packet (bits 7:6) | RSSI ambient (bit 5) | reserved | TX power (bits 1:0)
+#   0x04  CHAN       channel (frequency = 850.125 + CHAN MHz)
+#   0x05  TRANS_MODE RSSI byte (bit 7) | transmission method (bit 6) | reserved | LBT (bit 3) | WOR (bits 1:0)
+#   0x06  CRYPT_H    AES key high byte
+#   0x07  CRYPT_L    AES key low byte
+#
+# Total: 8 register bytes.  We were writing length=7 and skipping the
+# CRYPT bytes; xreef writes length=8 to match the datasheet.
+
+# Factory default values from the datasheet:
+_SPED       = 0x62   # 9600 baud / 8N1 / 2.4 kbps air rate
+_OPTION     = 0x00   # 200 B sub-pkt / ambient RSSI off / 22 dBm
+_TRANS_MODE = 0x00   # transparent / no LBT / no RSSI byte append / WOR period 0
+_CRYPT_H    = 0x00
+_CRYPT_L    = 0x00
 
 
 # ============================================================
@@ -125,19 +141,24 @@ def _drain_uart():
 
 
 def _print_reg(label, resp):
-    if not resp or len(resp) < 10:
-        print("[STEP1] {}: <truncated, {} bytes>".format(label, len(resp) if resp else 0))
+    """Parse an 11-byte reply: c1/c2 + start + length(=8) + 8 register bytes."""
+    if not resp or len(resp) < 11:
+        print("[STEP1] {}: <truncated, {} bytes: {}>".format(
+            label, len(resp) if resp else 0,
+            " ".join("{:02x}".format(b) for b in (resp or b""))))
         return
-    addh, addl, netid = resp[3], resp[4], resp[5]
-    reg0, reg1, ch, reg3 = resp[6], resp[7], resp[8], resp[9]
-    tx_method = "FIXED-POINT" if (reg3 & 0x40) else "TRANSPARENT"
-    rssi_byte = "ON" if (reg3 & 0x80) else "OFF"
+    addh, addl       = resp[3], resp[4]
+    sped, option, ch = resp[5], resp[6], resp[7]
+    trans_mode       = resp[8]
+    crypt_h, crypt_l = resp[9], resp[10]
+    tx_method = "FIXED-POINT" if (trans_mode & 0x40) else "TRANSPARENT"
+    rssi_byte = "ON" if (trans_mode & 0x80) else "OFF"
     print("[STEP1] {} (RX={}):".format(label,
-          " ".join("{:02x}".format(b) for b in resp[:10])))
-    print("[STEP1]   addr=0x{:02x}{:02x} netid=0x{:02x}  reg0=0x{:02x} reg1=0x{:02x}  "
-          "channel={} (~{}.125 MHz)  reg3=0x{:02x} ({}/{})"
-          .format(addh, addl, netid, reg0, reg1, ch, 850 + ch, reg3, tx_method,
-                  "RSSI" if (reg3 & 0x80) else "no RSSI"))
+          " ".join("{:02x}".format(b) for b in resp[:11])))
+    print("[STEP1]   addr=0x{:02x}{:02x}  sped=0x{:02x}  option=0x{:02x}  "
+          "channel={} (~{}.125 MHz)  trans_mode=0x{:02x} ({}, RSSI byte {})  crypt=0x{:02x}{:02x}"
+          .format(addh, addl, sped, option, ch, 850 + ch, trans_mode,
+                  tx_method, rssi_byte, crypt_h, crypt_l))
 
 
 # ============================================================
@@ -145,13 +166,12 @@ def _print_reg(label, resp):
 # ============================================================
 
 def read_config():
-    """Issue 0xC1 to read registers 0..6. Must be called while in CONFIG mode.
-    Returns the response bytes (or empty)."""
+    """Issue 0xC1 to read all 8 registers (0x00..0x07). Must be called while
+    in CONFIG mode. Returns the response bytes (or empty)."""
     _drain_uart()
-    cmd = bytes([0xC1, 0x00, 0x07])
+    cmd = bytes([0xC1, 0x00, 0x08])              # length = 8 (matches xreef + datasheet)
     uart.write(cmd)
-    # xreef-style: switch back to NORMAL, then read
-    set_mode_normal()
+    set_mode_normal()                             # xreef-style: mode-switch BEFORE reading reply
     resp = uart.read() or b""
     return resp
 
@@ -161,16 +181,24 @@ def read_config():
 # ============================================================
 
 def write_config():
-    """Issue 0xC2 with our chosen values. Must be called while in CONFIG mode.
-    Returns the response bytes."""
+    """Issue 0xC2 with our chosen values, using the CORRECT register layout.
+    Must be called while in CONFIG mode."""
     addh = (UNIT_ID >> 8) & 0xFF
     addl = UNIT_ID & 0xFF
-    cmd = bytes([0xC2, 0x00, 0x07, addh, addl, NETID,
-                 _REG0, _REG1, CHANNEL, _REG3])
+    cmd = bytes([
+        0xC2, 0x00, 0x08,            # cmd + start_reg + length=8
+        addh, addl,                  # 0x00 ADDH, 0x01 ADDL
+        _SPED,                       # 0x02 SPED      (UART/parity/air rate)
+        _OPTION,                     # 0x03 OPTION    (sub-pkt/RSSI ambient/power)
+        CHANNEL,                     # 0x04 CHAN
+        _TRANS_MODE,                 # 0x05 TRANS_MODE (RSSI byte/fixed-pt/LBT/WOR)
+        _CRYPT_H,                    # 0x06 CRYPT_H
+        _CRYPT_L,                    # 0x07 CRYPT_L
+    ])
     print("[STEP1] write_config TX: " + " ".join("{:02x}".format(b) for b in cmd))
     _drain_uart()
     uart.write(cmd)
-    set_mode_normal()                # ← xreef order: switch back BEFORE reading reply
+    set_mode_normal()                # xreef order: mode-switch BEFORE reading reply
     resp = uart.read() or b""
     return resp
 
@@ -208,12 +236,13 @@ def configure():
     resp = write_config()
     _print_reg("AFTER step1 write ", resp)
 
-    # Validate
+    # Validate (correct register-layout indices: ADDH at resp[3], CHAN at resp[7],
+    # TRANS_MODE at resp[8])
     addh = (UNIT_ID >> 8) & 0xFF
     addl = UNIT_ID & 0xFF
-    if (len(resp) >= 10 and resp[0] in (0xC0, 0xC1, 0xC2)
+    if (len(resp) >= 11 and resp[0] in (0xC0, 0xC1, 0xC2)
             and resp[3] == addh and resp[4] == addl
-            and resp[5] == NETID and resp[8] == CHANNEL and resp[9] == _REG3):
+            and resp[5] == _SPED and resp[7] == CHANNEL and resp[8] == _TRANS_MODE):
         print("[STEP1] CONFIG OK")
         return True
     print("[STEP1] CONFIG FAILED — values don't match expected")
