@@ -19,15 +19,17 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 UNIT_ID=""
 SCRIPT_NAME="baseline"
+NO_WRITES=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --id=*) UNIT_ID="${1#--id=}" ;;
         --id)   shift; UNIT_ID="${1:-}" ;;
         --script=*) SCRIPT_NAME="${1#--script=}" ;;
         --script)   shift; SCRIPT_NAME="${1:-}" ;;
+        --no-writes) NO_WRITES=1 ;;
         --help|-h)
             cat <<EOF
-Usage: $0 --id=N [--script=baseline|step1]
+Usage: $0 --id=N [--script=baseline|step1] [--no-writes]
 
   --id=N            UNIT_ID to patch into the script (0=coord, 1..8=leaf).
   --script=NAME     Which test script to flash (default: baseline). Choices:
@@ -35,10 +37,10 @@ Usage: $0 --id=N [--script=baseline|step1]
                                   (zero config, factory defaults, transparent)
                       step1     — tests/lora_e220_step1_config.py
                                   (baseline + minimal register-mode write)
-
-Wipes the connected Pico's filesystem and installs the chosen test
-script as main.py. Run on each Pico in turn (cable + USB). After both
-are flashed, both should auto-boot into the test loop.
+  --no-writes       (step1 only) Patches DO_REGISTER_WRITES=False — mode-
+                    bounce through CONFIG and back without any UART config
+                    commands. Used to isolate whether mode bouncing itself
+                    or the writes break RX.
 EOF
             exit 0
             ;;
@@ -111,6 +113,17 @@ if ! grep -qE "^UNIT_ID  = $UNIT_ID\b" "$TMP"; then
     echo "[flash_test] sed substitution failed — UNIT_ID line not patched" >&2
     head -20 "$TMP" >&2
     exit 1
+fi
+
+# Optional: also patch DO_REGISTER_WRITES=False (only meaningful in step1).
+if [ "$NO_WRITES" = "1" ]; then
+    sed -i.bak "s/^DO_REGISTER_WRITES = .*/DO_REGISTER_WRITES = False  # patched by flash_test.sh --no-writes/" "$TMP"
+    rm -f "$TMP.bak"
+    if ! grep -qE "^DO_REGISTER_WRITES = False" "$TMP"; then
+        echo "[flash_test] --no-writes requested but DO_REGISTER_WRITES line not found in $TEST_SRC" >&2
+        exit 1
+    fi
+    echo "[flash_test] patched DO_REGISTER_WRITES=False"
 fi
 
 echo "[flash_test] Pushing test script as main.py (UNIT_ID=$UNIT_ID)..."

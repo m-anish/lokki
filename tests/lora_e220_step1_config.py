@@ -32,6 +32,13 @@ FREQ_MHZ = 868
 TX_POWER = 22
 NETID    = 0
 
+# Diagnostic toggle:
+#   True  — do the full read-back + write_config flow (default)
+#   False — do the mode-pin bouncing through CONFIG → NORMAL but do NOT
+#           issue any register read/write commands. Used to isolate whether
+#           the mode bounce itself or the writes break the radio's RX path.
+DO_REGISTER_WRITES = True
+
 UART_ID  = 0
 TX_PIN   = 0
 RX_PIN   = 1
@@ -173,9 +180,21 @@ def write_config():
 # ============================================================
 
 def configure():
-    print("[STEP1] Configuring E220: addr={} freq={}MHz ch={} mode=TRANSPARENT"
-          .format(UNIT_ID, FREQ_MHZ, CHANNEL))
+    print("[STEP1] Configuring E220: addr={} freq={}MHz ch={} mode=TRANSPARENT  DO_REGISTER_WRITES={}"
+          .format(UNIT_ID, FREQ_MHZ, CHANNEL, DO_REGISTER_WRITES))
     print("[STEP1] AUX at boot = {}".format(aux.value()))
+
+    if not DO_REGISTER_WRITES:
+        # Mode-bounce only — no register reads/writes — used to isolate
+        # whether mode bouncing itself breaks the radio RX path.
+        print("[STEP1] DO_REGISTER_WRITES=False — mode-bouncing only, no UART config commands")
+        if not set_mode_config():
+            print("[STEP1] WARN: AUX not HIGH after entering CONFIG mode")
+        # Stay briefly in CONFIG mode so the bounce is real.
+        time.sleep_ms(200)
+        if not set_mode_normal():
+            print("[STEP1] WARN: AUX not HIGH after returning to NORMAL mode")
+        return True
 
     # --- Read current state (diagnostic) ---
     if not set_mode_config():
