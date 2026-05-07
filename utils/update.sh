@@ -204,15 +204,20 @@ EOF
         echo "[update] to fill in the full config."
         echo
     fi
-elif ! mpremote connect auto fs ls :config.json >/dev/null 2>&1; then
-    # No --fresh, and no config on device — warn so the user isn't confused
-    # by a unit booting straight into safe mode after this script runs.
-    echo
-    echo "[update] WARNING: no config.json on the device — unit will boot into SAFE MODE."
-    echo "[update] Re-run with --fresh to push a starter config. e.g.:"
-    echo "[update]   $0 --fresh --role=coordinator"
-    echo "[update]   $0 --fresh --role=leaf --id=1"
-    echo
+else
+    # No --fresh: check whether config.json is present on the device. We list
+    # the root and grep, because `mpremote fs ls :config.json` behaves
+    # inconsistently across mpremote versions — some treat a file argument as
+    # "stat this", others as "list this directory" and error on regular files.
+    # `fs ls :` always lists the root directory and is portable.
+    if ! mpremote connect auto fs ls : 2>/dev/null | grep -qE '(^|[[:space:]])config\.json([[:space:]]|$)'; then
+        echo
+        echo "[update] WARNING: no config.json on the device — unit will boot into SAFE MODE."
+        echo "[update] Re-run with --fresh to push a starter config. e.g.:"
+        echo "[update]   $0 --fresh --role=coordinator"
+        echo "[update]   $0 --fresh --role=leaf --id=1"
+        echo
+    fi
 fi
 
 echo "[update] Resetting device..."
