@@ -44,6 +44,12 @@ _MODE_DELAY_MS = 250
 _BAUD          = 9600
 _BROADCAST_ADDR = 0xFFFF
 
+# Cold-boot reply latency on the E220 has been observed at ~1 s — bump the
+# read window well past that. Retry a few times if the very first attempt
+# misses; observed pattern: first boot times out, second succeeds.
+_CONFIG_REPLY_TIMEOUT_MS = 1000
+_CONFIG_WRITE_RETRIES    = 3
+
 # Register-mode commands.
 # We use 0xC2 (volatile / RAM-only) by design. _configure() is called on every
 # boot so persisting to NVRAM (0xC0) buys nothing, costs flash wear, and on
@@ -250,25 +256,42 @@ class LoRaTransport:
         # AUX reads LOW immediately after switching to config mode, the leaf
         # is either not actually wired or the module isn't responding.
         log.debug(f"[LORA] Pre-write state: AUX={self._aux.value()} M0={self._m0.value()} M1={self._m1.value()}")
-        log.debug("[LORA] TX config: " + " ".join("{:02x}".format(b) for b in cmd))
         if not self._wait_aux_settled(timeout_s=2):
             log.warn("[LORA] AUX did not settle HIGH within 2s before config write. "
                      "Possible causes: (a) AUX not wired to the configured GPIO, "
                      "(b) M0/M1 not wired so the module never entered config mode, "
                      "(c) module power/ground problem. Continuing anyway.")
-        self._uart.write(cmd)
 
-        # Module replies with the same length back, prefixed C1 (or echoes C0).
-        resp = self._read_with_timeout(expected_len=len(cmd), timeout_ms=400)
+        # Retry the register write a few times. The first reply after a cold
+        # power-on can take ≈1 s (observed on hardware) and occasionally goes
+        # missing entirely — drain races with stray UART noise from the
+        # mode-switch window. Re-issuing the same write is safe (idempotent
+        # for 0xC2) and almost always succeeds on the second attempt.
+        resp = b""
+        for attempt in range(1, _CONFIG_WRITE_RETRIES + 1):
+            log.debug(f"[LORA] TX config (attempt {attempt}/{_CONFIG_WRITE_RETRIES}): "
+                      + " ".join("{:02x}".format(b) for b in cmd))
+            self._uart.write(cmd)
+            resp = self._read_with_timeout(expected_len=len(cmd),
+                                           timeout_ms=_CONFIG_REPLY_TIMEOUT_MS)
+            if resp:
+                break
+            log.warn(f"[LORA] No reply to register write (attempt {attempt}). "
+                     "Draining UART and retrying.")
+            for _ in range(2):
+                self._uart.read()
+                time.sleep_ms(80)
+
         if not resp:
-            log.error("[LORA] No reply to register write — wrong module variant or wiring fault")
+            log.error(f"[LORA] No reply after {_CONFIG_WRITE_RETRIES} attempts — "
+                      "module may be a non-EBYTE variant, wiring fault, or power issue")
         else:
             log.debug("[LORA] RX config: " + " ".join("{:02x}".format(b) for b in resp))
-            if resp[0] not in (_CMD_REPLY, _CMD_SET_NV):
+            if resp[0] not in (_CMD_REPLY, _CMD_SET_NV, _CMD_SET_VOL):
                 log.warn(f"[LORA] Unexpected reply prefix 0x{resp[0]:02x} — config may not have taken")
             elif len(resp) >= 10 and (resp[3] != addh or resp[4] != addl or resp[5] != 0
                                       or resp[8] != channel):
-                log.warn("[LORA] Reply values don't match what we asked for — verify with AT+RD")
+                log.warn("[LORA] Reply values don't match what we asked for — module rejected the write")
             else:
                 log.info(f"[LORA] Module configured: addr={unit_id} ch={channel} "
                          f"freq~{_CHAN_BASE_MHZ + channel}.125 MHz tx={tx_power}dBm "
