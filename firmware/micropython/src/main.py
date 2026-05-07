@@ -89,7 +89,12 @@ def _ok_led_state():
 # LoRa config to stick, we give up and run without the radio rather
 # than boot-loop forever. A real power cycle clears the counter.
 
-_MAX_LORA_AUTO_RESETS = 2
+# Empirically (field-observed): some boots take 4-5 hard resets before the
+# module's internal state machine recovers. 5 auto-resets ≈ 30 s of boot
+# loop in the worst case, after which we give up and run without the radio
+# rather than spin forever on a genuinely dead module. A real power cycle
+# (cut VCC) clears the counter and starts a fresh recovery cycle.
+_MAX_LORA_AUTO_RESETS = 5
 _LORA_RTC_TAG = b"LRC:"  # RTC-memory key prefix
 
 def _get_lora_reset_counter():
@@ -355,10 +360,17 @@ async def main():
             count = _get_lora_reset_counter()
             if count < _MAX_LORA_AUTO_RESETS:
                 _set_lora_reset_counter(count + 1)
+                # Pre-reset delay grows with each attempt — gives the module
+                # progressively longer quiet intervals to settle. Capped so
+                # we don't sit forever on a permanently broken unit.
+                # Sequence: 500 ms, 1.5 s, 3 s, 5 s, 8 s.
+                _delays_ms = (500, 1500, 3000, 5000, 8000)
+                idx = min(count, len(_delays_ms) - 1)
+                backoff_ms = _delays_ms[idx]
                 log.warn(f"[MAIN] LoRa config failed; triggering hard chip reset "
-                         f"(auto-recovery attempt {count + 1}/{_MAX_LORA_AUTO_RESETS})")
-                # Brief delay so the log line gets out the USB CDC before reset.
-                time.sleep_ms(500)
+                         f"(auto-recovery attempt {count + 1}/{_MAX_LORA_AUTO_RESETS}, "
+                         f"settling for {backoff_ms} ms first)")
+                time.sleep_ms(backoff_ms)
                 import machine
                 machine.reset()
                 # Unreachable, but explicit:
