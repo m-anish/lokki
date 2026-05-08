@@ -41,7 +41,7 @@ def _persist_leaf_cfg(unit_id, cfg):
         path = f"{_LEAF_CFG_DIR}/{unit_id}.json"
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
-            json.dump(cfg, f)
+            f.write(config_manager.prettify_json(cfg))
         try:
             os.remove(path)
         except OSError:
@@ -125,13 +125,26 @@ def handle_fleet_status():
     from hardware.pir_manager import pir_manager
     from hardware.ldr_monitor import ldr_monitor
 
-    fleet = {str(uid): u for uid, u in fleet_manager.get_all().items()}
+    now = time.time()
+    fleet = {}
+    for uid, u in fleet_manager.get_all().items():
+        udata = dict(u)
+        # Compute relative age to avoid 5-year gap if NTP sync happens between
+        # the time the leaf was last seen and now.
+        udata["last_seen_ago_s"] = int(now - u["last_seen"]) if u["last_seen"] else -1
+        
+        # Inject friendly channel names from cache
+        cached = _leaf_config_cache.get(uid, {})
+        udata["ch_names"] = [c.get("name", f"ch{i+1}") for i, c in enumerate(cached.get("led_channels", []))]
+        fleet[str(uid)] = udata
+
     fleet["0"] = {
         "name": config_manager.unit_name,
         "online": True,
-        "last_seen": time.time(),         # coordinator is "always now"
+        "last_seen_ago_s": 0,             # coordinator is "always now"
         "uptime": system_status.get_uptime(),
         "ch": pwm_controller.get_all(),
+        "ch_names": [c.get("name", f"ch{i+1}") for i, c in enumerate(config_manager.get("led_channels"))],
         "rl": list(relay_controller.get_all().values()),
         "pir": list(pir_manager.get_all_states().values()),
         "ldr": ldr_monitor.ambient_percent,
@@ -195,13 +208,24 @@ async def handle_config_push(unit_id, config_str):
         except Exception as e:
             return _err(str(e))
 
-    ok = await lora_protocol.send_config(unit_id, config_str)
+    # To save bandwidth over LoRa, we strip all whitespace/indentation before sending
+    try:
+        compact_str = json.dumps(json.loads(config_str))
+    except Exception:
+        compact_str = config_str
+        
+    ok = await lora_protocol.send_config(unit_id, compact_str)
     if ok:
         # Cache the FULL leaf config ONLY AFTER a successful LoRa transfer
         # so the coordinator's view perfectly matches the leaf's actual state.
         try:
-            cfg = json.loads(config_str)
+            cfg = json.loads(compact_str)
             _leaf_config_cache[unit_id] = cfg
+            # We persist compact_str. config_manager.replace() and _persist_leaf_cfg
+            # both write to disk. Wait, _persist_leaf_cfg writes via json.dump(cfg).
+            # Which is automatically compact in MicroPython. We want it prettified.
+            # But the requirement was to let config_manager handle it.
+            # Let's just persist cfg as usual.
             _persist_leaf_cfg(unit_id, cfg)
             log.info(f"[API] Cached leaf {unit_id} config")
         except Exception as e:
@@ -331,8 +355,33 @@ def handle_manual_override(unit_id, payload):
             status_led.set_state("manual_override" if priority_arbiter.has_manual() else _ok_led_state())
             return _ok({"applied": "local"})
 
-        seq = lora_protocol.send_manual_override(unit_id, channels, relays, revert_s)
-        return _ok({"sent_to": unit_id}) if seq else _err("Send failed", 502)
+        # Dashboard splitting is nice, but API layer splitting is foolproof.
+        # Max payload overhead for MO envelope is ~48 bytes.
+        # If we send up to 3 items per batch, we are perfectly safe under 200B.
+        items = []
+        for c in channels: items.append(("ch", c))
+        for r in relays: items.append(("rl", r))
+        
+        # If nothing to send, or just a revert_s broadcast
+        if not items:
+            seq = lora_protocol.send_manual_override(unit_id, [], [], revert_s)
+            return _ok({"sent_to": unit_id}) if seq else _err("Send failed", 502)
+            
+        import asyncio
+        batch_size = 3
+        seq = None
+        for i in range(0, len(items), batch_size):
+            batch = items[i:i+batch_size]
+            b_ch = [item[1] for item in batch if item[0] == "ch"]
+            b_rl = [item[1] for item in batch if item[0] == "rl"]
+            seq = lora_protocol.send_manual_override(unit_id, b_ch, b_rl, revert_s)
+            if not seq:
+                return _err("Send failed on batch", 502)
+            if i + batch_size < len(items):
+                import time
+                time.sleep_ms(300) # give LoRa transport time to breathe
+                
+        return _ok({"sent_to": unit_id})
     except Exception as e:
         log.error(f"[API] Manual override exception: {e}")
         import sys

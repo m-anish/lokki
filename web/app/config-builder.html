@@ -330,6 +330,21 @@
       .toast-ok  { background: #052e16; color: #6ee7b7; border-color: #166534; }
       .toast-err { background: #450a0a; color: #fca5a5; border-color: #991b1b; }
     }
+
+    /* MODAL */
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.6);
+                     z-index: 2000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
+    .modal-box { background: var(--card); border-radius: var(--radius); padding: 24px; max-width: 400px; width: 90%;
+                 box-shadow: 0 10px 25px rgba(0,0,0,.2); border: 1px solid var(--border); text-align: center; }
+    .modal-title { font-weight: 700; font-size: 1.1em; margin-bottom: 8px; }
+    .modal-desc { font-size: .88em; color: var(--muted); margin-bottom: 20px; line-height: 1.4; }
+    .prog-track { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; position: relative; }
+    .prog-bar { height: 100%; background: var(--brand); width: 0%; transition: width .2s linear; }
+    .modal-ok-icon { display: none; font-size: 48px; color: var(--green); margin: 10px 0; }
+    .modal-err-icon { display: none; font-size: 48px; color: var(--red); margin: 10px 0; }
+    @media (prefers-color-scheme: dark) {
+      .prog-track { background: #334155; }
+    }
   </style>
 </head>
 <body>
@@ -353,6 +368,18 @@
 </div>
 
 <div id="valBanner" class="val-banner"></div>
+
+<!-- PROGRESS MODAL -->
+<div class="modal-overlay" id="progModal">
+  <div class="modal-box">
+    <div class="modal-title" id="progTitle">Sending via LoRa...</div>
+    <div class="modal-desc" id="progDesc">Transferring config chunks to the leaf node. Please wait.</div>
+    <div class="prog-track" id="progTrack"><div class="prog-bar" id="progBar"></div></div>
+    <div class="modal-ok-icon" id="progOk">✅</div>
+    <div class="modal-err-icon" id="progErr">❌</div>
+    <button class="btn btn-primary" id="progCloseBtn" onclick="closeProgressModal()" style="display:none; margin-top:16px;">Close</button>
+  </div>
+</div>
 
 <div class="layout">
   <div class="form-col">
@@ -680,10 +707,20 @@
           <div class="field"><label class="field-label">LDR ADC Pin</label><input id="h_ldr_pin" type="number" value="26" /></div>
           <div class="field"><label class="field-label">Status LED Pin</label><input id="h_status_led" type="number" value="5" /></div>
         </div>
-        <div class="field" style="max-width:260px">
-          <label class="field-label">Brightness Gamma (γ)</label>
-          <input id="h_gamma" type="number" step="0.1" min="1.0" max="4.0" value="2.2" />
-          <div class="field-hint">Perceptual correction curve. 2.2 = standard. Higher = darker mid-range. 1.0 = linear (no correction).</div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Brightness Gamma (γ)</label>
+            <input id="h_gamma" type="number" step="0.1" min="1.0" max="4.0" value="2.2" />
+            <div class="field-hint">Perceptual correction curve. 2.2 = standard.</div>
+          </div>
+          <div class="field">
+            <label class="field-label">LED Color Order</label>
+            <select id="h_color_order">
+              <option value="RGB" selected>RGB</option>
+              <option value="GRB">GRB</option>
+            </select>
+            <div class="field-hint">Byte order on the wire. Standard WS2812 is GRB, some clones are RGB.</div>
+          </div>
         </div>
         <div class="divider">LoRa (E220 Module)</div>
         <div class="grid3">
@@ -848,6 +885,17 @@ async function populateUnitSelector() {
     // Non-fatal: dropdown just stays at the single Coordinator option.
     console.warn('Unit selector populate failed:', e);
   }
+  document.getElementById('loadTargetUnit').addEventListener('change', (e) => {
+    const isLeaf = e.target.value !== '0';
+    const btn = document.getElementById('loadFromDeviceBtn');
+    if (isLeaf) {
+      btn.innerHTML = '🗄️ Load cached config';
+      btn.title = 'Loads the latest config that was successfully pushed to this leaf, stored securely on the coordinator.';
+    } else {
+      btn.innerHTML = '📡 Load from device';
+      btn.title = 'Loads the active config running on the coordinator.';
+    }
+  });
 }
 
 // ============================================================
@@ -883,7 +931,10 @@ async function loadFromDevice() {
   } catch (e) {
     showToast('Could not reach device: ' + e.message, 'err');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '📡 Load from device'; }
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = unitId === 0 ? '📡 Load from device' : '🗄️ Load cached config';
+    }
   }
 }
 
@@ -1953,12 +2004,70 @@ function downloadJSON() {
 // ============================================================
 // Save to device
 // ============================================================
+let _progTimer = null;
+function showProgressModal(estMs) {
+  const m = document.getElementById('progModal');
+  const b = document.getElementById('progBar');
+  document.getElementById('progTitle').textContent = 'Sending via LoRa...';
+  document.getElementById('progTitle').style.color = '';
+  document.getElementById('progDesc').textContent = 'Transferring config chunks to the leaf node. Please wait.';
+  document.getElementById('progTrack').style.display = '';
+  document.getElementById('progOk').style.display = 'none';
+  document.getElementById('progErr').style.display = 'none';
+  document.getElementById('progCloseBtn').style.display = 'none';
+  b.style.width = '0%';
+  m.style.display = 'flex';
+  
+  let start = Date.now();
+  _progTimer = setInterval(() => {
+    let pct = ((Date.now() - start) / estMs) * 100;
+    if (pct > 95) pct = 95; // stall at 95% until response
+    b.style.width = pct + '%';
+  }, 100);
+}
+
+function hideProgressModal(success, msg) {
+  clearInterval(_progTimer);
+  document.getElementById('progBar').style.width = '100%';
+  document.getElementById('progTrack').style.display = 'none';
+  document.getElementById('progCloseBtn').style.display = 'inline-flex';
+  
+  if (success) {
+    document.getElementById('progTitle').textContent = 'Success!';
+    document.getElementById('progTitle').style.color = 'var(--green)';
+    document.getElementById('progOk').style.display = 'block';
+    document.getElementById('progDesc').textContent = 'The leaf node has received and acknowledged the new config.';
+  } else {
+    document.getElementById('progTitle').textContent = 'Transfer Failed';
+    document.getElementById('progTitle').style.color = 'var(--red)';
+    document.getElementById('progErr').style.display = 'block';
+    document.getElementById('progDesc').textContent = msg;
+  }
+}
+
+function closeProgressModal() {
+  document.getElementById('progModal').style.display = 'none';
+}
+
 async function saveToDevice() {
   const cfg = buildConfig();
   const unitId = cfg.system.unit_id;
   const btns = [document.getElementById('saveDeviceBtn'), document.getElementById('saveDeviceBtn2')];
-  btns.forEach(b=>{ if(b){ b.disabled=true; b.textContent='Saving…'; } });
+  
+  if (unitId !== 0) {
+    // 64-byte chunks, ~200ms per chunk plus ACKs
+    // For compact JSON, we estimate length using JSON.stringify without spaces
+    const estChunks = Math.ceil(JSON.stringify(cfg).length / 64);
+    const estMs = (estChunks * 200) + 1500;
+    showProgressModal(estMs);
+  } else {
+    btns.forEach(b=>{ if(b){ b.disabled=true; b.textContent='Saving…'; } });
+  }
+
   try {
+    // We send prettified JSON to the coordinator. The coordinator will automatically
+    // compact it before blasting it over LoRa to save bandwidth, and then
+    // re-prettify it when saving it to flash locally so humans can read it.
     const r = await fetch(`/api/units/${unitId}/config`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -1966,12 +2075,15 @@ async function saveToDevice() {
     });
     const data = await r.json().catch(()=>({}));
     if (r.ok && data.ok !== false) {
-      showToast('Saved to device ✓', 'ok');
+      if (unitId !== 0) hideProgressModal(true);
+      else showToast('Saved to device ✓', 'ok');
     } else {
-      showToast('Save failed: ' + (data.error || `HTTP ${r.status}`), 'err');
+      if (unitId !== 0) hideProgressModal(false, data.error || `HTTP ${r.status}`);
+      else showToast('Save failed: ' + (data.error || `HTTP ${r.status}`), 'err');
     }
   } catch (e) {
-    showToast('Could not reach device: ' + e.message, 'err');
+    if (unitId !== 0) hideProgressModal(false, 'Could not reach device: ' + e.message);
+    else showToast('Could not reach device: ' + e.message, 'err');
   } finally {
     btns.forEach(b=>{ if(b){ b.disabled=false; b.textContent='↑ Save to device'; } });
   }

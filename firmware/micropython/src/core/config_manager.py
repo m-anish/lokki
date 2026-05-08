@@ -83,7 +83,7 @@ class ConfigManager:
         """Write config via tmp + rename to survive power loss mid-write."""
         tmp = self.config_file + ".tmp"
         with open(tmp, "w") as f:
-            json.dump(cfg, f)
+            f.write(self.prettify_json(cfg))
         # Best-effort atomic swap. If rename isn't atomic on this VFS,
         # we still get a tmp file as fallback for manual recovery.
         try:
@@ -91,6 +91,37 @@ class ConfigManager:
         except OSError:
             pass
         os.rename(tmp, self.config_file)
+
+    def prettify_json(self, data):
+        """Format a dict into a human-readable JSON string with 2-space indents.
+        MicroPython's built-in json module doesn't support indent parameters."""
+        compact = json.dumps(data)
+        indent = 0
+        in_string = False
+        out = []
+        i = 0
+        while i < len(compact):
+            c = compact[i]
+            if c == '"' and (i == 0 or compact[i-1] != '\\'):
+                in_string = not in_string
+                out.append(c)
+            elif not in_string:
+                if c == '{' or c == '[':
+                    indent += 2
+                    out.append(c + '\n' + ' ' * indent)
+                elif c == '}' or c == ']':
+                    indent -= 2
+                    out.append('\n' + ' ' * indent + c)
+                elif c == ',':
+                    out.append(c + '\n' + ' ' * indent)
+                elif c == ':':
+                    out.append(c + ' ')
+                else:
+                    out.append(c)
+            else:
+                out.append(c)
+            i += 1
+        return "".join(out)
 
     def _normalize_scenes(self):
         """Remove duplicate channel/relay entries within each scene (keep first)."""

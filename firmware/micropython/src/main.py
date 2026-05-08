@@ -79,6 +79,38 @@ def _ok_led_state():
     return "running_lora_ok" if system_status.lora_connected else "running_ok"
 
 
+async def leaf_status_task():
+    """Leaf task: Ensure status LED reverts when manual overrides expire."""
+    while True:
+        if priority_arbiter.has_manual():
+            status_led.set_state("manual_override")
+        else:
+            status_led.set_state(_ok_led_state())
+        await asyncio.sleep(2)
+
+
+async def time_sync_task():
+    """Coordinator task: Sync NTP and broadcast time to leaves periodically."""
+    import time
+    while True:
+        tz_config = config_manager.get("timezone") or {}
+        if tz_config.get("ntp_enabled", True):
+            try:
+                from comms.wifi_connect import sync_time_ntp
+                if sync_time_ntp():
+                    log.info("[MAIN] Periodic NTP sync successful")
+                else:
+                    log.warn("[MAIN] Periodic NTP sync failed")
+            except Exception as e:
+                log.warn(f"[MAIN] NTP sync exception: {e}")
+        try:
+            tz_offset = tz_config.get("utc_offset_hours", 0)
+            lora_protocol.broadcast_time_sync(time.time(), tz_offset)
+        except Exception as e:
+            log.warn(f"[MAIN] TS broadcast failed: {e}")
+        await asyncio.sleep(86400)
+
+
 async def schedule_task(interval_ms):
     while True:
         try:
@@ -210,9 +242,9 @@ def _register_lora_handlers(role, fleet_manager=None):
             "sc":      scene_names,
         }
         # Rough envelope budget check — drop scenes from the end until it fits.
-        # 30B accounts for the LoRa envelope overhead added by send().
+        # Envelope overhead is ~48 bytes. Max payload size is ~150 bytes to stay under 200B.
         import json as _json
-        while len(_json.dumps(response).encode()) > 170 and response["sc"]:
+        while len(_json.dumps(response).encode()) > 150 and response["sc"]:
             response["sc"].pop()
         lora_protocol.send("SRP", src, response)
     lora_protocol.on("SR", on_status_request)
@@ -400,15 +432,18 @@ async def main():
             if wifi_ok:
                 log.info("[MAIN] WiFi connected")
                 system_status.set_connection_status(wifi=True)
-                # NTP sync is optional - can be disabled in config
+                # NTP sync — enabled by default, can be disabled in config
                 tz_config = cfg.get("timezone") or {}
-                ntp_enabled = tz_config.get("ntp_enabled", False)
+                ntp_enabled = tz_config.get("ntp_enabled", True)
                 if ntp_enabled:
                     log.info("[MAIN] NTP enabled, attempting sync...")
-                    if sync_time_ntp():
-                        log.info("[MAIN] NTP synced successfully")
-                    else:
-                        log.warn("[MAIN] NTP sync failed — continuing with RTC time")
+                    try:
+                        if sync_time_ntp():
+                            log.info("[MAIN] NTP synced successfully")
+                        else:
+                            log.warn("[MAIN] NTP sync failed — continuing with RTC time")
+                    except Exception as ntp_e:
+                        log.warn(f"[MAIN] NTP sync exception: {ntp_e}")
                 else:
                     log.info("[MAIN] NTP disabled in config — using RTC time")
             else:
@@ -439,6 +474,7 @@ async def main():
 
     if role == "coordinator":
         tasks.append(asyncio.create_task(fleet_timeout_task(fleet_mgr)))
+        tasks.append(asyncio.create_task(time_sync_task()))
         if wifi_ok:
             # MQTT notifications (if enabled)
             try:
@@ -461,6 +497,7 @@ async def main():
         tasks.append(asyncio.create_task(
             heartbeat_broadcast_task(hb_interval, cfg.unit_id)
         ))
+        tasks.append(asyncio.create_task(leaf_status_task()))
 
     log.info(f"[MAIN] Running {len(tasks)} tasks")
 

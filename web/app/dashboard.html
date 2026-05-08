@@ -56,12 +56,12 @@ main { max-width:1000px; margin:0 auto; padding:24px 20px 60px; }
   font-size:.75em; font-weight:600; color:var(--muted);
   text-transform:uppercase; letter-spacing:.05em;
 }
-.led-indicators { display:flex; gap:4px; flex-wrap:nowrap; overflow-x:auto; }
+.led-indicators { display:flex; flex-direction:column; gap:4px; }
+.led-row { display:flex; align-items:center; gap:8px; font-size:.85em; }
+.led-row-label { color:var(--muted); min-width:120px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .bswatch {
-  width:28px; height:28px; border-radius:50%; border:1px solid #475569;
-  display:inline-flex; align-items:center; justify-content:center; transition:all .2s;
-  font-size:.65em; font-weight:700; color:#1e293b;
-  text-shadow:0 0 2px rgba(255,255,255,0.8);
+  width:16px; height:16px; border-radius:50%; border:1px solid #475569;
+  display:inline-block; flex-shrink:0; transition:all .2s;
 }
 .relay-indicators { display:flex; gap:8px; }
 .relay-ind {
@@ -319,8 +319,10 @@ function renderFleet(units) {
 
     h += `<div class="status-section"><div class="status-label">LED Channels</div>`;
     h += `<div class="led-indicators">`;
+    const chNames = u.ch_names || [];
     (u.ch || []).forEach((v, i) => {
-      h += `<span class="bswatch" style="${swatchStyle(v)}" title="ch${i+1}: ${v}%">${i+1}</span>`;
+      const label = chNames[i] || `ch${i+1}`;
+      h += `<div class="led-row"><span class="bswatch" style="${swatchStyle(v)}" title="${label}: ${v}%"></span><span class="led-row-label">${i+1}: ${label}</span></div>`;
     });
     h += `</div></div>`;
 
@@ -346,12 +348,12 @@ function renderFleet(units) {
     h += `<div>Uptime: <b>${up}</b></div>`;
     // last_seen: data-last-seen lets the 1s ticker update this in place
     // without re-rendering the whole fleet.
-    const lastSeen = u.last_seen || 0;
-    h += `<div>Last seen: <b class="last-seen-cell" data-last-seen="${lastSeen}">${id == 0 ? "now" : fmtAgo(lastSeen)}</b></div>`;
-    if (id != 0) {
+    const agoS = u.last_seen_ago_s;
+    h += `<div>Last seen: <b class="last-seen-cell" data-ago-s="${agoS !== undefined ? agoS : -1}">${id == 0 ? "now" : fmtAgoS(agoS)}</b></div>`;
+    if (id != 0 && u.rssi != null) {
       h += `<div>Signal: ${signalBarHTML(u.rssi)}<b>${fmtRssi(u.rssi)}</b></div>`;
     }
-    h += `<div>Errors: <b>${u.err || 0}</b></div>`;
+    if (u.err) h += `<div>Errors: <b style="color:#dc2626">${u.err}</b></div>`;
     h += `</div></div>`;
 
     h += `</div></div></div>`;
@@ -362,10 +364,28 @@ function renderFleet(units) {
   document.getElementById("fleet").innerHTML = h;
 }
 
+function fmtAgoS(agoS) {
+  if (agoS == null || agoS < 0) return "—";
+  const delta = Math.max(0, Math.floor(agoS));
+  if (delta < 60) return `${delta}s ago`;
+  if (delta < 3600) return `${Math.floor(delta / 60)}m ${delta % 60}s ago`;
+  if (delta < 86400) {
+    const h = Math.floor(delta / 3600);
+    const m = Math.floor((delta % 3600) / 60);
+    return `${h}h ${m}m ago`;
+  }
+  return `${Math.floor(delta / 86400)}d ago`;
+}
+
 function tickLastSeen() {
   document.querySelectorAll(".last-seen-cell").forEach(el => {
-    const ts = parseInt(el.dataset.lastSeen, 10);
-    if (ts > 0) el.textContent = fmtAgo(ts);
+    const agoS = parseInt(el.dataset.agoS, 10);
+    if (agoS >= 0) {
+      // Increment by 1 each tick
+      const newAgo = agoS + 1;
+      el.dataset.agoS = newAgo;
+      el.textContent = fmtAgoS(newAgo);
+    }
   });
 }
 

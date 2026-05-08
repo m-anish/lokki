@@ -27,6 +27,7 @@
   },
 
   "timezone": {
+    "ntp_enabled": true,
     "name": "IST",
     "utc_offset_hours": 5.5
   },

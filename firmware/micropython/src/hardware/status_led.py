@@ -12,7 +12,7 @@ _STATES = {
     # Green base + periodic blue flash — indicates LoRa is up and active
     "running_lora_ok":   (0,   255, 0,   0.08, "heartbeat"), # same as running_ok but with heartbeat pattern to show LoRa is active
     "leaf_offline":      (255, 180, 0,   0.15, "solid"), # orange solid — leaf is running but not connected to coordinator (e.g. coordinator offline, out of range, or WiFi down on coordinator)
-    "manual_override":   (160, 0,   255, 0.1,  "solid"), # purple solid — leaf is in manual override mode (e.g. GPS off, or user has forced a state via the API)
+    "manual_override":   (255, 0,   160, 0.2,  "solid"), # magenta — manual control active (more red than blue so it's clearly distinct from the blue heartbeat flash)
     "error":             (255, 0,   0,   0.5,  "blink"), # red blink — something's wrong, e.g. failed to connect to WiFi or LoRa
     "off":               (0,   0,   0,   0.0,  "solid"), # off
 }
