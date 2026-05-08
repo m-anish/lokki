@@ -195,23 +195,19 @@ async def handle_config_push(unit_id, config_str):
         except Exception as e:
             return _err(str(e))
 
-    # Cache the FULL leaf config BEFORE the LoRa send so:
-    #  (a) the dashboard's Control modal works even if LoRa is flaky now,
-    #  (b) the Config Builder can later "Load from Leaf N" to edit it,
-    #  (c) the cache survives a coord reboot via flash.
-    # The user clearly intended this config for this leaf, so we persist
-    # before attempting the radio transfer.
-    try:
-        cfg = json.loads(config_str)
-        _leaf_config_cache[unit_id] = cfg
-        _persist_leaf_cfg(unit_id, cfg)
-        log.info(f"[API] Cached leaf {unit_id} config")
-    except Exception as e:
-        log.warn(f"[API] Could not cache leaf {unit_id} config: {e}")
-
     ok = await lora_protocol.send_config(unit_id, config_str)
     if ok:
+        # Cache the FULL leaf config ONLY AFTER a successful LoRa transfer
+        # so the coordinator's view perfectly matches the leaf's actual state.
+        try:
+            cfg = json.loads(config_str)
+            _leaf_config_cache[unit_id] = cfg
+            _persist_leaf_cfg(unit_id, cfg)
+            log.info(f"[API] Cached leaf {unit_id} config")
+        except Exception as e:
+            log.warn(f"[API] Could not cache leaf {unit_id} config: {e}")
         return _ok({"sent_to": unit_id})
+        
     return _err(f"Config transfer to unit {unit_id} failed — check LoRa link", 502)
 
 

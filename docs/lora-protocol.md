@@ -92,6 +92,10 @@ Messages larger than 200 bytes use the chunked transfer protocol (see Section 5)
 
 `lora_protocol.send()` enforces this limit: any non-`CFG_CHUNK` message whose serialized envelope exceeds 200 bytes is dropped with an error log rather than transmitted truncated. The receive UART buffer is sized at 256 bytes to give headroom for back-to-back frames in the read window.
 
+**UART Race Condition and Truncation Avoidance:**
+Because 9600 baud serial is slower than the Pico's processing loop, `lora_transport.recv()` explicitly waits for the `AUX` pin to go `HIGH` (indicating the E220 has finished its UART transmission) before reading from the buffer. This ensures the entire packet is read at once, preventing premature RSSI byte stripping on partial chunks.
+Similarly, `lora_transport.send()` waits for `AUX` to go `LOW` after writing to the UART TX buffer. This guarantees that back-to-back `send()` calls do not concatenate packets in the Pico's UART buffer (which would violate the 200B limit and cause the E220 to truncate data).
+
 ---
 
 ## 2. Message Envelope

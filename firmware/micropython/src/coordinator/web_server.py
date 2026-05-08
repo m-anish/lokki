@@ -85,7 +85,9 @@ class WebServer:
                     await asyncio.sleep_ms(20)
 
             method, path, headers, body = self._parse_request(raw)
-            
+            if not method or not path:
+                return
+                
             # If there's a Content-Length header, make sure we read the full body
             content_length = headers.get("content-length")
             if content_length:
@@ -311,6 +313,8 @@ class WebServer:
         return status_str, "application/json", body
 
     def _parse_request(self, raw):
+        if not raw:
+            return None, None, {}, b""
         try:
             header_end = raw.find(b"\r\n\r\n")
             header_raw = raw[:header_end] if header_end >= 0 else raw
@@ -319,17 +323,20 @@ class WebServer:
             
             # Handle empty or malformed requests
             if not lines or not lines[0]:
-                return "GET", "/", {}, b""
+                return None, None, {}, b""
             
             parts      = lines[0].decode().split(" ")
-            method     = parts[0].upper() if len(parts) > 0 else "GET"
+            method     = parts[0].upper() if len(parts) > 0 else None
             
             # Fix: Add bounds check before accessing parts[1]
             if len(parts) > 1 and parts[1]:
                 path_parts = parts[1].split("?")
-                path = path_parts[0] if path_parts and path_parts[0] else "/"
+                path = path_parts[0] if path_parts and path_parts[0] else None
             else:
-                path = "/"
+                path = None
+            
+            if not method or not path:
+                return None, None, {}, b""
             
             headers    = {}
             for line in lines[1:]:
@@ -338,7 +345,7 @@ class WebServer:
                     headers[k.strip().lower().decode()] = v.strip().decode()
             return method, path, headers, body[:_BODY_MAX]
         except Exception:
-            return "GET", "/", {}, b""
+            return None, None, {}, b""
 
     def _parse_json_body(self, body):
         try:

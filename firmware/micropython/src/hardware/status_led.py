@@ -5,16 +5,16 @@ from machine import Pin
 # Named states → (r, g, b, brightness 0.0–1.0, pattern)
 # Patterns: "solid", "pulse", "blink", "heartbeat"
 _STATES = {
-    "booting":           (255, 255, 255, 0.15, "pulse"),
-    "wifi_connecting":   (0,   100, 255, 0.4,  "blink"),
-    "lora_init":         (0,   255, 220, 0.3,  "solid"),
-    "running_ok":        (0,   255, 0,   0.08, "solid"),
+    "booting":           (255, 255, 255, 0.15, "pulse"), # white pulse — booting up, not yet ready
+    "wifi_connecting":   (0,   100, 255, 0.4,  "blink"), # blue blink — trying to connect to WiFi
+    "lora_init":         (0,   255, 220, 0.3,  "solid"), # cyan solid — WiFi up, now initializing LoRa
+    "running_ok":        (0,   255, 0,   0.08, "solid"), # green solid — all systems nominal, leaf is online and connected to coordinator
     # Green base + periodic blue flash — indicates LoRa is up and active
-    "running_lora_ok":   (0,   255, 0,   0.08, "heartbeat"),
-    "leaf_offline":      (255, 180, 0,   0.15, "solid"),
-    "manual_override":   (160, 0,   255, 0.1,  "solid"),
-    "error":             (255, 0,   0,   0.5,  "blink"),
-    "off":               (0,   0,   0,   0.0,  "solid"),
+    "running_lora_ok":   (0,   255, 0,   0.08, "heartbeat"), # same as running_ok but with heartbeat pattern to show LoRa is active
+    "leaf_offline":      (255, 180, 0,   0.15, "solid"), # orange solid — leaf is running but not connected to coordinator (e.g. coordinator offline, out of range, or WiFi down on coordinator)
+    "manual_override":   (160, 0,   255, 0.1,  "solid"), # purple solid — leaf is in manual override mode (e.g. GPS off, or user has forced a state via the API)
+    "error":             (255, 0,   0,   0.5,  "blink"), # red blink — something's wrong, e.g. failed to connect to WiFi or LoRa
+    "off":               (0,   0,   0,   0.0,  "solid"), # off
 }
 
 _BLINK_ON_MS   = 200
@@ -44,6 +44,8 @@ class StatusLED:
         # call green displays as red and vice-versa. The config field
         # hardware.led_color_order = "RGB" tells us to swap them ourselves.
         self._color_order = "GRB"
+        from shared.simple_logger import Logger
+        self._log = Logger()
 
     def init_from_config(self, hardware_cfg):
         pin = hardware_cfg.get("status_led_pin", 5)
@@ -61,6 +63,7 @@ class StatusLED:
         entry = _STATES.get(state_name, _STATES["off"])
         self._r, self._g, self._b, self._brightness, self._pattern = entry
         self._state_name = state_name
+        self._log.debug(f"[LED] set_state({state_name}) -> pattern={self._pattern}")
         if self._pattern == "solid":
             self._write(self._brightness)
 
@@ -125,6 +128,7 @@ class StatusLED:
                     else:
                         self._np[0] = (fr, fg, fb)
                     self._np.write()
+                    self._log.debug(f"[LED] Heartbeat blue flash: color_order={self._color_order} rgb=({fr},{fg},{fb})")
                     await asyncio.sleep_ms(_HB_FLASH_MS)
             else:
                 # solid — nothing to animate, yield and wait

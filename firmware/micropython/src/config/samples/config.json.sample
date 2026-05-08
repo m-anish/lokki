@@ -38,6 +38,7 @@
     "pwm_freq_hz": 1000,
     "ldr_adc_pin": 26,
     "status_led_pin": 5,
+    "led_color_order": "RGB",
     "reset_btn_pin": 12,
     "lora_uart_id": 0,
     "lora_tx_pin": 0,

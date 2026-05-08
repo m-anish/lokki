@@ -138,6 +138,19 @@ class LoRaTransport:
         # straight to the air. Destination filtering happens at the
         # protocol layer via the JSON envelope's `d` field.
         self._uart.write(payload_bytes)
+        
+        # Give the E220 a moment to pull AUX LOW. At 9600 baud, the first byte
+        # takes ~1ms to transmit over UART, after which the module drops AUX.
+        # If we return instantly, a back-to-back send() might see AUX still HIGH
+        # and concatenate packets in the Pico's UART TX buffer, exceeding the
+        # module's 200B packet limit.
+        deadline = time.time() + 1
+        while self._aux.value() == 1:
+            if time.time() > deadline:
+                log.warn("[LORA] AUX did not go LOW after send (E220 might be ignoring UART)")
+                break
+            time.sleep_ms(1)
+            
         return True
 
     def recv(self):
@@ -153,12 +166,45 @@ class LoRaTransport:
         """
         if not self._ready or not self._uart.any():
             return None
+            
+        # The E220's AUX pin goes LOW while it is transmitting data to us over UART.
+        # If we read immediately while AUX is LOW, we might read a partial packet
+        # (and erroneously strip the last byte of the chunk as the RSSI byte).
+        # We wait for AUX to go HIGH, indicating the module has finished its output.
+        deadline = time.time() + 2
+        waited = False
+        while self._aux.value() == 0:
+            waited = True
+            if time.time() > deadline:
+                log.warn("[LORA] AUX timeout while receiving")
+                break
+            time.sleep_ms(2)
+            
+        if waited:
+            log.debug("[LORA] recv waited for AUX HIGH to ensure complete packet")
+            
+        # Read the complete packet
+        # Wait a tiny bit more just in case the last byte is still shifting in
+        time.sleep_ms(2)
+        
+        # Read up to 256 bytes (default MicroPython UART RX buffer size, which fits
+        # our 200B max payload + headers + RSSI byte).
         raw = self._uart.read(256)
+        
+        # We might have read in a while loop until everything is gathered, 
+        # but waiting for AUX should ensure everything is in the RX buffer.
+        # Let's see if there is more.
+        while self._uart.any():
+            more = self._uart.read(256)
+            if more:
+                raw += more
+                
         if not raw:
             return None
         if len(raw) < 2:
             # One-byte frame is junk (probably noise). Drop.
             return None
+            
         rssi_byte = raw[-1]
         self.last_rssi_dbm = -(256 - rssi_byte)
         return raw[:-1]

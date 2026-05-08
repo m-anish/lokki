@@ -226,6 +226,78 @@ def _register_lora_handlers(role, fleet_manager=None):
         log.info(f"[LORA] Emergency off from {src}")
     lora_protocol.on("EO", on_emergency_off)
 
+    if role == "leaf":
+        import time
+        _cfg_transfers = {}
+        
+        def on_cfg_start(src, payload):
+            tid = payload.get("transfer_id")
+            if tid:
+                _cfg_transfers[tid] = {"chunks": {}, "total": payload.get("total_chunks", 0), "last": time.time()}
+                log.info(f"[LORA] Started config transfer {tid} from {src}")
+        lora_protocol.on("CFG_START", on_cfg_start)
+
+        def on_cfg_chunk(src, payload):
+            tid = payload.get("transfer_id")
+            idx = payload.get("chunk_index")
+            data = payload.get("data")
+            if tid in _cfg_transfers and idx is not None and data is not None:
+                _cfg_transfers[tid]["chunks"][idx] = data
+                _cfg_transfers[tid]["last"] = time.time()
+        lora_protocol.on("CFG_CHUNK", on_cfg_chunk)
+
+        def on_cfg_end(src, payload):
+            tid = payload.get("transfer_id")
+            seq = payload.get("_seq")
+            
+            if tid in _cfg_transfers:
+                transfer = _cfg_transfers[tid]
+                total = transfer["total"]
+                chunks = transfer["chunks"]
+                
+                if len(chunks) == total:
+                    config_str = "".join(chunks.get(i, "") for i in range(total))
+                    expected_crc = payload.get("checksum")
+                    from comms.lora_protocol import _crc32
+                    actual_crc = "{:08x}".format(_crc32(config_str))
+                    if expected_crc == actual_crc:
+                        log.info(f"[LORA] Config transfer {tid} verified. Rebooting to apply.")
+                        # Send success ACK BEFORE rebooting!
+                        if seq is not None:
+                            lora_protocol.send("ACK", src, {"ack_seq": seq, "ok": True})
+                        del _cfg_transfers[tid]
+                        config_manager.replace(config_str)
+                        import machine
+                        import asyncio
+                        async def do_reboot():
+                            await asyncio.sleep(1)
+                            machine.reset()
+                        asyncio.create_task(do_reboot())
+                        return
+                    else:
+                        log.error(f"[LORA] Config transfer {tid} checksum mismatch")
+                else:
+                    log.error(f"[LORA] Config transfer {tid} missing {total - len(chunks)} chunks")
+                    
+                # If we are here, it failed. Tell coordinator which chunks we need!
+                missing = [i for i in range(total) if i not in chunks]
+                if seq is not None:
+                    lora_protocol.send("ACK", src, {
+                        "ack_seq": seq, 
+                        "ok": False, 
+                        "reason": "CHECKSUM_FAIL" if len(chunks) == total else "MISSING_CHUNKS",
+                        "missing": missing
+                    })
+                # Don't delete transfer if missing chunks, so smart retry can fill them in!
+                if len(chunks) == total:
+                    del _cfg_transfers[tid]
+            else:
+                # Unknown transfer
+                if seq is not None:
+                    lora_protocol.send("ACK", src, {"ack_seq": seq, "ok": False, "reason": "UNKNOWN_TRANSFER"})
+                    
+        lora_protocol.on("CFG_END", on_cfg_end)
+
 
 async def safe_mode():
     log.error("[MAIN] Entering safe mode — all outputs off")

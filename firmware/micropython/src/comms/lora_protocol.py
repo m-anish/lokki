@@ -26,7 +26,7 @@ EO        = "EO"          # Emergency Off — all outputs to zero
 _ACK_REQUIRED = {SC, MO, EO, CFG_END}
 
 _ACK_TIMEOUT_S  = 10
-_CHUNK_SIZE     = 150
+_CHUNK_SIZE     = 64
 _CHUNK_DELAY_MS = 200
 _MAX_RETRIES    = 3
 _BROADCAST      = 255
@@ -91,7 +91,7 @@ class LoRaProtocol:
             # CFG_CHUNK is pre-sized to fit; everything else must stay under the
             # E220 packet limit or the receiver will see a truncated, unparseable
             # frame. Drop here with a loud log rather than transmit garbage.
-            if msg_type != CFG_CHUNK and len(raw) > _MAX_PACKET_BYTES:
+            if len(raw) > _MAX_PACKET_BYTES:
                 log.error(
                     f"[LORA_PROTO] {msg_type} dropped: {len(raw)}B exceeds "
                     f"{_MAX_PACKET_BYTES}B limit"
@@ -142,8 +142,9 @@ class LoRaProtocol:
                 "total_chunks": len(chunks),
                 "total_bytes": total,
             })
-            if not await self._wait_ack(seq):
-                log.warn(f"[LORA_PROTO] CFG_START no ACK (attempt {attempt})")
+            ack = await self._wait_ack(seq)
+            if not ack or not ack.get("ok", True):
+                log.warn(f"[LORA_PROTO] CFG_START no ACK or rejected (attempt {attempt})")
                 continue
 
             # CFG_CHUNKs
@@ -161,10 +162,48 @@ class LoRaProtocol:
                 "transfer_id": transfer_id,
                 "checksum": checksum,
             })
-            if await self._wait_ack(seq):
-                log.info(f"[LORA_PROTO] Config transfer {transfer_id} complete")
-                return True
-            log.warn(f"[LORA_PROTO] CFG_END no ACK (attempt {attempt})")
+            
+            ack = await self._wait_ack(seq)
+            if ack:
+                if ack.get("ok", True):
+                    log.info(f"[LORA_PROTO] Config transfer {transfer_id} complete")
+                    return True
+                    
+                # The leaf rejected the checksum. Did it tell us which chunks are missing?
+                missing = ack.get("missing")
+                if missing and isinstance(missing, list) and len(missing) > 0:
+                    log.warn(f"[LORA_PROTO] CFG_END rejected. Leaf is missing {len(missing)} chunks. Retrying only missing chunks...")
+                    # We have a smart retry! Instead of aborting to the outer loop,
+                    # we can just re-send the missing chunks right now and jump back
+                    # to the CFG_END stage!
+                    # Wait, we need to do this carefully without breaking the attempt loop.
+                    # Let's just update `chunks` to only contain the missing ones?
+                    # No, we can't because the indices would change.
+                    for attempt_missing in range(3):
+                        log.info(f"[LORA_PROTO] Smart retry: sending {len(missing)} missing chunks...")
+                        for m_idx in missing:
+                            if 0 <= m_idx < len(chunks):
+                                self.send(CFG_CHUNK, dest_id, {
+                                    "transfer_id": transfer_id,
+                                    "chunk_index": m_idx,
+                                    "data": chunks[m_idx].decode("utf-8", "ignore"),
+                                })
+                                await asyncio.sleep_ms(_CHUNK_DELAY_MS)
+                        
+                        # Re-send CFG_END
+                        seq = self.send(CFG_END, dest_id, {
+                            "transfer_id": transfer_id,
+                            "checksum": checksum,
+                        })
+                        ack = await self._wait_ack(seq)
+                        if ack and ack.get("ok", True):
+                            log.info(f"[LORA_PROTO] Config transfer {transfer_id} complete after smart retry")
+                            return True
+                        missing = ack.get("missing") if ack else None
+                        if not missing:
+                            break # fallback to full retry
+            
+            log.warn(f"[LORA_PROTO] CFG_END no ACK or failed (attempt {attempt})")
 
         log.error(f"[LORA_PROTO] Config transfer {transfer_id} failed after {_MAX_RETRIES} attempts")
         return False
@@ -185,6 +224,8 @@ class LoRaProtocol:
                     # leaf's HB task) can include it in payloads, and so the
                     # coordinator's fleet_manager can record it per-frame.
                     self.last_rx_rssi = lora_transport.last_rssi_dbm
+                    log.debug(f"[LORA_PROTO] Received {len(raw)}B, RSSI={self.last_rx_rssi}dBm")
+                    log.debug(f"[LORA_PROTO] Raw data: {raw}")
                     self._dispatch(raw)
                 self._check_pending_acks()
             except Exception as e:
@@ -196,6 +237,13 @@ class LoRaProtocol:
             text = raw.decode("utf-8", "ignore").strip()
             if not text:
                 return
+                
+            # If the hardware is unprovisioned, lora_transport mistakenly strips
+            # the last byte of our JSON (the '}') thinking it's an RSSI byte.
+            # We can detect this and safely recover it!
+            if not text.endswith("}"):
+                text += "}"
+                
             # Find JSON boundaries — UART may deliver partial/concatenated frames
             start = text.find("{")
             end   = text.rfind("}") + 1
@@ -226,18 +274,27 @@ class LoRaProtocol:
         if msg_type == ACK:
             ack_seq = payload.get("ack_seq")
             if ack_seq in self._pending:
+                # Store the whole payload in the pending entry so we can read 
+                # custom fields like missing chunks
+                self._pending[ack_seq]["ack_payload"] = payload
                 ok = payload.get("ok", True)
                 log.debug(f"[LORA_PROTO] ACK seq={ack_seq} ok={ok}")
-                del self._pending[ack_seq]
+                # We do NOT delete it here if ok is False and we want to process it,
+                # wait, _wait_ack checks if seq is NOT in pending.
+                # If we delete it, _wait_ack returns True immediately!
+                # Instead of deleting, let's mark it as resolved.
+                self._pending[ack_seq]["resolved"] = True
             return
 
         # Send ACK for messages that require it
-        if msg_type in _ACK_REQUIRED:
+        if msg_type in _ACK_REQUIRED and msg_type != CFG_END:
             self.send(ACK, src, {"ack_seq": seq, "ok": True})
 
         handler = self._handlers.get(msg_type)
         if handler:
             try:
+                # Inject seq into payload so handlers can manually ACK
+                payload["_seq"] = seq
                 handler(src, payload)
             except Exception as e:
                 log.error(f"[LORA_PROTO] Handler error for {msg_type}: {e}")
@@ -248,15 +305,19 @@ class LoRaProtocol:
 
     async def _wait_ack(self, seq, timeout_s=_ACK_TIMEOUT_S):
         if seq is None:
-            return False
+            return None
         deadline = time.time() + timeout_s
         while time.time() < deadline:
-            if seq not in self._pending:
-                return True     # ACK received and removed by _dispatch
+            entry = self._pending.get(seq)
+            if not entry or entry.get("resolved"):
+                payload = entry.get("ack_payload", {}) if entry else {"ok": True}
+                if entry:
+                    del self._pending[seq]
+                return payload
             await asyncio.sleep_ms(100)
         # Timeout — remove from pending
         self._pending.pop(seq, None)
-        return False
+        return None
 
     def _check_pending_acks(self):
         now     = time.time()

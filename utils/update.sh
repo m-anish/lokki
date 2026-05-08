@@ -19,10 +19,11 @@ SAMPLE_CFG="$SRC_DIR/config/samples/config.json.sample"
 FRESH=0
 ROLE=""
 LEAF_ID=""
+SETUP_WIFI=0
 
 usage() {
     cat <<EOF
-Usage: $0 [--fresh --role=coordinator|leaf [--id=N]]
+Usage: $0 [--fresh --role=coordinator|leaf [--id=N] [--wifi]]
 
 Without flags:
     Push code + web assets only. Preserves /config.json on the device.
@@ -44,6 +45,7 @@ while [ $# -gt 0 ]; do
         --role) shift; ROLE="${1:-}" ;;
         --id=*) LEAF_ID="${1#--id=}" ;;
         --id) shift; LEAF_ID="${1:-}" ;;
+        --wifi) SETUP_WIFI=1 ;;
         --help|-h) usage; exit 0 ;;
         *) echo "[update] Unknown arg: $1" >&2; usage; exit 2 ;;
     esac
@@ -86,6 +88,26 @@ fi
 echo "[update] Closing any running mpremote sessions..."
 pkill -f mpremote 2>/dev/null || true
 sleep 0.5
+
+if [ "$FRESH" = "1" ]; then
+    echo "[update] --fresh flag provided: Erasing existing files on the device..."
+    mpremote connect auto exec "
+import os
+def r(d):
+    for f in os.listdir(d):
+        p = d + '/' + f
+        if os.stat(p)[0] & 0x4000:
+            r(p)
+            os.rmdir(p)
+        else:
+            os.remove(p)
+try:
+    r('.')
+except Exception as e:
+    print('Clean failed:', e)
+"
+    sleep 0.5
+fi
 
 echo "[update] Creating remote directory tree..."
 # mpremote's `fs mkdir` does not support -p. We walk each path component
@@ -139,14 +161,44 @@ if [ "$FRESH" = "1" ]; then
 
     if [ "$ROLE" = "coordinator" ]; then
         echo "[update] Pushing coordinator starter config from sample..."
-        cp "$SAMPLE_CFG" "$TMP_CFG"
+        if [ "$SETUP_WIFI" = "1" ]; then
+            read -p "Enter WiFi SSID: " WIFI_SSID
+            while true; do
+                read -s -p "Enter WiFi Password: " WIFI_PASS
+                echo
+                read -s -p "Confirm WiFi Password: " WIFI_PASS_CONFIRM
+                echo
+                if [ "$WIFI_PASS" = "$WIFI_PASS_CONFIRM" ]; then
+                    break
+                else
+                    echo "[update] Passwords do not match. Please try again."
+                fi
+            done
+            echo "[update] Applying WiFi credentials..."
+            jq_cmd="."
+            jq_args=()
+            if [ -n "${WIFI_SSID:-}" ]; then
+                jq_cmd+=" | .wifi.ssid=\$ssid"
+                jq_args+=(--arg ssid "$WIFI_SSID")
+            fi
+            if [ -n "${WIFI_PASS:-}" ]; then
+                jq_cmd+=" | .wifi.password=\$pass"
+                jq_args+=(--arg pass "$WIFI_PASS")
+            fi
+            jq "${jq_args[@]}" "$jq_cmd" "$SAMPLE_CFG" > "$TMP_CFG"
+        else
+            cp "$SAMPLE_CFG" "$TMP_CFG"
+        fi
+        
         mpremote connect auto fs cp "$TMP_CFG" :config.json
         echo
-        echo "[update] !! WiFi credentials in the pushed config are placeholders."
-        echo "[update] !! Edit them via the Config Builder (USB) or with mpremote"
-        echo "[update] !! before the coordinator can reach the network:"
-        echo "[update] !!   mpremote connect auto edit :config.json"
-        echo
+        if [ "$SETUP_WIFI" = "0" ]; then
+            echo "[update] !! WiFi credentials in the pushed config are placeholders."
+            echo "[update] !! Edit them via the Config Builder (USB) or with mpremote"
+            echo "[update] !! before the coordinator can reach the network:"
+            echo "[update] !!   mpremote connect auto edit :config.json"
+            echo
+        fi
     else
         echo "[update] Pushing minimal leaf stub config (unit_id=$LEAF_ID)..."
         # Minimal leaf bootstrap — just enough to pass schema validation and
@@ -179,6 +231,7 @@ if [ "$FRESH" = "1" ]; then
     "pwm_freq_hz": 1000,
     "ldr_adc_pin": 26,
     "status_led_pin": 5,
+    "led_color_order": "RGB",
     "reset_btn_pin": 12,
     "lora_uart_id": 0,
     "lora_tx_pin": 0,
