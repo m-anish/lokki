@@ -35,6 +35,21 @@ _BROADCAST      = 255
 _MAX_PACKET_BYTES = 200
 
 
+def _envelope_overhead():
+    """Worst-case bytes added by the envelope wrapper around the payload.
+    Computed once at module load with the longest msg type ("CFG_CHUNK") and
+    3-digit src/dest/seq so callers can rely on a single conservative number
+    instead of measuring per-message. Reserve a small safety margin (4 B) for
+    JSON whitespace variance and any future field tweaks."""
+    skel = {"s": 255, "d": 255, "t": CFG_CHUNK, "seq": 255, "p": {}}
+    return len(json.dumps(skel).encode()) + 4
+
+
+_ENVELOPE_OVERHEAD = _envelope_overhead()
+# Max bytes a payload dict may serialize to and still fit. Fitters target this.
+_MAX_PAYLOAD_BYTES = _MAX_PACKET_BYTES - _ENVELOPE_OVERHEAD
+
+
 def _crc32(data):
     if isinstance(data, str):
         data = data.encode()
@@ -54,6 +69,7 @@ class LoRaProtocol:
     def __init__(self):
         self._seq      = 0
         self._handlers = {}          # {msg_type: handler_fn}
+        self._fitters  = {}          # {msg_type: fitter_fn(payload, budget) -> payload}
         self._pending  = {}          # {seq: {msg, sent_at, retries}}
         self._unit_id  = 0
         # RSSI of the most recent received packet in dBm (signed int) or None.
@@ -61,6 +77,18 @@ class LoRaProtocol:
         # (see TODO in lora-protocol.md). Leaves include this in HB so the
         # coordinator can show link quality on the dashboard.
         self.last_rx_rssi = None
+        # Live progress for the most recent config push. The web layer polls
+        # this so the upload modal shows real chunk progress instead of a
+        # time-based estimate that stalls.
+        #   phase: "idle" | "starting" | "uploading" | "verifying"
+        #          | "success" | "failed"
+        self.cfg_progress = {
+            "unit_id": None,
+            "total":   0,    # total chunks
+            "sent":    0,    # chunks transmitted so far
+            "phase":   "idle",
+            "message": "",
+        }
 
     def init(self):
         self._unit_id = config_manager.unit_id
@@ -75,6 +103,14 @@ class LoRaProtocol:
         """Register handler: handler(src_id, payload_dict)"""
         self._handlers[msg_type] = handler
 
+    def fitter(self, msg_type, fn):
+        """Register a per-msg-type pre-flight fitter. `fn(payload, budget_bytes)`
+        receives the payload dict and the max number of bytes the JSON-encoded
+        payload may take to still fit a 200B LoRa packet. It returns a payload
+        that fits (mutated in place is fine), or the original if no shrinking
+        is needed. Called by send() before the envelope size check."""
+        self._fitters[msg_type] = fn
+
     # ------------------------------------------------------------------
     # Send
     # ------------------------------------------------------------------
@@ -82,6 +118,19 @@ class LoRaProtocol:
     def send(self, msg_type, dest, payload=None):
         self._seq = (self._seq + 1) & 0xFF
         seq = self._seq
+
+        # Pre-flight fit: give the msg-type's registered fitter (if any) a
+        # chance to shrink the payload to the per-payload byte budget before
+        # we build the envelope. Centralizes the "fits-on-the-wire" policy in
+        # one place instead of forcing each caller to know about the 200B cap.
+        if payload is not None:
+            fit = self._fitters.get(msg_type)
+            if fit:
+                try:
+                    payload = fit(payload, _MAX_PAYLOAD_BYTES)
+                except Exception as e:
+                    log.error(f"[LORA_PROTO] {msg_type} fitter raised: {e}")
+
         envelope = {"s": self._unit_id, "d": dest, "t": msg_type, "seq": seq}
         if payload:
             envelope["p"] = payload
@@ -90,11 +139,13 @@ class LoRaProtocol:
             raw = json.dumps(envelope).encode()
             # CFG_CHUNK is pre-sized to fit; everything else must stay under the
             # E220 packet limit or the receiver will see a truncated, unparseable
-            # frame. Drop here with a loud log rather than transmit garbage.
+            # frame. If we get here oversized it's a caller bug (fitter missing
+            # or insufficient, or a splittable command sent un-split).
             if len(raw) > _MAX_PACKET_BYTES:
                 log.error(
                     f"[LORA_PROTO] {msg_type} dropped: {len(raw)}B exceeds "
-                    f"{_MAX_PACKET_BYTES}B limit"
+                    f"{_MAX_PACKET_BYTES}B limit (register a fitter for {msg_type}, "
+                    f"or use a batched sender if the command is splittable)"
                 )
                 return None
             lora_transport.send(
@@ -135,8 +186,18 @@ class LoRaProtocol:
         log.info(f"[LORA_PROTO] Config transfer {transfer_id}: "
                  f"{len(chunks)} chunks → unit {dest_id}")
 
+        self.cfg_progress = {
+            "unit_id": dest_id,
+            "total":   len(chunks),
+            "sent":    0,
+            "phase":   "starting",
+            "message": "",
+        }
+
         for attempt in range(1, _MAX_RETRIES + 1):
             # CFG_START
+            self.cfg_progress["phase"] = "starting"
+            self.cfg_progress["sent"]  = 0
             seq = self.send(CFG_START, dest_id, {
                 "transfer_id": transfer_id,
                 "total_chunks": len(chunks),
@@ -148,38 +209,56 @@ class LoRaProtocol:
                 continue
 
             # CFG_CHUNKs
-            ok = True
+            self.cfg_progress["phase"] = "uploading"
             for i, chunk in enumerate(chunks):
                 self.send(CFG_CHUNK, dest_id, {
                     "transfer_id": transfer_id,
                     "chunk_index": i,
                     "data": chunk.decode("utf-8", "ignore"),
                 })
+                self.cfg_progress["sent"] = i + 1
                 await asyncio.sleep_ms(_CHUNK_DELAY_MS)
 
             # CFG_END
+            self.cfg_progress["phase"] = "verifying"
             seq = self.send(CFG_END, dest_id, {
                 "transfer_id": transfer_id,
                 "checksum": checksum,
             })
-            
+
             ack = await self._wait_ack(seq)
             if ack:
                 if ack.get("ok", True):
                     log.info(f"[LORA_PROTO] Config transfer {transfer_id} complete")
+                    self.cfg_progress["phase"]   = "success"
+                    self.cfg_progress["message"] = ""
                     return True
-                    
+
+                # If the leaf could not apply the config (validator rejected it,
+                # flash write failed, etc.), retrying the same payload won't help.
+                # Bail out so the caller surfaces the error to the user.
+                if ack.get("reason") == "APPLY_FAILED":
+                    err_str = ack.get("err", "")
+                    log.error(
+                        f"[LORA_PROTO] Config transfer {transfer_id} rejected by leaf: "
+                        f"{err_str or 'no details'}"
+                    )
+                    self.cfg_progress["phase"]   = "failed"
+                    self.cfg_progress["message"] = err_str or "Device rejected the config"
+                    return False
+
                 # The leaf rejected the checksum. Did it tell us which chunks are missing?
                 missing = ack.get("missing")
                 if missing and isinstance(missing, list) and len(missing) > 0:
                     log.warn(f"[LORA_PROTO] CFG_END rejected. Leaf is missing {len(missing)} chunks. Retrying only missing chunks...")
-                    # We have a smart retry! Instead of aborting to the outer loop,
-                    # we can just re-send the missing chunks right now and jump back
-                    # to the CFG_END stage!
-                    # Wait, we need to do this carefully without breaking the attempt loop.
-                    # Let's just update `chunks` to only contain the missing ones?
-                    # No, we can't because the indices would change.
+                    # Smart retry: re-send only the chunks the leaf didn't get.
+                    # Indices stay the same so the leaf re-assembles correctly.
+                    # cfg_progress.sent represents "how many distinct chunks the
+                    # leaf has", so we set sent = total - len(missing) and tick
+                    # it up as we re-send each missing chunk.
                     for attempt_missing in range(3):
+                        self.cfg_progress["phase"] = "uploading"
+                        self.cfg_progress["sent"]  = len(chunks) - len(missing)
                         log.info(f"[LORA_PROTO] Smart retry: sending {len(missing)} missing chunks...")
                         for m_idx in missing:
                             if 0 <= m_idx < len(chunks):
@@ -188,9 +267,11 @@ class LoRaProtocol:
                                     "chunk_index": m_idx,
                                     "data": chunks[m_idx].decode("utf-8", "ignore"),
                                 })
+                                self.cfg_progress["sent"] += 1
                                 await asyncio.sleep_ms(_CHUNK_DELAY_MS)
-                        
+
                         # Re-send CFG_END
+                        self.cfg_progress["phase"] = "verifying"
                         seq = self.send(CFG_END, dest_id, {
                             "transfer_id": transfer_id,
                             "checksum": checksum,
@@ -198,7 +279,14 @@ class LoRaProtocol:
                         ack = await self._wait_ack(seq)
                         if ack and ack.get("ok", True):
                             log.info(f"[LORA_PROTO] Config transfer {transfer_id} complete after smart retry")
+                            self.cfg_progress["phase"]   = "success"
+                            self.cfg_progress["message"] = ""
                             return True
+                        if ack and ack.get("reason") == "APPLY_FAILED":
+                            err_str = ack.get("err", "")
+                            self.cfg_progress["phase"]   = "failed"
+                            self.cfg_progress["message"] = err_str or "Device rejected the config"
+                            return False
                         missing = ack.get("missing") if ack else None
                         if not missing:
                             break # fallback to full retry
@@ -206,6 +294,8 @@ class LoRaProtocol:
             log.warn(f"[LORA_PROTO] CFG_END no ACK or failed (attempt {attempt})")
 
         log.error(f"[LORA_PROTO] Config transfer {transfer_id} failed after {_MAX_RETRIES} attempts")
+        self.cfg_progress["phase"]   = "failed"
+        self.cfg_progress["message"] = "Couldn't reach the device"
         return False
 
     # ------------------------------------------------------------------
@@ -358,11 +448,73 @@ class LoRaProtocol:
         return self.send(SC, dest, {"scene": scene_name})
 
     def send_manual_override(self, dest, channels, relays, revert_s=0):
+        """Send ONE MO packet. Assumes the caller already fit the payload — use
+        send_manual_override_batched() for arbitrary-sized overrides."""
         return self.send(MO, dest, {
             "ch": channels,
             "rl": relays,
             "revert_s": revert_s,
         })
+
+    async def send_manual_override_batched(self, dest, channels, relays, revert_s=0):
+        """Splittable manual-override sender. Packs as many [id, value] pairs
+        as the LoRa byte budget allows per packet, sends sequentially with a
+        small inter-packet gap so the receiver's UART can drain. Returns True
+        iff every packet was accepted by send() (i.e. fit and transmitted).
+
+        Why this lives here, not in api_handlers: the 200B cap is a transport
+        property. Application code shouldn't need to know about it."""
+        # Empty override (revert_s broadcast, e.g. revert_s=-1 to clear).
+        if not channels and not relays:
+            seq = self.send_manual_override(dest, [], [], revert_s)
+            return seq is not None
+
+        # Budget the items per packet. Base payload skeleton without any items
+        # establishes the floor; each item adds a small, bounded delta. We
+        # build greedily and flush whenever adding the next item would push the
+        # serialized payload past the budget.
+        ch_q = list(channels)
+        rl_q = list(relays)
+
+        def fits(buf_ch, buf_rl):
+            probe = {"ch": buf_ch, "rl": buf_rl, "revert_s": revert_s}
+            return len(json.dumps(probe).encode()) <= _MAX_PAYLOAD_BYTES
+
+        any_sent = False
+        while ch_q or rl_q:
+            buf_ch, buf_rl = [], []
+            # Greedy: drain channels first, then relays, into this packet.
+            while ch_q:
+                trial_ch = buf_ch + [ch_q[0]]
+                if fits(trial_ch, buf_rl):
+                    buf_ch = trial_ch
+                    ch_q.pop(0)
+                else:
+                    break
+            while rl_q:
+                trial_rl = buf_rl + [rl_q[0]]
+                if fits(buf_ch, trial_rl):
+                    buf_rl = trial_rl
+                    rl_q.pop(0)
+                else:
+                    break
+
+            if not buf_ch and not buf_rl:
+                # A single item didn't fit the budget — impossible for normal
+                # [int, int] pairs (each ≈ 8B vs ~150B budget) but guard anyway.
+                log.error(
+                    f"[LORA_PROTO] MO: single item exceeds {_MAX_PAYLOAD_BYTES}B "
+                    f"payload budget; dropping the rest"
+                )
+                return False
+
+            seq = self.send_manual_override(dest, buf_ch, buf_rl, revert_s)
+            if seq is None:
+                return False
+            any_sent = True
+            if ch_q or rl_q:
+                await asyncio.sleep_ms(300)  # let UART/transport breathe
+        return any_sent
 
     def request_status(self, dest):
         self.send(SR, dest)

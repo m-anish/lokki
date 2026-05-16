@@ -79,11 +79,11 @@ class PWMController:
             cid = ch.get("id")
             pin = ch.get("gpio_pin")
             enabled = ch.get("enabled", False)
-            if cid and pin is not None:
+            if cid is not None and pin is not None:
                 if cid in self._channels:
                     self._channels[cid].deinit()
                 self._channels[cid] = PWMChannel(cid, pin, freq_hz)
-                log.debug(f"[PWM] {cid}: GPIO{pin}, enabled={enabled}")
+                log.debug(f"[PWM] ch{cid}: GPIO{pin}, enabled={enabled}")
         log.info(f"[PWM] Initialized {len(self._channels)} channel(s)")
 
     def set(self, channel_id, duty_pct):
@@ -108,11 +108,13 @@ class PWMController:
         return ch.duty_percent if ch else 0
 
     def get_all(self):
-        # Returns duty percentages in config order (insertion order).
-        # MicroPython has guaranteed dict insertion order since the 1.x
-        # series; channels are inserted in the order init_from_config
-        # iterates the led_channels list, which is the user's config order.
-        return [ch.duty_percent for ch in self._channels.values()]
+        # Fixed 8-slot positional list. Index i holds duty for channel id (i+1).
+        # Slots with no configured channel stay at 0.
+        out = [0] * 8
+        for cid, ch in self._channels.items():
+            if 1 <= cid <= 8:
+                out[cid - 1] = ch.duty_percent
+        return out
 
     def deinit(self):
         for ch in self._channels.values():

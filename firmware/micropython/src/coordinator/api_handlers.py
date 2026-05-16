@@ -82,7 +82,7 @@ def _extract_leaf_meta(cfg):
         "led_channels": [
             {
                 "id":   c["id"],
-                "name": c.get("name", c["id"]),
+                "name": c.get("name", f"ch{c['id']}"),
                 "enabled": c.get("enabled", True),
                 "default_duty_percent": c.get("default_duty_percent", 0),
             }
@@ -91,7 +91,7 @@ def _extract_leaf_meta(cfg):
         "relays": [
             {
                 "id":   r["id"],
-                "name": r.get("name", r["id"]),
+                "name": r.get("name", f"rl{r['id']}"),
                 "enabled": r.get("enabled", True),
                 "default_state": r.get("default_state", "off"),
             }
@@ -118,6 +118,32 @@ def _err(msg, code=400):
 # Fleet
 # ------------------------------------------------------------------
 
+def _positional_names(items, slots, prefix):
+    """Build a fixed-length name list. items is a list of {id, name, ...} dicts;
+    output[i] = name of item with id (i+1), or "<prefix>(i+1)" if not configured.
+    """
+    out = [f"{prefix}{i+1}" for i in range(slots)]
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        oid = it.get("id")
+        if isinstance(oid, int) and 1 <= oid <= slots:
+            out[oid - 1] = it.get("name") or f"{prefix}{oid}"
+    return out
+
+
+def _positional_enabled(items, slots):
+    """Returns a fixed-length list of bools — True if the slot is configured AND enabled."""
+    out = [False] * slots
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        oid = it.get("id")
+        if isinstance(oid, int) and 1 <= oid <= slots:
+            out[oid - 1] = bool(it.get("enabled", False))
+    return out
+
+
 def handle_fleet_status():
     import time
     from hardware.pwm_control import pwm_controller
@@ -132,10 +158,16 @@ def handle_fleet_status():
         # Compute relative age to avoid 5-year gap if NTP sync happens between
         # the time the leaf was last seen and now.
         udata["last_seen_ago_s"] = int(now - u["last_seen"]) if u["last_seen"] else -1
-        
-        # Inject friendly channel names from cache
+
+        # Inject friendly names from the cached leaf config. Positional:
+        # ch_names[i] is for channel id (i+1), and so on.
         cached = _leaf_config_cache.get(uid, {})
-        udata["ch_names"] = [c.get("name", f"ch{i+1}") for i, c in enumerate(cached.get("led_channels", []))]
+        udata["ch_names"]    = _positional_names(cached.get("led_channels"), 8, "ch")
+        udata["rl_names"]    = _positional_names(cached.get("relays"),       2, "rl")
+        udata["pir_names"]   = _positional_names(cached.get("pir"),          4, "pir")
+        udata["ch_enabled"]  = _positional_enabled(cached.get("led_channels"), 8)
+        udata["rl_enabled"]  = _positional_enabled(cached.get("relays"),       2)
+        udata["pir_enabled"] = _positional_enabled(cached.get("pir"),          4)
         fleet[str(uid)] = udata
 
     fleet["0"] = {
@@ -144,9 +176,14 @@ def handle_fleet_status():
         "last_seen_ago_s": 0,             # coordinator is "always now"
         "uptime": system_status.get_uptime(),
         "ch": pwm_controller.get_all(),
-        "ch_names": [c.get("name", f"ch{i+1}") for i, c in enumerate(config_manager.get("led_channels"))],
-        "rl": list(relay_controller.get_all().values()),
-        "pir": list(pir_manager.get_all_states().values()),
+        "ch_names":   _positional_names(config_manager.get("led_channels"), 8, "ch"),
+        "ch_enabled": _positional_enabled(config_manager.get("led_channels"), 8),
+        "rl": relay_controller.get_all(),
+        "rl_names":   _positional_names(config_manager.get("relays"),       2, "rl"),
+        "rl_enabled": _positional_enabled(config_manager.get("relays"),       2),
+        "pir": pir_manager.get_all_states(),
+        "pir_names":  _positional_names(config_manager.get("pir"),          4, "pir"),
+        "pir_enabled":_positional_enabled(config_manager.get("pir"),          4),
         "ldr": ldr_monitor.ambient_percent,
         "err": system_status.error_count,
         "rssi": None,                     # local, no link
@@ -165,9 +202,9 @@ def handle_unit_status(unit_id):
         return _ok({
             "online": True,
             "uptime": system_status.get_uptime(),
-            "ch": pwm_controller.get_all(),  # Already returns sorted list
-            "rl": list(relay_controller.get_all().values()),
-            "pir": list(pir_manager.get_all_states().values()),
+            "ch": pwm_controller.get_all(),   # 8-slot positional list
+            "rl": relay_controller.get_all(), # 2-slot positional list
+            "pir": pir_manager.get_all_states(), # 4-slot positional list
             "ldr": ldr_monitor.ambient_percent,
             "err": system_status.error_count,
         })
@@ -221,17 +258,19 @@ async def handle_config_push(unit_id, config_str):
         try:
             cfg = json.loads(compact_str)
             _leaf_config_cache[unit_id] = cfg
-            # We persist compact_str. config_manager.replace() and _persist_leaf_cfg
-            # both write to disk. Wait, _persist_leaf_cfg writes via json.dump(cfg).
-            # Which is automatically compact in MicroPython. We want it prettified.
-            # But the requirement was to let config_manager handle it.
-            # Let's just persist cfg as usual.
             _persist_leaf_cfg(unit_id, cfg)
             log.info(f"[API] Cached leaf {unit_id} config")
         except Exception as e:
             log.warn(f"[API] Could not cache leaf {unit_id} config: {e}")
         return _ok({"sent_to": unit_id})
-        
+
+    # Surface the failure reason from cfg_progress so the dashboard toast/modal
+    # can show *why* the push failed instead of the generic LoRa link blame.
+    # Phases at this point: "failed" (with .message set) for APPLY_FAILED or
+    # exhausted retries; otherwise fall through to the generic message.
+    prog = lora_protocol.cfg_progress
+    if prog.get("phase") == "failed" and prog.get("message"):
+        return _err(prog["message"], 502)
     return _err(f"Config transfer to unit {unit_id} failed — check LoRa link", 502)
 
 
@@ -332,56 +371,35 @@ def handle_scene_apply(scene_name, unit_ids=None):
 # Manual override
 # ------------------------------------------------------------------
 
-def handle_manual_override(unit_id, payload):
+async def handle_manual_override(unit_id, payload):
     log.info(f"[API] Manual override request for unit {unit_id}, payload: {payload}")
-    
+
     try:
         channels  = payload.get("ch", [])
         relays    = payload.get("rl", [])
         revert_s  = payload.get("revert_s", 0)
         fade_ms   = payload.get("fade_ms", 0)
-        
+
         log.info(f"[API] Parsed: {len(channels)} channels, {len(relays)} relays")
 
         if unit_id == 0:
             for cid, val in channels:
-                log.info(f"[API] Setting LED {cid}={val}%, fade={fade_ms}ms, revert={revert_s}s")
-                priority_arbiter.set_manual(cid, val, fade_ms, revert_s)
+                log.info(f"[API] Setting LED ch{cid}={val}%, fade={fade_ms}ms, revert={revert_s}s")
+                priority_arbiter.set_manual_channel(cid, val, fade_ms, revert_s)
             for rid, val in relays:
-                log.info(f"[API] Setting relay {rid}={val}, revert={revert_s}s")
-                priority_arbiter.set_manual(rid, val, 0, revert_s)
+                log.info(f"[API] Setting relay rl{rid}={val}, revert={revert_s}s")
+                priority_arbiter.set_manual_relay(rid, val, revert_s)
             log.info("[API] Manual override applied successfully")
             from hardware.status_led import status_led
             status_led.set_state("manual_override" if priority_arbiter.has_manual() else _ok_led_state())
             return _ok({"applied": "local"})
 
-        # Dashboard splitting is nice, but API layer splitting is foolproof.
-        # Max payload overhead for MO envelope is ~48 bytes.
-        # If we send up to 3 items per batch, we are perfectly safe under 200B.
-        items = []
-        for c in channels: items.append(("ch", c))
-        for r in relays: items.append(("rl", r))
-        
-        # If nothing to send, or just a revert_s broadcast
-        if not items:
-            seq = lora_protocol.send_manual_override(unit_id, [], [], revert_s)
-            return _ok({"sent_to": unit_id}) if seq else _err("Send failed", 502)
-            
-        import asyncio
-        batch_size = 3
-        seq = None
-        for i in range(0, len(items), batch_size):
-            batch = items[i:i+batch_size]
-            b_ch = [item[1] for item in batch if item[0] == "ch"]
-            b_rl = [item[1] for item in batch if item[0] == "rl"]
-            seq = lora_protocol.send_manual_override(unit_id, b_ch, b_rl, revert_s)
-            if not seq:
-                return _err("Send failed on batch", 502)
-            if i + batch_size < len(items):
-                import time
-                time.sleep_ms(300) # give LoRa transport time to breathe
-                
-        return _ok({"sent_to": unit_id})
+        # The protocol layer owns packet-size policy and splits internally if
+        # the combined payload would exceed the 200B LoRa cap.
+        ok = await lora_protocol.send_manual_override_batched(
+            unit_id, channels, relays, revert_s
+        )
+        return _ok({"sent_to": unit_id}) if ok else _err("Send failed", 502)
     except Exception as e:
         log.error(f"[API] Manual override exception: {e}")
         import sys
@@ -389,12 +407,9 @@ def handle_manual_override(unit_id, payload):
         return _err(f"Manual override failed: {e}")
 
 
-def handle_manual_clear(unit_id, output_id=None):
+def handle_manual_clear(unit_id):
     if unit_id == 0:
-        if output_id:
-            priority_arbiter.clear_manual(output_id)
-        else:
-            priority_arbiter.clear_all_manual()
+        priority_arbiter.clear_all_manual()
         from hardware.status_led import status_led
         status_led.set_state(_ok_led_state())
         return _ok()
@@ -435,9 +450,9 @@ def handle_unit_scenes(unit_id):
 
 def handle_emergency_off():
     for ch in config_manager.get("led_channels"):
-        priority_arbiter.set_manual(ch["id"], 0, 0, 0)
+        priority_arbiter.set_manual_channel(ch["id"], 0, 0, 0)
     for r in config_manager.get("relays"):
-        priority_arbiter.set_manual(r["id"], 0, 0, 0)
+        priority_arbiter.set_manual_relay(r["id"], "off", 0)
     from hardware.status_led import status_led
     status_led.set_state("manual_override")
 
@@ -446,6 +461,17 @@ def handle_emergency_off():
         seq = lora_protocol.send_emergency_off(uid)
         results[str(uid)] = "sent" if seq else "send_failed"
     return _ok(results)
+
+
+# ------------------------------------------------------------------
+# Config push progress
+# ------------------------------------------------------------------
+
+def handle_config_progress():
+    """Live progress for the most recent /api/units/N/config POST. The web UI
+    polls this so the upload modal can show real chunk progress instead of a
+    time-based guess."""
+    return _ok(dict(lora_protocol.cfg_progress))
 
 
 # ------------------------------------------------------------------

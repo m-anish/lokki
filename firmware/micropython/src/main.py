@@ -45,14 +45,15 @@ def _build_pir_handler(action_cfg, scenes_by_name):
         fade = action_cfg.get("fade_ms", 0)
         def handler(pir_id):
             for cid in channels:
-                priority_arbiter.set_pir(cid, duty, fade_ms=fade)
+                priority_arbiter.set_pir_channel(cid, duty, fade_ms=fade)
         return handler
 
     if act == "set_relay":
-        relay_id = action_cfg.get("relay_id", "")
+        relay_id = action_cfg.get("relay_id")
         state = action_cfg.get("state", "on")
         def handler(pir_id):
-            priority_arbiter.set_pir(relay_id, state)
+            if relay_id is not None:
+                priority_arbiter.set_pir_relay(relay_id, state)
         return handler
 
     return lambda pir_id: None
@@ -114,8 +115,8 @@ async def time_sync_task():
 async def schedule_task(interval_ms):
     while True:
         try:
-            desired = schedule_engine.get_desired_state()
-            priority_arbiter.set_schedule(desired)
+            channel_desired, relay_desired = schedule_engine.get_desired_state()
+            priority_arbiter.set_schedule(channel_desired, relay_desired)
         except Exception as e:
             log.error(f"[SCHEDULE] {e}")
             system_status.record_error(f"schedule: {e}")
@@ -142,8 +143,8 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
                 "name":    name,
                 "uptime":  system_status.get_uptime(),
                 "ch":      pwm_controller.get_all(),
-                "rl":      list(relay_controller.get_all().values()),
-                "pir":     list(pir_manager.get_all_states().values()),
+                "rl":      relay_controller.get_all(),
+                "pir":     pir_manager.get_all_states(),
                 "ldr":     ldr_monitor.ambient_percent,
                 "err":     system_status.error_count,
                 "rssi":    lora_protocol.last_rx_rssi,
@@ -210,6 +211,7 @@ def _register_lora_handlers(role, fleet_manager=None):
     lora_protocol.on("SC", on_scene)
 
     def on_manual_override(src, payload):
+        # Wire format: ch and rl are lists of [int_id, value] pairs.
         channels = payload.get("ch", [])
         relays   = payload.get("rl", [])
         revert_s = payload.get("revert_s", 0)
@@ -219,41 +221,46 @@ def _register_lora_handlers(role, fleet_manager=None):
         else:
             for item in channels:
                 if isinstance(item, (list, tuple)) and len(item) == 2:
-                    priority_arbiter.set_manual(item[0], item[1], fade_ms, revert_s)
+                    priority_arbiter.set_manual_channel(item[0], item[1], fade_ms, revert_s)
             for item in relays:
                 if isinstance(item, (list, tuple)) and len(item) == 2:
-                    priority_arbiter.set_manual(item[0], item[1], 0, revert_s)
+                    priority_arbiter.set_manual_relay(item[0], item[1], revert_s)
         status_led.set_state("manual_override" if priority_arbiter.has_manual() else _ok_led_state())
     lora_protocol.on("MO", on_manual_override)
 
     def on_status_request(src, payload):
-        # Base SRP is ~120B with name+rssi; the 200B E220 limit leaves ~50B for
-        # scene names. If we'd overrun, drop scene names progressively.
-        scene_names = list(scenes.keys())
         response = {
             "name":    config_manager.unit_name,
             "uptime":  system_status.get_uptime(),
             "ch":      pwm_controller.get_all(),
-            "rl":      list(relay_controller.get_all().values()),
-            "pir":     list(pir_manager.get_all_states().values()),
+            "rl":      relay_controller.get_all(),
+            "pir":     pir_manager.get_all_states(),
             "ldr":     ldr_monitor.ambient_percent,
             "err":     system_status.error_count,
             "rssi":    lora_protocol.last_rx_rssi,
-            "sc":      scene_names,
+            "sc":      list(scenes.keys()),
         }
-        # Rough envelope budget check — drop scenes from the end until it fits.
-        # Envelope overhead is ~48 bytes. Max payload size is ~150 bytes to stay under 200B.
-        import json as _json
-        while len(_json.dumps(response).encode()) > 150 and response["sc"]:
-            response["sc"].pop()
+        # Size fitting is handled by the registered SRP fitter below.
         lora_protocol.send("SRP", src, response)
     lora_protocol.on("SR", on_status_request)
 
+    # Fitter: SRP is ~120B baseline; "sc" is the only growth field. Drop scene
+    # names from the end until the JSON-encoded payload fits the budget.
+    def _fit_srp(payload, budget):
+        import json as _json
+        sc = payload.get("sc")
+        if not isinstance(sc, list):
+            return payload
+        while len(_json.dumps(payload).encode()) > budget and sc:
+            sc.pop()
+        return payload
+    lora_protocol.fitter("SRP", _fit_srp)
+
     def on_emergency_off(src, _payload):
         for ch in config_manager.get("led_channels"):
-            priority_arbiter.set_manual(ch["id"], 0, 0, 0)
+            priority_arbiter.set_manual_channel(ch["id"], 0, 0, 0)
         for r in config_manager.get("relays"):
-            priority_arbiter.set_manual(r["id"], 0, 0, 0)
+            priority_arbiter.set_manual_relay(r["id"], "off", 0)
         status_led.set_state("manual_override")
         log.info(f"[LORA] Emergency off from {src}")
     lora_protocol.on("EO", on_emergency_off)
@@ -293,18 +300,43 @@ def _register_lora_handlers(role, fleet_manager=None):
                     from comms.lora_protocol import _crc32
                     actual_crc = "{:08x}".format(_crc32(config_str))
                     if expected_crc == actual_crc:
-                        log.info(f"[LORA] Config transfer {tid} verified. Rebooting to apply.")
-                        # Send success ACK BEFORE rebooting!
+                        # CRC is good, but the config may still fail the leaf's
+                        # validator or the atomic flash write. Apply FIRST so we
+                        # only ACK ok=True after the new config is durably saved.
+                        # Otherwise the coord would cache a config the leaf never
+                        # actually applied — and the dashboard would show enabled
+                        # channels with stale 0% duty on the leaf row.
+                        apply_err = None
+                        try:
+                            config_manager.replace(config_str)
+                        except Exception as e:
+                            apply_err = e
+                            log.error(f"[LORA] Config transfer {tid} apply failed: {e}")
+
+                        if apply_err is None:
+                            log.info(f"[LORA] Config transfer {tid} applied. Rebooting.")
+                            if seq is not None:
+                                lora_protocol.send("ACK", src, {"ack_seq": seq, "ok": True})
+                            del _cfg_transfers[tid]
+                            import machine
+                            import asyncio
+                            async def do_reboot():
+                                # Give the ACK a moment to reach the coord before
+                                # we pull the rug out from under the UART.
+                                await asyncio.sleep(1)
+                                machine.reset()
+                            asyncio.create_task(do_reboot())
+                            return
+
+                        # Apply failed — tell the coord so it does NOT cache.
                         if seq is not None:
-                            lora_protocol.send("ACK", src, {"ack_seq": seq, "ok": True})
+                            lora_protocol.send("ACK", src, {
+                                "ack_seq": seq,
+                                "ok": False,
+                                "reason": "APPLY_FAILED",
+                                "err": str(apply_err)[:80],
+                            })
                         del _cfg_transfers[tid]
-                        config_manager.replace(config_str)
-                        import machine
-                        import asyncio
-                        async def do_reboot():
-                            await asyncio.sleep(1)
-                            machine.reset()
-                        asyncio.create_task(do_reboot())
                         return
                     else:
                         log.error(f"[LORA] Config transfer {tid} checksum mismatch")

@@ -111,11 +111,11 @@ config_manager.unit_id                   # int 0–8
 schedule_engine.get_desired_state()
 # returns:
 # {
-#   "ch1": {"duty_percent": 80, "fade_ms": 5000},
-#   "ch2": {"duty_percent": 0},
+#   "1": {"duty_percent": 80, "fade_ms": 5000},
+#   "2": {"duty_percent": 0},
 #   ...
-#   "rly1": {"state": "on"},
-#   "rly2": {"state": "off"}
+#   "1": {"state": "on"},
+#   "2": {"state": "off"}
 # }
 ```
 
@@ -136,39 +136,52 @@ schedule_engine.get_desired_state()
 
 **Priority stack (highest to lowest):**
 ```
-1. Manual override  (set via API / web UI)
-2. PIR active state (set by pir_manager)
-3. Schedule         (set by schedule_engine)
-4. LDR cap          (modifier — applied on top of 1–3)
-5. Default          (fallback if no other signal)
+1. Manual override  (set via API / web UI) — bypasses LDR cap
+2. PIR active state (set by pir_manager)   — bypasses LDR cap
+3. Schedule         (set by schedule_engine) — LDR cap applies
+4. Default          (fallback if no other signal — same layer as schedule)
 ```
 
-**State tracking per output:**
+The LDR cap is a **schedule-layer modifier**, not a global ceiling. When the active source is manual or PIR, the user/motion intent overrides the cap (an explicit "100%" request is honored even in bright daylight). The cap only restricts schedule-driven output.
+
+**State tracking — channels and relays are stored in separate dicts:**
 ```python
+# _channel_state[cid (int 1..8)]
 {
-  "ch1": {
-    "manual":   {"duty_percent": 75, "fade_ms": 0, "revert_s": 0} | None,
-    "pir":      {"duty_percent": 100, "fade_ms": 1000} | None,
-    "schedule": {"duty_percent": 40, "fade_ms": 5000},
-    "ldr_cap":  30,          # current cap from ldr_monitor (0–100 or None)
-    "actual":   75           # what is currently being driven to hardware
-  }
+  "manual":   {"duty_percent": 75, "fade_ms": 0} | None,
+  "pir":      {"duty_percent": 100, "fade_ms": 1000} | None,
+  "schedule": {"duty_percent": 40, "fade_ms": 5000},
+  "ldr_cap":  30,          # current cap from ldr_monitor (0–100 or None)
+  "actual":   75           # what is currently being driven to hardware
+}
+
+# _relay_state[rid (int 1..2)]
+{
+  "manual":   {"state": "on"} | None,
+  "pir":      {"state": "on"} | None,
+  "schedule": {"state": "off"},
+  "actual":   "on"
 }
 ```
 
 **Public interface:**
 ```python
-arbiter.set_manual(output_id, duty_or_state, fade_ms, revert_s)
-arbiter.clear_manual(output_id)
-arbiter.set_pir(output_id, duty_or_state, fade_ms)
-arbiter.clear_pir(output_id)           # called on vacancy timeout
-arbiter.set_schedule(desired_state)    # called by schedule_engine each tick
-arbiter.set_ldr_cap(cap_percent)       # called by ldr_monitor
-arbiter.apply_scene(scene)             # applies scene as manual overrides
-arbiter.get_actual_state()             # returns current driven state (for HB payload)
+arbiter.set_manual_channel(cid, duty_percent, fade_ms, revert_s)
+arbiter.set_manual_relay(rid, state, revert_s)
+arbiter.clear_manual_channel(cid)
+arbiter.clear_manual_relay(rid)
+arbiter.clear_all_manual()
+arbiter.set_pir_channel(cid, duty_percent, fade_ms)
+arbiter.set_pir_relay(rid, state)
+arbiter.clear_all_pir()
+arbiter.set_schedule(channel_desired, relay_desired)   # called by schedule_engine each tick
+arbiter.set_ldr_cap(cap_percent)                       # called by ldr_monitor
+arbiter.apply_scene(scene, revert_s=0)                 # applies scene as manual overrides
+arbiter.get_actual_channels()  # {cid: duty_percent}   — for HB payload
+arbiter.get_actual_relays()    # {rid: "on"|"off"}     — for HB payload
 ```
 
-**On each call that changes state:** computes resolved output, applies LDR cap, calls `pwm_control` or `relay_control` to drive hardware, logs change.
+**On each call that changes state:** computes resolved output (applying LDR cap only if the active source is schedule), calls `pwm_control` or `relay_control` to drive hardware, logs change.
 
 **Dependencies:** `hardware/pwm_control`, `hardware/relay_control`, `core/config_manager`, `shared/simple_logger`
 

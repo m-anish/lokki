@@ -146,7 +146,7 @@ One entry per physical PIR input. Up to 4.
 ```json
 "pir": [
   {
-    "id": "pir1",
+    "id": 1,
     "name": "Main Entrance",
     "gpio_pin": 6,
     "enabled": true,
@@ -160,14 +160,14 @@ One entry per physical PIR input. Up to 4.
     }
   },
   {
-    "id": "pir2",
+    "id": 2,
     "name": "Side Door",
     "gpio_pin": 7,
     "enabled": true,
     "vacancy_timeout_s": 180,
     "on_motion": {
       "action": "set_led_channels",
-      "channels": ["ch1", "ch2"],
+      "channels": [1, 2],
       "duty_percent": 80,
       "fade_ms": 2000
     },
@@ -196,7 +196,7 @@ One entry per relay. Up to 2.
 ```json
 "relays": [
   {
-    "id": "rly1",
+    "id": 1,
     "name": "Main Power",
     "gpio_pin": 10,
     "enabled": true,
@@ -210,7 +210,7 @@ One entry per relay. Up to 2.
     ]
   },
   {
-    "id": "rly2",
+    "id": 2,
     "name": "Emergency Light",
     "gpio_pin": 11,
     "enabled": false,
@@ -230,7 +230,7 @@ One entry per LED driver channel. Up to 8.
 ```json
 "led_channels": [
   {
-    "id": "ch1",
+    "id": 1,
     "name": "Altar Lights",
     "gpio_pin": 16,
     "enabled": true,
@@ -261,7 +261,7 @@ One entry per LED driver channel. Up to 8.
     ]
   },
   {
-    "id": "ch2",
+    "id": 2,
     "name": "Corridor",
     "gpio_pin": 17,
     "enabled": true,
@@ -283,23 +283,23 @@ One entry per LED driver channel. Up to 8.
 ```
 
 **GPIO pin assignments (reference):**
-| Channel | GPIO |
-|---------|------|
-| ch1 | GP16 |
-| ch2 | GP17 |
-| ch3 | GP18 |
-| ch4 | GP19 |
-| ch5 | GP22 |
-| ch6 | GP15 |
-| ch7 | GP14 |
-| ch8 | GP13 |
+| Channel id | GPIO |
+|------------|------|
+| 1 | GP16 |
+| 2 | GP17 |
+| 3 | GP18 |
+| 4 | GP19 |
+| 5 | GP22 |
+| 6 | GP15 |
+| 7 | GP14 |
+| 8 | GP13 |
 
 **Time window notes:**
 - `start` / `end`: `"HH:MM"`, `"sunrise"`, or `"sunset"`
 - Windows are evaluated in order; first matching window wins
 - Overnight windows (e.g. `"22:00"` → `"06:00"`) are supported
 - `fade_ms`: optional, fade transition in milliseconds when entering window
-- LDR cap applies on top of whatever duty this window sets
+- LDR cap applies on top of whatever duty this window sets (schedule-layer only — manual / PIR overrides bypass the cap)
 
 ---
 
@@ -311,36 +311,36 @@ Named output snapshots. Applied by PIR actions, manual API calls, or schedule ru
   {
     "name": "motion_active",
     "led_channels": [
-      { "id": "ch1", "duty_percent": 100, "fade_ms": 1000 },
-      { "id": "ch2", "duty_percent": 80,  "fade_ms": 1000 }
+      { "id": 1, "duty_percent": 100, "fade_ms": 1000 },
+      { "id": 2, "duty_percent": 80,  "fade_ms": 1000 }
     ],
     "relays": [
-      { "id": "rly1", "state": "on" }
+      { "id": 1, "state": "on" }
     ]
   },
   {
     "name": "night_minimal",
     "led_channels": [
-      { "id": "ch1", "duty_percent": 5 },
-      { "id": "ch2", "duty_percent": 10 }
+      { "id": 1, "duty_percent": 5 },
+      { "id": 2, "duty_percent": 10 }
     ],
     "relays": []
   },
   {
     "name": "all_off",
     "led_channels": [
-      { "id": "ch1", "duty_percent": 0 },
-      { "id": "ch2", "duty_percent": 0 },
-      { "id": "ch3", "duty_percent": 0 },
-      { "id": "ch4", "duty_percent": 0 },
-      { "id": "ch5", "duty_percent": 0 },
-      { "id": "ch6", "duty_percent": 0 },
-      { "id": "ch7", "duty_percent": 0 },
-      { "id": "ch8", "duty_percent": 0 }
+      { "id": 1, "duty_percent": 0 },
+      { "id": 2, "duty_percent": 0 },
+      { "id": 3, "duty_percent": 0 },
+      { "id": 4, "duty_percent": 0 },
+      { "id": 5, "duty_percent": 0 },
+      { "id": 6, "duty_percent": 0 },
+      { "id": 7, "duty_percent": 0 },
+      { "id": 8, "duty_percent": 0 }
     ],
     "relays": [
-      { "id": "rly1", "state": "off" },
-      { "id": "rly2", "state": "off" }
+      { "id": 1, "state": "off" },
+      { "id": 2, "state": "off" }
     ]
   }
 ]
@@ -418,18 +418,18 @@ A working single-unit config with 2 LED channels, 1 relay, 1 PIR, and no scenes:
   },
   "pir": [
     {
-      "id": "pir1",
+      "id": 1,
       "name": "Door Sensor",
       "gpio_pin": 6,
       "enabled": true,
       "vacancy_timeout_s": 300,
-      "on_motion": { "action": "set_led_channels", "channels": ["ch1"], "duty_percent": 100, "fade_ms": 1000 },
+      "on_motion": { "action": "set_led_channels", "channels": [1], "duty_percent": 100, "fade_ms": 1000 },
       "on_vacancy": { "action": "revert_to_schedule" }
     }
   ],
   "relays": [
     {
-      "id": "rly1",
+      "id": 1,
       "name": "Main Power",
       "gpio_pin": 10,
       "enabled": true,
@@ -441,7 +441,7 @@ A working single-unit config with 2 LED channels, 1 relay, 1 PIR, and no scenes:
   ],
   "led_channels": [
     {
-      "id": "ch1",
+      "id": 1,
       "name": "Room Light",
       "gpio_pin": 16,
       "enabled": true,

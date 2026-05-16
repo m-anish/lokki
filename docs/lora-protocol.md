@@ -141,7 +141,7 @@ Leaf reports its current output states and basic health. Coordinator uses this t
 }
 ```
 
-**Note on positional lists:** `ch`, `rl`, `pir` are positional arrays, ordered by the unit's local config. The coordinator displays them by index — if a leaf's config has gaps (e.g. only `pir2` enabled), the array element is still at its config-order position, not at index `2`. Keep configs dense (no gaps) for predictable dashboard rendering.
+**Note on positional lists:** `ch`, `rl`, `pir` are fixed-length positional arrays. Index `i` always corresponds to integer id `i+1` (channels: 8-slot `ch` for ids 1..8; relays: 2-slot `rl` for ids 1..2; pirs: 4-slot `pir` for ids 1..4). Disabled or unconfigured slots stay at 0. There are no gaps — the position alone identifies the output.
 
 ---
 
@@ -173,7 +173,7 @@ Coordinator broadcasts current epoch time. All leaves update their DS3231.
 {
   "s": 2, "d": 0, "t": "PIR", "seq": 7,
   "p": {
-    "id":    "pir1",          // PIR id from config
+    "id": 1,          // PIR id from config
     "state": "motion"         // "motion" | "vacancy"
   }
 }
@@ -210,8 +210,8 @@ Sets specific outputs immediately, bypassing schedule. Optional `revert_s` auto-
 {
   "s": 0, "d": 1, "t": "MO", "seq": 8,
   "p": {
-    "ch":  [["ch1", 75], ["ch3", 0]],   // [channel_id, duty_percent] pairs
-    "rl":  [["rly1", 1]],               // [relay_id, state] pairs (1=on, 0=off)
+    "ch":  [[1, 75], [3, 0]],   // [channel_id, duty_percent] pairs
+    "rl":  [[1, 1]],               // [relay_id, state] pairs (1=on, 0=off)
     "revert_s": 3600,                   // 0 = hold indefinitely; -1 = clear all manual
     "fade_ms": 2000                     // single global fade applied to all channels
   }

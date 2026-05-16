@@ -372,8 +372,8 @@
 <!-- PROGRESS MODAL -->
 <div class="modal-overlay" id="progModal">
   <div class="modal-box">
-    <div class="modal-title" id="progTitle">Sending via LoRa...</div>
-    <div class="modal-desc" id="progDesc">Transferring config chunks to the leaf node. Please wait.</div>
+    <div class="modal-title" id="progTitle">Sending…</div>
+    <div class="modal-desc" id="progDesc">Please keep this page open.</div>
     <div class="prog-track" id="progTrack"><div class="prog-bar" id="progBar"></div></div>
     <div class="modal-ok-icon" id="progOk">✅</div>
     <div class="modal-err-icon" id="progErr">❌</div>
@@ -1189,19 +1189,19 @@ const RELAY_GPIO = [10, 11];
 const LED_GPIOS  = [16, 17, 18, 19, 22, 15, 14, 13];
 
 let pirState = PIR_GPIO.map((gpio, i) => ({
-  id: `pir${i+1}`, name: `Motion Sensor ${i+1}`, gpio_pin: gpio,
+  id: i+1, name: `Motion Sensor ${i+1}`, gpio_pin: gpio,
   enabled: false, vacancy_timeout_s: 300,
   on_motion: {action: 'revert_to_schedule'},
   on_vacancy: {action: 'revert_to_schedule'},
 }));
 
 let relayState = RELAY_GPIO.map((gpio, i) => ({
-  id: `rly${i+1}`, name: `Relay ${i+1}`, gpio_pin: gpio,
+  id: i+1, name: `Relay ${i+1}`, gpio_pin: gpio,
   enabled: false, default_state: 'off', time_windows: [],
 }));
 
 let ledState = LED_GPIOS.map((gpio, i) => ({
-  id: `ch${i+1}`, name: `Channel ${i+1}`, gpio_pin: gpio,
+  id: i+1, name: `Channel ${i+1}`, gpio_pin: gpio,
   enabled: false, default_duty_percent: 0, time_windows: [],
 }));
 
@@ -1339,8 +1339,8 @@ function pirActionUI(pirIdx, key, actionObj) {
         <div class="field">
           <label class="field-label">Which channels</label>
           <input type="text" value="${(actionObj.channels||[]).join(', ')}"
-                 data-pir="${pirIdx}" data-f="${key}_channels" placeholder="ch1, ch2" />
-          <div class="field-hint">Comma-separated channel IDs (e.g. ch1, ch3)</div>
+                 data-pir="${pirIdx}" data-f="${key}_channels" placeholder="1, 2" />
+          <div class="field-hint">Comma-separated channel IDs (1–8, e.g. 1, 3)</div>
         </div>
         <div class="grid2">
           <div class="field">
@@ -1377,7 +1377,7 @@ function syncPIRField(el) {
   else if (f === 'on_motion_action') { pirState[i].on_motion.action = v; renderPIR(); return; }
   else if (f === 'on_vacancy_action') { pirState[i].on_vacancy.action = v; renderPIR(); return; }
   else if (f === 'on_motion_scene_name') pirState[i].on_motion.scene_name = v;
-  else if (f === 'on_motion_channels') pirState[i].on_motion.channels = v.split(',').map(s=>s.trim()).filter(Boolean);
+  else if (f === 'on_motion_channels') pirState[i].on_motion.channels = v.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>Number.isInteger(n) && n>=1 && n<=8);
   else if (f === 'on_motion_duty_percent') pirState[i].on_motion.duty_percent = +v;
   else if (f === 'on_motion_fade_ms') pirState[i].on_motion.fade_ms = +v;
   scheduleRender();
@@ -1877,6 +1877,7 @@ function buildConfig() {
       lora_m0_pin:    parseInt(document.getElementById('h_lora_m0').value)||2,
       lora_m1_pin:    parseInt(document.getElementById('h_lora_m1').value)||3,
       lora_aux_pin:   parseInt(document.getElementById('h_lora_aux').value)||4,
+      led_color_order: (document.getElementById('h_color_order').value === 'GRB') ? 'GRB' : 'RGB',
     },
     ldr: {
       enabled:            document.getElementById('ldr_enabled').checked,
@@ -2004,44 +2005,83 @@ function downloadJSON() {
 // ============================================================
 // Save to device
 // ============================================================
-let _progTimer = null;
-function showProgressModal(estMs) {
+// Real progress: the coordinator publishes chunk-level progress at
+// /api/config-progress while it streams the config to the leaf. We poll
+// that endpoint a few times a second and update the bar accordingly. No
+// time-based fakery — when the bar moves, the leaf actually received that
+// much. When the upload is finished but we're still waiting for the leaf
+// to confirm it applied + saved the config, we sit at 95 % with a
+// "Finishing up…" message instead of jumping to 100 % prematurely.
+
+let _progPollTimer = null;
+
+function _setProgress(pct, title, desc) {
+  document.getElementById('progBar').style.width = Math.max(0, Math.min(100, pct)) + '%';
+  if (title !== undefined) document.getElementById('progTitle').textContent = title;
+  if (desc  !== undefined) document.getElementById('progDesc').textContent  = desc;
+}
+
+function showProgressModal() {
   const m = document.getElementById('progModal');
-  const b = document.getElementById('progBar');
-  document.getElementById('progTitle').textContent = 'Sending via LoRa...';
   document.getElementById('progTitle').style.color = '';
-  document.getElementById('progDesc').textContent = 'Transferring config chunks to the leaf node. Please wait.';
   document.getElementById('progTrack').style.display = '';
   document.getElementById('progOk').style.display = 'none';
   document.getElementById('progErr').style.display = 'none';
   document.getElementById('progCloseBtn').style.display = 'none';
-  b.style.width = '0%';
+  _setProgress(0, 'Connecting…', 'Please keep this page open.');
   m.style.display = 'flex';
-  
-  let start = Date.now();
-  _progTimer = setInterval(() => {
-    let pct = ((Date.now() - start) / estMs) * 100;
-    if (pct > 95) pct = 95; // stall at 95% until response
-    b.style.width = pct + '%';
-  }, 100);
+}
+
+function _stopProgressPoll() {
+  if (_progPollTimer) { clearInterval(_progPollTimer); _progPollTimer = null; }
+}
+
+function _startProgressPoll() {
+  _stopProgressPoll();
+  _progPollTimer = setInterval(async () => {
+    try {
+      const r = await fetch('/api/config-progress', { cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      const p = (j && j.data) || {};
+      const total = p.total || 0;
+      const sent  = p.sent  || 0;
+
+      // Map the firmware's phase strings to a percentage and a human label.
+      // Phases: starting → uploading → verifying → success | failed
+      if (p.phase === 'starting') {
+        _setProgress(3, 'Connecting…', 'Reaching the device.');
+      } else if (p.phase === 'uploading' && total > 0) {
+        // Reserve 5..90 % for the actual transfer so there's room for the
+        // "Finishing up…" stage. Avoids the user seeing 100 % then stall.
+        const pct = 5 + (sent / total) * 85;
+        _setProgress(pct, 'Sending…', 'Please keep this page open.');
+      } else if (p.phase === 'verifying') {
+        _setProgress(95, 'Finishing up…', 'The device is saving the new settings.');
+      }
+      // success/failed terminal states are handled by the HTTP response, not the poll.
+    } catch (e) {
+      // Network blip mid-upload is fine — the next tick will catch up.
+    }
+  }, 250);
 }
 
 function hideProgressModal(success, msg) {
-  clearInterval(_progTimer);
+  _stopProgressPoll();
   document.getElementById('progBar').style.width = '100%';
   document.getElementById('progTrack').style.display = 'none';
   document.getElementById('progCloseBtn').style.display = 'inline-flex';
-  
+
   if (success) {
-    document.getElementById('progTitle').textContent = 'Success!';
+    document.getElementById('progTitle').textContent = 'Done';
     document.getElementById('progTitle').style.color = 'var(--green)';
     document.getElementById('progOk').style.display = 'block';
-    document.getElementById('progDesc').textContent = 'The leaf node has received and acknowledged the new config.';
+    document.getElementById('progDesc').textContent = 'The device received the new settings.';
   } else {
-    document.getElementById('progTitle').textContent = 'Transfer Failed';
+    document.getElementById('progTitle').textContent = "Couldn't save";
     document.getElementById('progTitle').style.color = 'var(--red)';
     document.getElementById('progErr').style.display = 'block';
-    document.getElementById('progDesc').textContent = msg;
+    document.getElementById('progDesc').textContent = msg || 'Please try again.';
   }
 }
 
@@ -2052,22 +2092,26 @@ function closeProgressModal() {
 async function saveToDevice() {
   const cfg = buildConfig();
   const unitId = cfg.system.unit_id;
-  const btns = [document.getElementById('saveDeviceBtn'), document.getElementById('saveDeviceBtn2')];
-  
+
+  // Leaf hardware in the field ships with RGB WS2812s — force RGB when
+  // pushing to a leaf so a coordinator-side GRB selection doesn't bleed
+  // through and flip the status LED colors on the leaf.
   if (unitId !== 0) {
-    // 64-byte chunks, ~200ms per chunk plus ACKs
-    // For compact JSON, we estimate length using JSON.stringify without spaces
-    const estChunks = Math.ceil(JSON.stringify(cfg).length / 64);
-    const estMs = (estChunks * 200) + 1500;
-    showProgressModal(estMs);
+    cfg.hardware = cfg.hardware || {};
+    cfg.hardware.led_color_order = 'RGB';
+  }
+  const btns = [document.getElementById('saveDeviceBtn'), document.getElementById('saveDeviceBtn2')];
+
+  if (unitId !== 0) {
+    showProgressModal();
+    _startProgressPoll();
   } else {
     btns.forEach(b=>{ if(b){ b.disabled=true; b.textContent='Saving…'; } });
   }
 
   try {
-    // We send prettified JSON to the coordinator. The coordinator will automatically
-    // compact it before blasting it over LoRa to save bandwidth, and then
-    // re-prettify it when saving it to flash locally so humans can read it.
+    // Prettified JSON for the coordinator's local save; coord compacts it
+    // before sending over the air to save bandwidth.
     const r = await fetch(`/api/units/${unitId}/config`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -2076,14 +2120,14 @@ async function saveToDevice() {
     const data = await r.json().catch(()=>({}));
     if (r.ok && data.ok !== false) {
       if (unitId !== 0) hideProgressModal(true);
-      else showToast('Saved to device ✓', 'ok');
+      else showToast('Saved ✓', 'ok');
     } else {
-      if (unitId !== 0) hideProgressModal(false, data.error || `HTTP ${r.status}`);
+      if (unitId !== 0) hideProgressModal(false, data.error || 'Please try again.');
       else showToast('Save failed: ' + (data.error || `HTTP ${r.status}`), 'err');
     }
   } catch (e) {
-    if (unitId !== 0) hideProgressModal(false, 'Could not reach device: ' + e.message);
-    else showToast('Could not reach device: ' + e.message, 'err');
+    if (unitId !== 0) hideProgressModal(false, "Couldn't reach the device.");
+    else showToast("Couldn't reach the device.", 'err');
   } finally {
     btns.forEach(b=>{ if(b){ b.disabled=false; b.textContent='↑ Save to device'; } });
   }
@@ -2137,7 +2181,8 @@ function applyConfigToForm(cfg) {
   const hmap={'h_sda':'i2c_sda_pin','h_scl':'i2c_scl_pin','h_i2c_freq':'i2c_freq_hz',
     'h_gamma':'gamma','h_pwm_freq':'pwm_freq_hz','h_ldr_pin':'ldr_adc_pin','h_status_led':'status_led_pin',
     'h_lora_uart':'lora_uart_id','h_lora_tx':'lora_tx_pin','h_lora_rx':'lora_rx_pin',
-    'h_lora_m0':'lora_m0_pin','h_lora_m1':'lora_m1_pin','h_lora_aux':'lora_aux_pin'};
+    'h_lora_m0':'lora_m0_pin','h_lora_m1':'lora_m1_pin','h_lora_aux':'lora_aux_pin',
+    'h_color_order':'led_color_order'};
   Object.entries(hmap).forEach(([id,key]) => set(id, hw[key]));
 
   const ldr=cfg.ldr||{};

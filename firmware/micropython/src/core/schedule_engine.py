@@ -16,11 +16,16 @@ class ScheduleEngine:
         self._relays = relays_cfg
 
     def get_desired_state(self):
+        """Returns (channel_desired, relay_desired):
+          channel_desired: {cid (int): {"duty_percent": d, "fade_ms": f}}
+          relay_desired:   {rid (int): {"state": "on"|"off"}}
+        """
         now = get_current_time()
         current_minutes = now[3] * 60 + now[4]
         rise_str, set_str = self._get_rise_set(now)
 
-        state = {}
+        channel_desired = {}
+        relay_desired = {}
 
         for ch in self._led_channels:
             if not ch.get("enabled", False):
@@ -31,12 +36,12 @@ class ScheduleEngine:
                 current_minutes, rise_str, set_str,
             )
             if result:
-                state[cid] = {
+                channel_desired[cid] = {
                     "duty_percent": result.get("duty_percent", 0),
                     "fade_ms": result.get("fade_ms", 0),
                 }
             else:
-                state[cid] = {
+                channel_desired[cid] = {
                     "duty_percent": ch.get("default_duty_percent", 0),
                     "fade_ms": 0,
                 }
@@ -50,11 +55,11 @@ class ScheduleEngine:
                 current_minutes, rise_str, set_str,
             )
             if result:
-                state[rid] = {"state": result.get("state", "off")}
+                relay_desired[rid] = {"state": result.get("state", "off")}
             else:
-                state[rid] = {"state": r.get("default_state", "off")}
+                relay_desired[rid] = {"state": r.get("default_state", "off")}
 
-        return state
+        return channel_desired, relay_desired
 
     # ------------------------------------------------------------------
 

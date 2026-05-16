@@ -57,17 +57,19 @@ main { max-width:1000px; margin:0 auto; padding:24px 20px 60px; }
   text-transform:uppercase; letter-spacing:.05em;
 }
 .led-indicators { display:flex; flex-direction:column; gap:4px; }
-.led-row { display:flex; align-items:center; gap:8px; font-size:.85em; }
+.led-row, .relay-row, .pir-row { display:flex; align-items:center; gap:8px; font-size:.85em; }
 .led-row-label { color:var(--muted); min-width:120px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.led-row-val { margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums; }
+.row-disabled { opacity:.45; }
 .bswatch {
   width:16px; height:16px; border-radius:50%; border:1px solid #475569;
   display:inline-block; flex-shrink:0; transition:all .2s;
 }
-.relay-indicators { display:flex; gap:8px; }
+.relay-indicators, .pir-indicators { display:flex; flex-direction:column; gap:4px; }
 .relay-ind {
-  width:32px; height:20px; border-radius:10px; border:1px solid #475569;
+  min-width:48px; height:20px; padding:0 6px; border-radius:10px; border:1px solid #475569;
   display:inline-flex; align-items:center; justify-content:center;
-  font-size:.7em; font-weight:700; transition:all .2s;
+  font-size:.7em; font-weight:700; transition:all .2s; flex-shrink:0;
 }
 .relay-ind.on { background:#10b981; color:#fff; border-color:#10b981; }
 .relay-ind.off { background:#e5e7eb; color:#6b7280; border-color:#9ca3af; }
@@ -317,20 +319,41 @@ function renderFleet(units) {
     h += `</div></div>`;
     h += `<div class="unit-body"><div class="status-grid">`;
 
+    // LED Channels — one row per id (1..8). Disabled slots are dimmed.
     h += `<div class="status-section"><div class="status-label">LED Channels</div>`;
     h += `<div class="led-indicators">`;
     const chNames = u.ch_names || [];
+    const chEnabled = u.ch_enabled || [];
     (u.ch || []).forEach((v, i) => {
       const label = chNames[i] || `ch${i+1}`;
-      h += `<div class="led-row"><span class="bswatch" style="${swatchStyle(v)}" title="${label}: ${v}%"></span><span class="led-row-label">${i+1}: ${label}</span></div>`;
+      const dim = chEnabled[i] === false ? ' row-disabled' : '';
+      h += `<div class="led-row${dim}"><span class="bswatch" style="${swatchStyle(v)}" title="${label}: ${v}%"></span><span class="led-row-label">${i+1}: ${label}</span><span class="led-row-val">${v}%</span></div>`;
     });
     h += `</div></div>`;
 
+    // Relays — one row per id (1..2), with name. Disabled slots are dimmed.
     h += `<div class="status-section"><div class="status-label">Relays</div>`;
     h += `<div class="relay-indicators">`;
+    const rlNames = u.rl_names || [];
+    const rlEnabled = u.rl_enabled || [];
     (u.rl || []).forEach((v, i) => {
+      const label = rlNames[i] || `rl${i+1}`;
       const cls = v ? "on" : "off";
-      h += `<span class="relay-ind ${cls}" title="rly${i+1}: ${v?'ON':'OFF'}">${v?'ON':'OFF'}</span>`;
+      const dim = rlEnabled[i] === false ? ' row-disabled' : '';
+      h += `<div class="relay-row${dim}"><span class="relay-ind ${cls}" title="${label}: ${v?'ON':'OFF'}">${v?'ON':'OFF'}</span><span class="led-row-label">${i+1}: ${label}</span></div>`;
+    });
+    h += `</div></div>`;
+
+    // PIR — one row per id (1..4), with name. Disabled slots are dimmed.
+    h += `<div class="status-section"><div class="status-label">Motion (PIR)</div>`;
+    h += `<div class="pir-indicators">`;
+    const pirNames = u.pir_names || [];
+    const pirEnabled = u.pir_enabled || [];
+    (u.pir || []).forEach((v, i) => {
+      const label = pirNames[i] || `pir${i+1}`;
+      const cls = v ? "on" : "off";
+      const dim = pirEnabled[i] === false ? ' row-disabled' : '';
+      h += `<div class="pir-row${dim}"><span class="relay-ind ${cls}" title="${label}: ${v?'MOTION':'CLEAR'}">${v?'MOTION':'CLEAR'}</span><span class="led-row-label">${i+1}: ${label}</span></div>`;
     });
     h += `</div></div>`;
 
@@ -464,10 +487,16 @@ async function openControlModal(id, name) {
     html += "</div>";
   }
 
+  // Live unit data — used to seed slider and toggle positions from current state.
+  const liveUnit = lastFleet[String(id)] || lastFleet[id] || {};
+
   if (channels.length) {
     html += '<div class="control-group"><h3>LED Channels</h3>';
+    // Live channel state from fleet — 8-slot positional list, index = id-1.
+    const liveCh = liveUnit.ch || [];
     channels.forEach(ch => {
-      const val = ch.default_duty_percent || 0;
+      const liveVal = liveCh[ch.id - 1];
+      const val = liveVal != null ? liveVal : (ch.default_duty_percent || 0);
       html += `<div class="channel-control">`;
       html += `<label>${ch.name} (${ch.id})</label>`;
       html += `<div class="slider-container">`;
@@ -481,8 +510,11 @@ async function openControlModal(id, name) {
 
   if (relays.length) {
     html += '<div class="control-group"><h3>Relays</h3>';
+    // Live relay state — 2-slot positional list, index = id-1.
+    const liveRl = liveUnit.rl || [];
     relays.forEach(r => {
-      const checked = (r.default_state || "off") === "on" ? "checked" : "";
+      const liveVal = liveRl[r.id - 1];
+      const checked = liveVal != null ? (liveVal ? "checked" : "") : ((r.default_state || "off") === "on" ? "checked" : "");
       html += `<div class="relay-control">`;
       html += `<label>${r.name} (${r.id})</label>`;
       html += `<label class="relay-toggle">`;
@@ -608,13 +640,14 @@ function applyPreset(val) {
 
 async function applyOverride() {
   try {
+    // Slider id is "ch_<int>", relay toggle id is "rly_<int>" — strip prefix and send int.
     const ch = [];
     document.querySelectorAll(".slider").forEach(s => {
-      ch.push([s.id.substring(3), parseInt(s.value)]);
+      ch.push([parseInt(s.id.substring(3)), parseInt(s.value)]);
     });
     const rl = [];
     document.querySelectorAll(".relay-toggle input").forEach(t => {
-      rl.push([t.id.substring(4), t.checked ? 1 : 0]);
+      rl.push([parseInt(t.id.substring(4)), t.checked ? 1 : 0]);
     });
     const enableRevert = document.getElementById("enableRevert").checked;
     const revert = enableRevert ? (parseInt(document.getElementById("revertTime").value) || 0) : 0;

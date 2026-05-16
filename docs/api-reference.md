@@ -38,8 +38,8 @@ Returns runtime status of the coordinator itself.
   "uptime": "1h 2m",
   "connections": { "wifi": true, "lora": true, "web_server": true, "mqtt": false },
   "led_channels": [100, 50, 0, 0, 0, 20, 20, 20],
-  "relays": { "rly1": false, "rly2": false },
-  "pir": { "pir1": "vacant" },
+  "relays": { "1": false, "2": false },
+  "pir": { "1": "vacant" },
   "ldr_ambient": 42,
   "ldr_cap": null,
   "sensors": { "temp_c": 28.4, "humidity_pct": 62.1 },
@@ -155,10 +155,10 @@ Returns a summary of the unit's channel and relay configuration (ids, names, ena
   "unit_id": 0,
   "unit_name": "Pagoda",
   "led_channels": [
-    { "id": "ch1", "name": "Channel 1", "enabled": true, "default_duty_percent": 20 }
+    { "id": 1, "name": "Channel 1", "enabled": true, "default_duty_percent": 20 }
   ],
   "relays": [
-    { "id": "rly1", "name": "Relay 1", "enabled": false, "default_state": "off" }
+    { "id": 1, "name": "Relay 1", "enabled": false, "default_state": "off" }
   ],
   "source": "live"
 }
@@ -267,8 +267,8 @@ Sets LED channels and/or relays to specific values, optionally with a fade and a
 **Request body**
 ```json
 {
-  "ch": [["ch1", 75], ["ch3", 0]],
-  "rl": [["rly1", 1]],
+  "ch": [[1, 75], [3, 0]],
+  "rl": [[1, 1]],
   "fade_ms": 2000,
   "revert_s": 60
 }
@@ -356,11 +356,11 @@ setInterval(poll, 3000);
 ### Controlling LEDs
 
 ```js
-// Set channel ch1 to 80 % with a 1-second fade, revert after 5 minutes
+// Set channel 1 to 80 % with a 1-second fade, revert after 5 minutes
 await fetch('http://192.168.x.x/api/units/0/manual', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ ch: [['ch1', 80]], fade_ms: 1000, revert_s: 300 })
+  body: JSON.stringify({ ch: [[1, 80]], fade_ms: 1000, revert_s: 300 })
 });
 
 // Apply a named scene to all units

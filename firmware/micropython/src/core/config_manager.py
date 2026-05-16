@@ -297,30 +297,42 @@ class ConfigManager:
             if not isinstance(cp, (int, float)) or not 0 <= cp <= 100:
                 errors.append(f"ldr.cap_rules[{i}].cap_percent must be 0–100")
 
+    # ------------------------------------------------------------------
+    # IDs are fixed integers, positional:
+    #   led_channels[i].id MUST equal i+1, 1..8
+    #   relays[i].id       MUST equal i+1, 1..2
+    #   pir[i].id          MUST equal i+1, 1..4
+    # Each entry carries an optional `name` for the human-readable label.
+    # ------------------------------------------------------------------
+
+    _MAX_CHANNELS = 8
+    _MAX_RELAYS   = 2
+    _MAX_PIRS     = 4
+
     def _validate_pir(self, errors):
         pirs = self._config.get("pir", [])
         if not isinstance(pirs, list):
             errors.append("pir must be a list"); return
-        if len(pirs) > 4:
-            errors.append("pir: maximum 4 entries")
-        seen_ids = set()
+        if len(pirs) > self._MAX_PIRS:
+            errors.append(f"pir: maximum {self._MAX_PIRS} entries")
         seen_pins = set()
         valid_pins = {6, 7, 8, 9}
         for i, p in enumerate(pirs):
             if not isinstance(p, dict):
                 errors.append(f"pir[{i}] must be a dict"); continue
-            pid = p.get("id", "")
-            if not pid:
-                errors.append(f"pir[{i}].id required")
-            elif pid in seen_ids:
-                errors.append(f"pir[{i}].id '{pid}' duplicate")
-            seen_ids.add(pid)
+            pid = p.get("id")
+            if not isinstance(pid, int) or pid != i + 1:
+                errors.append(
+                    f"pir[{i}].id must be the integer {i + 1} (position-bound id)"
+                )
             pin = p.get("gpio_pin")
             if pin not in valid_pins:
                 errors.append(f"pir[{i}].gpio_pin must be one of {sorted(valid_pins)}")
             elif pin in seen_pins:
                 errors.append(f"pir[{i}].gpio_pin {pin} duplicate")
             seen_pins.add(pin)
+            if "name" in p and not isinstance(p["name"], str):
+                errors.append(f"pir[{i}].name must be a string if provided")
             if not isinstance(p.get("enabled"), bool):
                 errors.append(f"pir[{i}].enabled must be bool")
             timeout = p.get("vacancy_timeout_s", 60)
@@ -342,34 +354,44 @@ class ConfigManager:
             channels = action.get("channels", [])
             if not isinstance(channels, list) or not channels:
                 errors.append(f"{path}.channels must be non-empty list")
+            else:
+                for j, cid in enumerate(channels):
+                    if not isinstance(cid, int) or not 1 <= cid <= self._MAX_CHANNELS:
+                        errors.append(
+                            f"{path}.channels[{j}] must be int 1..{self._MAX_CHANNELS}"
+                        )
             duty = action.get("duty_percent")
             if not isinstance(duty, (int, float)) or not 0 <= duty <= 100:
                 errors.append(f"{path}.duty_percent must be 0–100")
+        elif act == "set_relay":
+            rid = action.get("relay_id")
+            if not isinstance(rid, int) or not 1 <= rid <= self._MAX_RELAYS:
+                errors.append(f"{path}.relay_id must be int 1..{self._MAX_RELAYS}")
 
     def _validate_relays(self, errors):
         relays = self._config.get("relays", [])
         if not isinstance(relays, list):
             errors.append("relays must be a list"); return
-        if len(relays) > 2:
-            errors.append("relays: maximum 2 entries")
-        seen_ids = set()
+        if len(relays) > self._MAX_RELAYS:
+            errors.append(f"relays: maximum {self._MAX_RELAYS} entries")
         valid_pins = {10, 11}
         seen_pins = set()
         for i, r in enumerate(relays):
             if not isinstance(r, dict):
                 errors.append(f"relays[{i}] must be a dict"); continue
-            rid = r.get("id", "")
-            if not rid:
-                errors.append(f"relays[{i}].id required")
-            elif rid in seen_ids:
-                errors.append(f"relays[{i}].id '{rid}' duplicate")
-            seen_ids.add(rid)
+            rid = r.get("id")
+            if not isinstance(rid, int) or rid != i + 1:
+                errors.append(
+                    f"relays[{i}].id must be the integer {i + 1} (position-bound id)"
+                )
             pin = r.get("gpio_pin")
             if pin not in valid_pins:
                 errors.append(f"relays[{i}].gpio_pin must be one of {sorted(valid_pins)}")
             elif pin in seen_pins:
                 errors.append(f"relays[{i}].gpio_pin {pin} duplicate")
             seen_pins.add(pin)
+            if "name" in r and not isinstance(r["name"], str):
+                errors.append(f"relays[{i}].name must be a string if provided")
             if not isinstance(r.get("enabled"), bool):
                 errors.append(f"relays[{i}].enabled must be bool")
             if r.get("default_state") not in ("on", "off"):
@@ -391,24 +413,22 @@ class ConfigManager:
         channels = self._config.get("led_channels", [])
         if not isinstance(channels, list):
             errors.append("led_channels must be a list"); return
-        if len(channels) > 8:
-            errors.append("led_channels: maximum 8 entries")
+        if len(channels) > self._MAX_CHANNELS:
+            errors.append(f"led_channels: maximum {self._MAX_CHANNELS} entries")
         if not channels:
             errors.append("led_channels must have at least one entry"); return
 
         valid_pins = {13, 14, 15, 16, 17, 18, 19, 22}
-        seen_ids = set()
         seen_pins = set()
 
         for i, ch in enumerate(channels):
             if not isinstance(ch, dict):
                 errors.append(f"led_channels[{i}] must be a dict"); continue
-            cid = ch.get("id", "")
-            if not cid:
-                errors.append(f"led_channels[{i}].id required")
-            elif cid in seen_ids:
-                errors.append(f"led_channels[{i}].id '{cid}' duplicate")
-            seen_ids.add(cid)
+            cid = ch.get("id")
+            if not isinstance(cid, int) or cid != i + 1:
+                errors.append(
+                    f"led_channels[{i}].id must be the integer {i + 1} (position-bound id)"
+                )
 
             pin = ch.get("gpio_pin")
             if pin not in valid_pins:
@@ -418,6 +438,9 @@ class ConfigManager:
             elif pin in seen_pins:
                 errors.append(f"led_channels[{i}].gpio_pin {pin} duplicate")
             seen_pins.add(pin)
+
+            if "name" in ch and not isinstance(ch["name"], str):
+                errors.append(f"led_channels[{i}].name must be a string if provided")
 
             if not isinstance(ch.get("enabled"), bool):
                 errors.append(f"led_channels[{i}].enabled must be bool")
@@ -457,17 +480,31 @@ class ConfigManager:
             elif name in seen:
                 errors.append(f"scenes[{i}].name '{name}' duplicate")
             seen.add(name)
-            for entry in s.get("led_channels", []):
-                if not isinstance(entry, dict) or "id" not in entry:
-                    errors.append(f"scenes[{i}] led_channels entry missing id")
+            for j, entry in enumerate(s.get("led_channels", [])):
+                if not isinstance(entry, dict):
+                    errors.append(f"scenes[{i}].led_channels[{j}] must be a dict"); continue
+                cid = entry.get("id")
+                if not isinstance(cid, int) or not 1 <= cid <= self._MAX_CHANNELS:
+                    errors.append(
+                        f"scenes[{i}].led_channels[{j}].id must be int 1..{self._MAX_CHANNELS}"
+                    )
                 duty = entry.get("duty_percent")
                 if not isinstance(duty, (int, float)) or not 0 <= duty <= 100:
-                    errors.append(f"scenes[{i}] led entry duty_percent must be 0–100")
-            for entry in s.get("relays", []):
-                if not isinstance(entry, dict) or "id" not in entry:
-                    errors.append(f"scenes[{i}] relays entry missing id")
+                    errors.append(
+                        f"scenes[{i}].led_channels[{j}].duty_percent must be 0–100"
+                    )
+            for j, entry in enumerate(s.get("relays", [])):
+                if not isinstance(entry, dict):
+                    errors.append(f"scenes[{i}].relays[{j}] must be a dict"); continue
+                rid = entry.get("id")
+                if not isinstance(rid, int) or not 1 <= rid <= self._MAX_RELAYS:
+                    errors.append(
+                        f"scenes[{i}].relays[{j}].id must be int 1..{self._MAX_RELAYS}"
+                    )
                 if entry.get("state") not in ("on", "off"):
-                    errors.append(f"scenes[{i}] relay entry state must be 'on' or 'off'")
+                    errors.append(
+                        f"scenes[{i}].relays[{j}].state must be 'on' or 'off'"
+                    )
 
     def _valid_time(self, t):
         if not isinstance(t, str):

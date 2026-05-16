@@ -182,14 +182,13 @@ Deployment scale: 4–8 units per campus
 When multiple control signals are active simultaneously, higher priority wins:
 
 ```
-1. Manual override (web UI / API command)
-2. PIR motion trigger
-3. Scheduled time window
-4. LDR brightness cap        ← modifier on top of 1–3, not a replacement
-5. Default / standby state
+1. Manual override (web UI / API command)   ← bypasses LDR cap
+2. PIR motion trigger                        ← bypasses LDR cap
+3. Scheduled time window                     ← LDR cap applies here
+4. Default / standby state                   (same layer as schedule)
 ```
 
-**LDR is a cap, not a trigger.** It never turns lights on or off. It only limits the ceiling of whatever the higher-priority signal requests. Example: schedule says 80%, LDR cap is 30% (bright daylight) → output is 30%.
+**LDR is a schedule-layer cap, not a global ceiling.** It never turns lights on or off, and it does NOT clamp explicit user/motion requests. When the active source is manual or PIR, the cap is ignored — an operator asking for 100% gets 100% even in bright daylight. The cap only restricts schedule-driven output. Example: schedule says 80%, LDR cap is 30% (bright daylight), no manual/PIR active → output is 30%. Press "All 100%" in the dashboard → output is 100%.
 
 **PIR motion always wins over schedule.** A dim scheduled period should still light up when someone enters the room. PIR vacancy timeout determines how long the motion state holds before reverting to schedule.
 
@@ -258,7 +257,7 @@ Leaf additionally:
 ```
 Leaf unit:
   PIR fires → evaluate trigger/action rules
-            → apply action locally (e.g. set LED ch1 to 100%)
+            → apply action locally (e.g. set LED channel 1 to 100%)
             → send PIR_EVENT to coordinator via LoRa
 
 Coordinator:

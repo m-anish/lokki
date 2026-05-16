@@ -87,7 +87,7 @@ class PIRManager:
             pin = p["gpio_pin"]
             timeout = p.get("vacancy_timeout_s", 60)
             if not enabled:
-                log.debug(f"[PIR] {pid}: GPIO{pin}, disabled")
+                log.debug(f"[PIR] pir{pid}: GPIO{pin}, disabled")
                 continue
             self._sensors[pid] = PIRSensor(
                 pir_id=pid,
@@ -96,7 +96,7 @@ class PIRManager:
                 on_motion_cb=self._motion_fired,
                 on_vacancy_cb=self._vacancy_fired,
             )
-            log.debug(f"[PIR] {pid}: GPIO{pin}, timeout={timeout}s, enabled=True")
+            log.debug(f"[PIR] pir{pid}: GPIO{pin}, timeout={timeout}s, enabled=True")
         log.info(f"[PIR] Initialized {len(self._sensors)} sensor(s)")
 
     def get_state(self, pir_id):
@@ -104,7 +104,12 @@ class PIRManager:
         return s.state if s else PIRSensor.VACANT
 
     def get_all_states(self):
-        return {pid: s.state for pid, s in self._sensors.items()}
+        # Fixed 4-slot positional list. Index i holds 1 if pir id (i+1) is in MOTION, else 0.
+        out = [0, 0, 0, 0]
+        for pid, s in self._sensors.items():
+            if 1 <= pid <= 4:
+                out[pid - 1] = 1 if s.state == PIRSensor.MOTION else 0
+        return out
 
     async def run_all(self):
         if not self._sensors:

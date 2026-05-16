@@ -48,11 +48,11 @@ class RelayController:
             pin = r.get("gpio_pin")
             default = r.get("default_state", "off")
             enabled = r.get("enabled", False)
-            if rid and pin is not None:
+            if rid is not None and pin is not None:
                 if rid in self._relays:
                     self._relays[rid].deinit()
                 self._relays[rid] = RelayChannel(rid, pin, default)
-                log.debug(f"[RELAY] {rid}: GPIO{pin}, default={default}, enabled={enabled}")
+                log.debug(f"[RELAY] rl{rid}: GPIO{pin}, default={default}, enabled={enabled}")
         log.info(f"[RELAY] Initialized {len(self._relays)} relay(s)")
 
     def set(self, relay_id, state):
@@ -65,7 +65,12 @@ class RelayController:
         return r.state if r else False
 
     def get_all(self):
-        return {rid: r.state for rid, r in self._relays.items()}
+        # Fixed 2-slot positional list. Index i holds state (0/1) for relay id (i+1).
+        out = [0, 0]
+        for rid, r in self._relays.items():
+            if 1 <= rid <= 2:
+                out[rid - 1] = 1 if r.state else 0
+        return out
 
     def deinit(self):
         for r in self._relays.values():

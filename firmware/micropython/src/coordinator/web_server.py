@@ -213,6 +213,9 @@ class WebServer:
         if path == "/api/config" and method == "GET":
             return self._json(api.handle_full_config())
 
+        if path == "/api/config-progress" and method == "GET":
+            return self._json(api.handle_config_progress())
+
         if path == "/api/reboot" and method == "POST":
             return self._json(api.handle_reboot())
 
@@ -271,7 +274,7 @@ class WebServer:
         if sub == "manual":
             if method == "POST":
                 parsed = self._parse_json_body(body) or {}
-                return self._json(api.handle_manual_override(unit_id, parsed))
+                return self._json(await api.handle_manual_override(unit_id, parsed))
             if method == "DELETE":
                 return self._json(api.handle_manual_clear(unit_id))
 

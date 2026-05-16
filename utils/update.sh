@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SRC_DIR="$REPO_ROOT/firmware/micropython/src"
 WEB_DIR="$REPO_ROOT/web/app"
 SAMPLE_CFG="$SRC_DIR/config/samples/config.json.sample"
+SAMPLE_SUN="$REPO_ROOT/firmware/micropython/config/samples/sun_times.json.sample"
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -20,10 +21,11 @@ FRESH=0
 ROLE=""
 LEAF_ID=""
 SETUP_WIFI=0
+DEBUG=0
 
 usage() {
     cat <<EOF
-Usage: $0 [--fresh --role=coordinator|leaf [--id=N] [--wifi]]
+Usage: $0 [--fresh --role=coordinator|leaf [--id=N] [--wifi] [--debug]]
 
 Without flags:
     Push code + web assets only. Preserves /config.json on the device.
@@ -35,6 +37,8 @@ With --fresh:
     --role=leaf --id=N         Push a minimal leaf config with unit_id=N (1-8).
                                 The coordinator will overwrite it via LoRa once
                                 you push a real config from the Config Builder.
+    --debug                    Force system.log_level = "DEBUG" in the pushed
+                                config (overrides the sample/stub default of INFO).
 EOF
 }
 
@@ -46,6 +50,7 @@ while [ $# -gt 0 ]; do
         --id=*) LEAF_ID="${1#--id=}" ;;
         --id) shift; LEAF_ID="${1:-}" ;;
         --wifi) SETUP_WIFI=1 ;;
+        --debug) DEBUG=1 ;;
         --help|-h) usage; exit 0 ;;
         *) echo "[update] Unknown arg: $1" >&2; usage; exit 2 ;;
     esac
@@ -161,6 +166,12 @@ if [ "$FRESH" = "1" ]; then
 
     if [ "$ROLE" = "coordinator" ]; then
         echo "[update] Pushing coordinator starter config from sample..."
+
+        # Build jq edits incrementally. If neither --wifi nor --debug is set we
+        # just copy the sample verbatim.
+        jq_cmd="."
+        jq_args=()
+
         if [ "$SETUP_WIFI" = "1" ]; then
             read -p "Enter WiFi SSID: " WIFI_SSID
             while true; do
@@ -175,8 +186,6 @@ if [ "$FRESH" = "1" ]; then
                 fi
             done
             echo "[update] Applying WiFi credentials..."
-            jq_cmd="."
-            jq_args=()
             if [ -n "${WIFI_SSID:-}" ]; then
                 jq_cmd+=" | .wifi.ssid=\$ssid"
                 jq_args+=(--arg ssid "$WIFI_SSID")
@@ -185,11 +194,23 @@ if [ "$FRESH" = "1" ]; then
                 jq_cmd+=" | .wifi.password=\$pass"
                 jq_args+=(--arg pass "$WIFI_PASS")
             fi
-            jq "${jq_args[@]}" "$jq_cmd" "$SAMPLE_CFG" > "$TMP_CFG"
-        else
-            cp "$SAMPLE_CFG" "$TMP_CFG"
         fi
-        
+
+        if [ "$DEBUG" = "1" ]; then
+            echo "[update] Forcing system.log_level = DEBUG..."
+            jq_cmd+=' | .system.log_level="DEBUG"'
+        fi
+
+        if [ "$jq_cmd" = "." ]; then
+            cp "$SAMPLE_CFG" "$TMP_CFG"
+        else
+            if ! command -v jq >/dev/null 2>&1; then
+                echo "[update] ERROR: jq is required for --wifi or --debug edits but not found on PATH" >&2
+                exit 1
+            fi
+            jq "${jq_args[@]}" "$jq_cmd" "$SAMPLE_CFG" > "$TMP_CFG"
+        fi
+
         mpremote connect auto fs cp "$TMP_CFG" :config.json
         echo
         if [ "$SETUP_WIFI" = "0" ]; then
@@ -199,8 +220,14 @@ if [ "$FRESH" = "1" ]; then
             echo "[update] !!   mpremote connect auto edit :config.json"
             echo
         fi
+
     else
         echo "[update] Pushing minimal leaf stub config (unit_id=$LEAF_ID)..."
+        LEAF_LOG_LEVEL="INFO"
+        if [ "$DEBUG" = "1" ]; then
+            LEAF_LOG_LEVEL="DEBUG"
+            echo "[update] Forcing system.log_level = DEBUG..."
+        fi
         # Minimal leaf bootstrap — just enough to pass schema validation and
         # bring LoRa up. Once the leaf is online and visible on the coordinator,
         # the user fills in the real config in the Config Builder and pushes
@@ -212,7 +239,7 @@ if [ "$FRESH" = "1" ]; then
     "role": "leaf",
     "unit_id": $LEAF_ID,
     "unit_name": "Leaf-$LEAF_ID",
-    "log_level": "INFO",
+    "log_level": "$LEAF_LOG_LEVEL",
     "heartbeat_interval_s": 30,
     "heartbeat_timeout_s": 120,
     "pwm_update_interval_ms": 500
@@ -244,7 +271,14 @@ if [ "$FRESH" = "1" ]; then
   "pir": [],
   "relays": [],
   "led_channels": [
-    { "id": "ch1", "name": "ch1", "gpio_pin": 16, "enabled": false, "default_duty_percent": 0, "time_windows": [] }
+    { "id": 1, "name": "Channel 1", "gpio_pin": 16, "enabled": false, "default_duty_percent": 0, "time_windows": [] },
+    { "id": 2, "name": "Channel 2", "gpio_pin": 17, "enabled": false, "default_duty_percent": 0, "time_windows": [] },
+    { "id": 3, "name": "Channel 3", "gpio_pin": 18, "enabled": false, "default_duty_percent": 0, "time_windows": [] },
+    { "id": 4, "name": "Channel 4", "gpio_pin": 19, "enabled": false, "default_duty_percent": 0, "time_windows": [] },
+    { "id": 5, "name": "Channel 5", "gpio_pin": 22, "enabled": false, "default_duty_percent": 0, "time_windows": [] },
+    { "id": 6, "name": "Channel 6", "gpio_pin": 15, "enabled": false, "default_duty_percent": 0, "time_windows": [] },
+    { "id": 7, "name": "Channel 7", "gpio_pin": 14, "enabled": false, "default_duty_percent": 0, "time_windows": [] },
+    { "id": 8, "name": "Channel 8", "gpio_pin": 13, "enabled": false, "default_duty_percent": 0, "time_windows": [] }
   ],
   "scenes": []
 }
@@ -270,6 +304,24 @@ else
         echo "[update]   $0 --fresh --role=coordinator"
         echo "[update]   $0 --fresh --role=leaf --id=1"
         echo
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Push sample sun_times.json if not already on the device (both roles).
+# The sample contains Dharamsala monthly data — replace it with your own
+# location's data generated from the Config Builder's Sun Times section.
+# ---------------------------------------------------------------------------
+if [ "$FRESH" = "1" ] && [ -f "$SAMPLE_SUN" ]; then
+    if ! mpremote connect auto fs ls : 2>/dev/null | grep -qE '(^|[[:space:]])sun_times\.json([[:space:]]|$)'; then
+        echo "[update] Pushing sample sun_times.json (Dharamsala, monthly)..."
+        mpremote connect auto fs cp "$SAMPLE_SUN" :sun_times.json
+        echo "[update] !! sun_times.json contains Dharamsala sample data."
+        echo "[update] !! Generate your own via Config Builder → Sun Times section"
+        echo "[update] !! and copy it to the device if you use sunrise/sunset schedules."
+        echo
+    else
+        echo "[update] sun_times.json already present on device — not overwriting."
     fi
 fi
 
