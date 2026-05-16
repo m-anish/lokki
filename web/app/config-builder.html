@@ -2092,14 +2092,6 @@ function closeProgressModal() {
 async function saveToDevice() {
   const cfg = buildConfig();
   const unitId = cfg.system.unit_id;
-
-  // Leaf hardware in the field ships with RGB WS2812s — force RGB when
-  // pushing to a leaf so a coordinator-side GRB selection doesn't bleed
-  // through and flip the status LED colors on the leaf.
-  if (unitId !== 0) {
-    cfg.hardware = cfg.hardware || {};
-    cfg.hardware.led_color_order = 'RGB';
-  }
   const btns = [document.getElementById('saveDeviceBtn'), document.getElementById('saveDeviceBtn2')];
 
   if (unitId !== 0) {
