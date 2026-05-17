@@ -360,6 +360,7 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
           </select>
           <input type="text" id="logSearch" placeholder="Filter…" oninput="renderLogs()">
           <span class="spacer"></span>
+          <button id="copyLogsBtn" class="chip" onclick="copyLogs()" title="Copy the currently visible log lines to the clipboard">📋 Copy</button>
           <label class="follow-toggle"><input type="checkbox" id="logFollow" checked> Follow tail</label>
         </div>
         <div class="logs-list" id="logsList"><div class="log-empty">Waiting for events…</div></div>
@@ -953,6 +954,14 @@ function renderLogs() {
   const list = document.getElementById("logsList");
   const stats = document.getElementById("logStats");
   const filtered = logBuffer.filter(_matchesFilters);
+  const follow = document.getElementById("logFollow").checked;
+  // innerHTML replacement resets scrollTop to 0 in most browsers, which
+  // jumps the viewport to the top of the (now-longer) list every poll —
+  // even though the user unticked Follow tail. We capture scrollTop
+  // before the rewrite and put it back after. Since rendering is tail-first
+  // and prior lines keep the same DOM order/height, the same scrollTop
+  // value shows the same content the user was reading.
+  const prevScrollTop = list.scrollTop;
   if (!filtered.length) {
     list.innerHTML = '<div class="log-empty">No matching events.</div>';
   } else {
@@ -965,11 +974,44 @@ function renderLogs() {
            `<span class="msg">${_escape(evt.msg)}</span></div>`;
     });
     list.innerHTML = h;
-    if (document.getElementById("logFollow").checked) {
-      list.scrollTop = list.scrollHeight;
-    }
+    list.scrollTop = follow ? list.scrollHeight : prevScrollTop;
   }
   stats.textContent = `${filtered.length} shown · ${logBuffer.length} cached · cursor ${lastSeq}`;
+}
+
+// Plain-text copy of the currently-visible (filtered) log lines. Goes to the
+// clipboard via the modern Clipboard API; falls back to a hidden textarea +
+// document.execCommand for older browsers / non-HTTPS contexts (the
+// dashboard is served over plain HTTP on the LAN, so the secure-context
+// path isn't always available).
+async function copyLogs() {
+  const filtered = logBuffer.filter(_matchesFilters);
+  const lines = filtered.map(evt =>
+    `${_fmtTs(evt.ts)} ${_srcLabel(evt.src)} ${evt.level} ${evt.msg || ""}`
+  );
+  const text = lines.join("\n");
+  const btn = document.getElementById("copyLogsBtn");
+  const orig = btn.textContent;
+  let ok = false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    }
+  } catch (e) { /* fall through */ }
+  if (!ok) {
+    // Legacy fallback — works on plain http://.
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+  }
+  btn.textContent = ok ? `Copied ${filtered.length}` : "Copy failed";
+  setTimeout(() => { btn.textContent = orig; }, 1500);
 }
 
 function _escape(s) {
