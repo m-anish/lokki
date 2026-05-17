@@ -584,13 +584,18 @@ function tickLastSeen() {
   });
 }
 
+let _loadBusy = false;
 async function load() {
+  if (_loadBusy) return;          // single-flight: same rationale as pollEvents
+  _loadBusy = true;
   try {
     const f = await fetchJSON("/api/fleet");
     lastFleet = f.data || {};
     renderFleet(lastFleet);
   } catch (e) {
     console.error("load failed:", e);
+  } finally {
+    _loadBusy = false;
   }
 }
 
@@ -994,11 +999,34 @@ function _unreadAlerts() {
                             && e.seq > readSeq);
 }
 
+// Coalesce identical-message events into a single row. A burst of 7 of the
+// same warning ("[LORA] AUX did not go LOW after send") should read as one
+// "(×7)" entry, not seven near-identical rows. Distinct events still exist
+// in the Logs view for forensics — coalescing only affects the notification
+// surface.
+function _coalesce(events) {
+  const groups = new Map();
+  events.forEach(evt => {
+    const key = (evt.src || 0) + "|" + evt.level + "|" + (evt.msg || "");
+    const g = groups.get(key);
+    if (g) {
+      g.count++;
+      // Use the newest occurrence's seq/ts so "Mark all read" works naturally.
+      if (evt.seq > g.seq) { g.seq = evt.seq; g.ts = evt.ts; }
+    } else {
+      groups.set(key, { src: evt.src, level: evt.level, msg: evt.msg,
+                        seq: evt.seq, ts: evt.ts, count: 1 });
+    }
+  });
+  return Array.from(groups.values()).sort((a, b) => a.seq - b.seq);
+}
+
 function _renderBell() {
-  const unread = _unreadAlerts();
+  const unread = _coalesce(_unreadAlerts());
   const badge = document.getElementById("bellBadge");
-  if (unread.length) {
-    badge.textContent = unread.length > 99 ? "99+" : unread.length;
+  const total = unread.reduce((s, g) => s + g.count, 0);
+  if (total) {
+    badge.textContent = total > 99 ? "99+" : total;
     badge.classList.add("shown");
   } else {
     badge.classList.remove("shown");
@@ -1008,13 +1036,14 @@ function _renderBell() {
     list.innerHTML = '<div class="log-empty">No new alerts.</div>';
     return;
   }
-  // Newest first in the panel.
+  // Newest group first in the panel.
   let h = "";
   unread.slice().reverse().forEach(evt => {
+    const xN = evt.count > 1 ? ` <span style="color:var(--muted)">×${evt.count}</span>` : "";
     h += `<div class="bell-row">` +
          `<span class="lvl ${evt.level}">${evt.level}</span>` +
-         `<span class="msg">${_escape(evt.msg)}</span>` +
-         `<div class="meta">${_srcLabel(evt.src)} · ${_fmtTs(evt.ts)}</div>` +
+         `<span class="msg">${_escape(evt.msg)}${xN}</span>` +
+         `<div class="meta">${_srcLabel(evt.src)} · last ${_fmtTs(evt.ts)}</div>` +
          `</div>`;
   });
   list.innerHTML = h;
@@ -1031,20 +1060,68 @@ function clearAllAlerts() {
   _renderBell();
 }
 
+// Active on-screen toasts keyed by msg-hash. A new event matching an active
+// toast's key bumps its counter and resets its dismissal timer instead of
+// spawning another row. Prevents 7 stacked identical "AUX did not go LOW"
+// toasts from a brief noisy moment.
+const _activeToasts = new Map();   // key → { el, countEl, timer, ttl }
+
 function _showToast(evt) {
+  const key = (evt.src || 0) + "|" + evt.level + "|" + (evt.msg || "");
+  const existing = _activeToasts.get(key);
+  const ttl = (evt.level === "INFO") ? 4000 : 8000;
+
+  if (existing) {
+    existing.count++;
+    existing.countEl.textContent = " ×" + existing.count;
+    existing.countEl.style.display = "inline";
+    clearTimeout(existing.timer);
+    existing.timer = setTimeout(() => _dismissToast(key), ttl);
+    return;
+  }
+
   const wrap = document.getElementById("toasts");
   const div = document.createElement("div");
   div.className = "toast " + evt.level;
-  div.innerHTML = `<div class="toast-msg"><b>${evt.level}</b> ${_escape(evt.msg)}</div>` +
-                  `<div class="toast-meta">${_srcLabel(evt.src)} · ${_fmtTs(evt.ts)}</div>`;
+  div.innerHTML =
+    `<div class="toast-msg"><b>${evt.level}</b> ${_escape(evt.msg)}` +
+    `<span class="toast-count" style="color:var(--muted);display:none"></span></div>` +
+    `<div class="toast-meta">${_srcLabel(evt.src)} · ${_fmtTs(evt.ts)}</div>`;
   wrap.appendChild(div);
-  const ttl = (evt.level === "INFO") ? 4000 : 8000;
-  setTimeout(() => { div.style.transition = "opacity .3s"; div.style.opacity = 0;
-                     setTimeout(() => div.remove(), 300); }, ttl);
+  const countEl = div.querySelector(".toast-count");
+  const entry = { el: div, countEl, count: 1, timer: null };
+  entry.timer = setTimeout(() => _dismissToast(key), ttl);
+  _activeToasts.set(key, entry);
+}
+
+function _dismissToast(key) {
+  const e = _activeToasts.get(key);
+  if (!e) return;
+  _activeToasts.delete(key);
+  e.el.style.transition = "opacity .3s";
+  e.el.style.opacity = 0;
+  setTimeout(() => e.el.remove(), 300);
 }
 
 // ----- Polling loop -----
+// Single-flight guard. setInterval does NOT await our async function, so on a
+// busy Pico (config push in flight, GC stalls) a second tick can fire while
+// the first poll's fetch is still pending. Both would issue
+// `?since=lastSeq` with the SAME stale cursor, both responses would replay
+// the same events into logBuffer, and the bell + toasts would multi-count.
+let _pollEventsBusy = false;
+
 async function pollEvents() {
+  if (_pollEventsBusy) return;
+  // While the Config Builder (possibly in another tab) is mid-upload, skip
+  // polling. Each /api/events hit allocates a small JSON response on the
+  // Pico; combined with the inbound config body it fragments the heap and
+  // can trip "memory allocation failed" mid-upload. We resume on the next
+  // tick once the upload finishes (config-builder clears the flag in finally).
+  try {
+    if (localStorage.getItem('lokki.uploading') === '1') return;
+  } catch (e) {}
+  _pollEventsBusy = true;
   try {
     const r = await fetch(`/api/events?since=${lastSeq}&limit=200`);
     if (!r.ok) return;
@@ -1054,7 +1131,16 @@ async function pollEvents() {
     // Newly observed WARN+ → toast (but only if this isn't our very first
     // poll, so reload doesn't blast a history of stale alerts).
     const isFirstPoll = (lastSeq === 0);
+    // Defence-in-depth: even with the single-flight guard, defensively de-dup
+    // by seq. Cheap (logBuffer caps at 500) and immune to any future poll
+    // path that bypasses _pollEventsBusy.
+    const seenSeqs = new Set(logBuffer.map(x => x.seq));
     evts.forEach(e => {
+      if (seenSeqs.has(e.seq)) {
+        lastSeq = Math.max(lastSeq, e.seq);
+        return;
+      }
+      seenSeqs.add(e.seq);
       logBuffer.push(e);
       if (!isFirstPoll && (e.level === "WARN" || e.level === "ERROR" || e.level === "FATAL")
                        && e.seq > readSeq) {
@@ -1070,6 +1156,8 @@ async function pollEvents() {
     if (document.getElementById("view-logs").classList.contains("active")) renderLogs();
   } catch (e) {
     // Network blip: try again next tick.
+  } finally {
+    _pollEventsBusy = false;
   }
 }
 

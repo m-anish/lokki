@@ -2021,7 +2021,13 @@ function downloadJSON() {
 // to confirm it applied + saved the config, we sit at 95 % with a
 // "Finishing up…" message instead of jumping to 100 % prematurely.
 
-let _progPollTimer = null;
+let _progPollTimer  = null;
+// Monotonic generation counter. Bumped each time we stop polling so that any
+// in-flight `await fetch(...)` from a previous generation knows to discard
+// its response and *not* touch the DOM. Without this, a fetch that was
+// already mid-flight when the user's upload failed could resolve a beat
+// later and overwrite the "Couldn't save" title back to "Sending…".
+let _progPollGen    = 0;
 
 function _setProgress(pct, title, desc) {
   document.getElementById('progBar').style.width = Math.max(0, Math.min(100, pct)) + '%';
@@ -2042,15 +2048,22 @@ function showProgressModal() {
 
 function _stopProgressPoll() {
   if (_progPollTimer) { clearInterval(_progPollTimer); _progPollTimer = null; }
+  // Invalidate any fetch that's already in-flight from the current generation.
+  _progPollGen++;
 }
 
 function _startProgressPoll() {
   _stopProgressPoll();
+  const myGen = _progPollGen;
   _progPollTimer = setInterval(async () => {
     try {
       const r = await fetch('/api/config-progress', { cache: 'no-store' });
+      // If we've been stopped (HTTP completed, terminal state reached) while
+      // this fetch was in-flight, drop the response on the floor.
+      if (myGen !== _progPollGen) return;
       if (!r.ok) return;
       const j = await r.json();
+      if (myGen !== _progPollGen) return;   // re-check after the second await
       const p = (j && j.data) || {};
       const total = p.total || 0;
       const sent  = p.sent  || 0;
@@ -2071,7 +2084,8 @@ function _startProgressPoll() {
     } catch (e) {
       // Network blip mid-upload is fine — the next tick will catch up.
     }
-  }, 250);
+  }, 500);   // 500 ms — halves the RAM churn on the Pico vs. 250 ms; still
+             // feels live to the user since real chunk transfer takes seconds.
 }
 
 function hideProgressModal(success, msg) {
@@ -2102,6 +2116,12 @@ async function saveToDevice() {
   const unitId = cfg.system.unit_id;
   const btns = [document.getElementById('saveDeviceBtn'), document.getElementById('saveDeviceBtn2')];
 
+  // Cross-tab signal: if the dashboard is open in another tab, it watches
+  // this localStorage key and suspends its /api/events polling while we hold
+  // the coordinator busy with a chunked config push. Eliminates one big
+  // source of heap fragmentation on the Pico during the upload.
+  try { localStorage.setItem('lokki.uploading', '1'); } catch (e) {}
+
   if (unitId !== 0) {
     showProgressModal();
     _startProgressPoll();
@@ -2130,6 +2150,7 @@ async function saveToDevice() {
     else showToast("Couldn't reach the device.", 'err');
   } finally {
     btns.forEach(b=>{ if(b){ b.disabled=false; b.textContent='↑ Save to device'; } });
+    try { localStorage.removeItem('lokki.uploading'); } catch (e) {}
   }
 }
 

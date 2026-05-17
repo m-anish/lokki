@@ -141,13 +141,24 @@ class LoRaTransport:
         
         # Give the E220 a moment to pull AUX LOW. At 9600 baud, the first byte
         # takes ~1ms to transmit over UART, after which the module drops AUX.
-        # If we return instantly, a back-to-back send() might see AUX still HIGH
-        # and concatenate packets in the Pico's UART TX buffer, exceeding the
-        # module's 200B packet limit.
-        deadline = time.time() + 1
+        # We poll briefly so back-to-back send()s don't concatenate packets in
+        # the Pico's UART TX buffer (would exceed the module's 200B limit).
+        #
+        # The AUX-low pulse is short (a few ms), and on a busy CPU we routinely
+        # *miss* the falling edge — by the time we look, AUX has already
+        # cycled low-and-back-high. The old code waited a full second and
+        # logged a WARN, flooding the notifications surface with cosmetic
+        # noise on every missed edge (see investigation in the dashboard
+        # observability work). The wait now caps at 150 ms (plenty for the
+        # back-to-back saturation case we actually care about) and the
+        # "didn't see AUX low" condition is logged at DEBUG instead of WARN
+        # since it usually means we missed the pulse, not that the module
+        # ignored the UART.
+        deadline_ms = time.ticks_add(time.ticks_ms(), 150)
         while self._aux.value() == 1:
-            if time.time() > deadline:
-                log.warn("[LORA] AUX did not go LOW after send (E220 might be ignoring UART)")
+            if time.ticks_diff(deadline_ms, time.ticks_ms()) <= 0:
+                log.debug("[LORA] AUX low edge not observed within 150ms after send "
+                          "(likely missed the pulse; data was transmitted)")
                 break
             time.sleep_ms(1)
             

@@ -1,5 +1,6 @@
 import json
 import os
+import gc
 
 
 class SafeModeError(Exception):
@@ -80,10 +81,21 @@ class ConfigManager:
         self._atomic_write(self._config)
 
     def _atomic_write(self, cfg):
-        """Write config via tmp + rename to survive power loss mid-write."""
+        """Write config via tmp + rename to survive power loss mid-write.
+
+        On a leaf with a fragmented heap (lots of small allocs from LoRa
+        chunk reassembly + event bus + handlers), the old code path —
+        prettify_json builds the entire formatted string in RAM, then
+        f.write(...) takes another contiguous block — could fail to find a
+        ~16 KB contiguous run and OOM with "memory allocation failed,
+        allocating 16384 bytes". We now (1) gc.collect() right before
+        touching disk so the longest free runs are available, and (2)
+        stream-write the prettified output one token at a time, so the
+        peak alloc is one short string instead of the full file."""
+        gc.collect()
         tmp = self.config_file + ".tmp"
         with open(tmp, "w") as f:
-            f.write(self.prettify_json(cfg))
+            self._write_pretty(f, cfg)
         # Best-effort atomic swap. If rename isn't atomic on this VFS,
         # we still get a tmp file as fallback for manual recovery.
         try:
@@ -92,15 +104,59 @@ class ConfigManager:
             pass
         os.rename(tmp, self.config_file)
 
+    def _write_pretty(self, f, data):
+        """Stream prettified JSON for `data` directly to file `f` without
+        materializing the whole output in RAM. The `compact = json.dumps(data)`
+        intermediate still costs one contiguous block (~13 KB for a leaf
+        config) but that's the smallest we can do without a streaming JSON
+        encoder, and crucially we no longer need a *second* contiguous block
+        for the prettified copy."""
+        compact = json.dumps(data)
+        indent = 0
+        in_string = False
+        i = 0
+        n = len(compact)
+        while i < n:
+            c = compact[i]
+            if c == '"' and (i == 0 or compact[i-1] != '\\'):
+                in_string = not in_string
+                f.write(c)
+            elif not in_string:
+                if c == '{' or c == '[':
+                    indent += 2
+                    f.write(c)
+                    f.write('\n')
+                    f.write(' ' * indent)
+                elif c == '}' or c == ']':
+                    indent -= 2
+                    f.write('\n')
+                    f.write(' ' * indent)
+                    f.write(c)
+                elif c == ',':
+                    f.write(c)
+                    f.write('\n')
+                    f.write(' ' * indent)
+                elif c == ':':
+                    f.write(c)
+                    f.write(' ')
+                else:
+                    f.write(c)
+            else:
+                f.write(c)
+            i += 1
+
     def prettify_json(self, data):
-        """Format a dict into a human-readable JSON string with 2-space indents.
-        MicroPython's built-in json module doesn't support indent parameters."""
+        """Backwards-compatible wrapper that returns the prettified string.
+        Used by the web layer (/api/config) where the caller needs the bytes
+        in hand to send over HTTP. On RAM-constrained leaves, prefer
+        _write_pretty(f, data) which streams directly to disk."""
         compact = json.dumps(data)
         indent = 0
         in_string = False
         out = []
         i = 0
-        while i < len(compact):
+        n = len(compact)
+        while i < n:
             c = compact[i]
             if c == '"' and (i == 0 or compact[i-1] != '\\'):
                 in_string = not in_string

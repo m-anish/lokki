@@ -2,6 +2,7 @@ import asyncio
 import socket
 import json
 import os
+import gc
 from shared.system_status import system_status
 from shared.simple_logger import Logger
 import coordinator.api_handlers as api
@@ -11,7 +12,10 @@ log = Logger()
 _PORT       = 80
 _RECV_SIZE  = 512
 _RECV_LOOPS = 32          # max read iterations per request
-_BODY_MAX   = 8192        # max POST body bytes accepted
+# Leaf configs prettified are routinely ~10–14 KB once scenes/time_windows grow.
+# Cap is intentionally generous; the receive loop early-exits at content_length
+# so a typical request still allocates only what it actually needs.
+_BODY_MAX   = 16384
 _STATIC_DIR = "/www"      # static web files root on the filesystem
 _CHUNK_SIZE = 1024        # bytes per send chunk for static files
 
@@ -73,37 +77,52 @@ class WebServer:
             conn.setblocking(False)
             await asyncio.sleep_ms(10)
 
-            raw = b""
+            # bytearray avoids the repeated re-allocation that `bytes += chunk`
+            # forces: each += copies the whole buffer to a new bytes object,
+            # then GC frees the old one, fragmenting the heap fast on a Pico.
+            raw = bytearray()
             for _ in range(_RECV_LOOPS):
                 try:
                     chunk = conn.recv(_RECV_SIZE)
                     if chunk:
-                        raw += chunk
+                        raw.extend(chunk)
                     if b"\r\n\r\n" in raw:
                         break
                 except OSError:
                     await asyncio.sleep_ms(20)
 
-            method, path, headers, body = self._parse_request(raw)
+            method, path, headers, body = self._parse_request(bytes(raw))
+            # Free the raw buffer now that headers + initial body have been
+            # extracted into their own objects. Big wins on POSTs where `raw`
+            # is several KB.
+            raw = None
             if not method or not path:
                 return
-                
+
             # If there's a Content-Length header, make sure we read the full body
             content_length = headers.get("content-length")
             if content_length:
                 try:
                     expected_len = int(content_length)
+                except ValueError:
+                    expected_len = 0
+                if expected_len:
+                    # Pre-empt fragmentation right before a sizable body read.
+                    # gc.collect() is ~tens of ms; we only pay it on bodied
+                    # requests, not every GET.
+                    if expected_len > 1024:
+                        gc.collect()
+                    body = bytearray(body)
                     while len(body) < expected_len and len(body) < _BODY_MAX:
                         try:
                             chunk = conn.recv(_RECV_SIZE)
                             if chunk:
-                                body += chunk
+                                body.extend(chunk)
                             else:
                                 await asyncio.sleep_ms(20)
                         except OSError:
                             await asyncio.sleep_ms(20)
-                except ValueError:
-                    pass
+                    body = bytes(body)
             
             log.debug(f"[WEB] {method} {path} from {addr[0]}, body_len={len(body)}")
 
@@ -136,6 +155,9 @@ class WebServer:
                 pass
         finally:
             conn.close()
+            # Reclaim heap fragments left behind by request buffers + response
+            # encoding before the next connection grabs the dispatch loop.
+            gc.collect()
 
     async def _send_all(self, conn, data):
         mv = memoryview(data)
