@@ -949,10 +949,43 @@ function _srcLabel(src) {
   return "u" + src;
 }
 
+// True iff the user has an active text selection inside the Logs list. While
+// they're dragging to highlight a line, we want to leave the DOM alone —
+// innerHTML replacement would wipe their selection mid-drag. Polling
+// continues; we just defer the visual refresh until the selection clears.
+function _userIsSelectingLogs(list) {
+  const sel = window.getSelection && window.getSelection();
+  if (!sel || sel.isCollapsed) return false;
+  if (!sel.toString()) return false;
+  // Walk up from the anchor / focus nodes to see if either is inside the list.
+  const inside = (node) => {
+    while (node && node !== document.body) {
+      if (node === list) return true;
+      node = node.parentNode;
+    }
+    return false;
+  };
+  return inside(sel.anchorNode) || inside(sel.focusNode);
+}
+
 function renderLogs() {
   if (!document.getElementById("view-logs").classList.contains("active")) return;
   const list = document.getElementById("logsList");
   const stats = document.getElementById("logStats");
+  if (_userIsSelectingLogs(list)) return;     // don't blow away an in-progress drag
+  // If the user has an active text selection inside the log list, skip the
+  // rewrite. innerHTML replacement nukes selection ranges, so a poll that
+  // fires mid-drag silently steals the user's "Select all and Cmd-C" moment.
+  // The next poll (3 s later) will catch up once they're done.
+  const sel = window.getSelection && window.getSelection();
+  if (sel && sel.rangeCount && !sel.isCollapsed) {
+    try {
+      const r = sel.getRangeAt(0);
+      if (document.getElementById("logsList").contains(r.commonAncestorContainer)) {
+        return;
+      }
+    } catch (e) {}
+  }
   const filtered = logBuffer.filter(_matchesFilters);
   const follow = document.getElementById("logFollow").checked;
   // innerHTML replacement resets scrollTop to 0 in most browsers, which
