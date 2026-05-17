@@ -226,6 +226,12 @@ class ConfigManager:
         if ll not in ("FATAL", "ERROR", "WARN", "INFO", "DEBUG"):
             errors.append("system.log_level must be FATAL/ERROR/WARN/INFO/DEBUG")
 
+        # Ring-buffer size for the dashboard's Logs view (events held in RAM
+        # on the coordinator). Bounds match shared.event_bus._MIN/_MAX_SIZE.
+        lbs = s.get("log_buffer_size", 100)
+        if not isinstance(lbs, int) or lbs < 20 or lbs > 500:
+            errors.append("system.log_buffer_size must be int 20–500")
+
     def _validate_timezone(self, errors):
         tz = self._config.get("timezone", {})
         if not isinstance(tz, dict):

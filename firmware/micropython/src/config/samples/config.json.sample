@@ -7,6 +7,7 @@
     "unit_name": "Pagoda",
     "peers": [1],
     "log_level": "INFO",
+    "log_buffer_size": 100,
     "heartbeat_interval_s": 30,
     "heartbeat_timeout_s": 120,
     "pwm_update_interval_ms": 500

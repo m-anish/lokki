@@ -443,7 +443,7 @@
         </div>
         <div class="field coordinator-only" id="peersField">
           <label class="field-label">Leaf Unit IDs <span class="card-sub">(coordinator only)</span></label>
-          <input id="s_peers" type="text" placeholder="1, 2, 3" value="1, 2" />
+          <input id="s_peers" type="text" placeholder="1, 2, 3" value="1" />
           <div class="field-hint">Comma-separated IDs of the leaf units this coordinator manages.</div>
         </div>
         <div class="expert-only">
@@ -464,9 +464,16 @@
               <input id="s_hb_timeout" type="number" value="120" min="30" max="600" />
             </div>
           </div>
-          <div class="field" style="max-width:220px">
-            <label class="field-label">Schedule Update Rate (ms)</label>
-            <input id="s_pwm_interval" type="number" value="500" min="100" max="5000" />
+          <div class="grid2">
+            <div class="field" style="max-width:220px">
+              <label class="field-label">Schedule Update Rate (ms)</label>
+              <input id="s_pwm_interval" type="number" value="500" min="100" max="5000" />
+            </div>
+            <div class="field" style="max-width:220px">
+              <label class="field-label">Log Buffer Size <span class="card-sub">(events kept in RAM)</span></label>
+              <input id="s_log_buffer_size" type="number" value="100" min="20" max="500" />
+              <div class="field-hint">Higher = more history in the Logs view but more RAM (~100 B/event). 100 is a safe default for the Pico 2 W.</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1842,6 +1849,7 @@ function buildConfig() {
       unit_name:              document.getElementById('s_unit_name').value.trim()||'Lokki',
       peers: isLeaf ? [] : peers,
       log_level:              document.getElementById('s_log_level').value,
+      log_buffer_size:        parseInt(document.getElementById('s_log_buffer_size').value)||100,
       heartbeat_interval_s:   parseInt(document.getElementById('s_hb_interval').value)||30,
       heartbeat_timeout_s:    parseInt(document.getElementById('s_hb_timeout').value)||120,
       pwm_update_interval_ms: parseInt(document.getElementById('s_pwm_interval').value)||500,
@@ -2155,6 +2163,7 @@ function applyConfigToForm(cfg) {
   set('s_unit_name', sys.unit_name);
   if (sys.peers) set('s_peers', sys.peers.join(', '));
   set('s_log_level', sys.log_level);
+  set('s_log_buffer_size', sys.log_buffer_size);
   set('s_hb_interval', sys.heartbeat_interval_s);
   set('s_hb_timeout', sys.heartbeat_timeout_s);
   set('s_pwm_interval', sys.pwm_update_interval_ms);

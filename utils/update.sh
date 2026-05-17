@@ -240,6 +240,7 @@ if [ "$FRESH" = "1" ]; then
     "unit_id": $LEAF_ID,
     "unit_name": "Leaf-$LEAF_ID",
     "log_level": "$LEAF_LOG_LEVEL",
+    "log_buffer_size": 100,
     "heartbeat_interval_s": 30,
     "heartbeat_timeout_s": 120,
     "pwm_update_interval_ms": 500

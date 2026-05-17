@@ -19,6 +19,7 @@
         "unit_name":              { "type": "string", "minLength": 1 },
         "peers":                  { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 8 } },
         "log_level":              { "type": "string", "enum": ["DEBUG", "INFO", "WARN", "WARNING", "ERROR"] },
+        "log_buffer_size":        { "type": "integer", "minimum": 20, "maximum": 500 },
         "heartbeat_interval_s":   { "type": "integer", "minimum": 5, "maximum": 300 },
         "heartbeat_timeout_s":    { "type": "integer", "minimum": 30, "maximum": 600 },
         "pwm_update_interval_ms": { "type": "integer", "minimum": 100, "maximum": 5000 }

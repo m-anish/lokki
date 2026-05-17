@@ -204,6 +204,14 @@ class WebServer:
         if method == "OPTIONS":
             return "204 No Content", "text/plain", ""
 
+        # Split off the query string so per-route matching is clean. Handlers
+        # that need query params receive `query` as a {k: v} dict.
+        query = {}
+        qpos = path.find("?")
+        if qpos >= 0:
+            query = self._parse_query(path[qpos + 1:])
+            path = path[:qpos]
+
         # GET / is handled by _is_static / _serve_static before we get here.
 
         # --- Coordinator status (own unit) ---
@@ -215,6 +223,9 @@ class WebServer:
 
         if path == "/api/config-progress" and method == "GET":
             return self._json(api.handle_config_progress())
+
+        if path == "/api/events" and method == "GET":
+            return self._json(api.handle_events(query))
 
         if path == "/api/reboot" and method == "POST":
             return self._json(api.handle_reboot())
@@ -289,6 +300,21 @@ class WebServer:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _parse_query(self, qs):
+        """Tiny query-string parser: a=1&b=hello%20world → {'a': '1', 'b': 'hello world'}."""
+        out = {}
+        if not qs:
+            return out
+        for part in qs.split("&"):
+            if not part:
+                continue
+            if "=" in part:
+                k, v = part.split("=", 1)
+            else:
+                k, v = part, ""
+            out[self._url_decode(k)] = self._url_decode(v)
+        return out
 
     def _url_decode(self, s):
         res = []

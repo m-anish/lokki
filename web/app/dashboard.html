@@ -157,6 +157,135 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
   .status-grid { grid-template-columns:1fr; }
   .unit-head { flex-wrap:wrap; }
 }
+
+/* ============================================================
+   Layout shell: left rail + content + transient toasts.
+   The rail is icon-only (56 px) on every screen size — keeps the
+   page chrome lightweight on Pico-hosted bandwidth and gives a
+   clear "where am I?" cue without redrawing the whole page.
+   ============================================================ */
+.layout { display:flex; min-height:calc(100vh - 56px); }
+.rail {
+  width:56px; flex-shrink:0; background:var(--card); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; align-items:center; padding:8px 0; gap:4px;
+  position:sticky; top:56px; height:calc(100vh - 56px);
+}
+.rail button {
+  width:40px; height:40px; border:0; background:transparent; cursor:pointer;
+  border-radius:8px; display:flex; align-items:center; justify-content:center;
+  font-size:1.2em; color:var(--muted); transition:all .15s;
+}
+.rail button:hover { background:rgba(79,70,229,.10); color:var(--brand); }
+.rail button.active { background:var(--brand); color:#fff; }
+.content { flex:1; min-width:0; }
+.view { display:none; }
+.view.active { display:block; }
+
+/* Bell + alerts */
+.bell-wrap { position:relative; }
+.bell-btn {
+  border:0; background:transparent; cursor:pointer; font-size:1.1em;
+  padding:6px 10px; border-radius:6px; color:var(--text);
+}
+.bell-btn:hover { background:rgba(79,70,229,.10); }
+.bell-badge {
+  position:absolute; top:0; right:2px; background:#dc2626; color:#fff;
+  font-size:.65em; font-weight:700; padding:1px 5px; border-radius:9px;
+  min-width:14px; text-align:center; line-height:1.4; display:none;
+}
+.bell-badge.shown { display:inline-block; }
+.bell-panel {
+  position:absolute; top:calc(100% + 4px); right:0; width:340px;
+  background:var(--card); border:1px solid var(--border); border-radius:8px;
+  box-shadow:0 8px 24px rgba(0,0,0,.12); display:none; z-index:50;
+  max-height:60vh; overflow:auto;
+}
+.bell-panel.shown { display:block; }
+.bell-panel-head {
+  padding:10px 14px; border-bottom:1px solid var(--border);
+  display:flex; justify-content:space-between; align-items:center; font-size:.85em;
+}
+.bell-panel-head .clear-btn { font-size:.85em; color:var(--brand); cursor:pointer; }
+.bell-row {
+  padding:10px 14px; border-bottom:1px solid var(--border); font-size:.85em;
+}
+.bell-row:last-child { border-bottom:0; }
+.bell-row .lvl {
+  font-size:.7em; font-weight:700; padding:2px 6px; border-radius:4px; margin-right:6px;
+}
+.bell-row .lvl.WARN  { background:#fef3c7; color:#92400e; }
+.bell-row .lvl.ERROR { background:#fee2e2; color:#991b1b; }
+.bell-row .lvl.FATAL { background:#991b1b; color:#fee2e2; }
+.bell-row .meta { color:var(--muted); font-size:.8em; margin-top:2px; }
+.bell-row .msg  { word-break:break-word; }
+
+/* Logs view */
+.logs-controls {
+  display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+  margin-bottom:14px; padding:10px 14px;
+  background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+}
+.logs-controls .chip {
+  font-size:.75em; font-weight:600; padding:4px 10px; border-radius:14px;
+  border:1px solid var(--border); background:var(--card); cursor:pointer;
+  color:var(--muted); transition:all .15s;
+}
+.logs-controls .chip.active { background:var(--brand); color:#fff; border-color:var(--brand); }
+.logs-controls select, .logs-controls input[type=text] {
+  font-size:.85em; padding:5px 8px; border:1px solid var(--border);
+  border-radius:6px; background:var(--card); color:var(--text);
+}
+.logs-controls input[type=text] { width:180px; }
+.logs-controls .spacer { flex:1; }
+.logs-controls .follow-toggle { display:flex; align-items:center; gap:6px; font-size:.8em; }
+.logs-list {
+  background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.82em;
+  max-height:calc(100vh - 220px); overflow:auto;
+}
+.log-line {
+  padding:6px 14px; border-bottom:1px solid var(--border); display:flex; gap:10px;
+  align-items:baseline;
+}
+.log-line:last-child { border-bottom:0; }
+.log-line .ts  { color:var(--muted); flex-shrink:0; font-variant-numeric:tabular-nums; }
+.log-line .src { color:var(--muted); flex-shrink:0; min-width:32px; }
+.log-line .lvl { font-weight:700; flex-shrink:0; min-width:48px; }
+.log-line .lvl.INFO  { color:#0369a1; }
+.log-line .lvl.WARN  { color:#b45309; }
+.log-line .lvl.ERROR { color:#b91c1c; }
+.log-line .lvl.FATAL { color:#7f1d1d; }
+.log-line .lvl.DEBUG { color:var(--muted); }
+.log-line .msg { word-break:break-word; flex:1; }
+.log-empty { padding:20px; text-align:center; color:var(--muted); font-style:italic; }
+.log-stats { padding:8px 14px; color:var(--muted); font-size:.75em; }
+
+/* Toasts */
+#toasts {
+  position:fixed; bottom:20px; right:20px; display:flex; flex-direction:column-reverse;
+  gap:8px; z-index:200; pointer-events:none;
+}
+.toast {
+  pointer-events:auto;
+  background:var(--card); border:1px solid var(--border); border-left:4px solid var(--brand);
+  border-radius:6px; padding:10px 14px; min-width:240px; max-width:360px;
+  box-shadow:0 4px 12px rgba(0,0,0,.10); font-size:.85em;
+  animation:slideIn .2s ease-out;
+}
+.toast.WARN  { border-left-color:#f59e0b; }
+.toast.ERROR { border-left-color:#dc2626; }
+.toast.FATAL { border-left-color:#7f1d1d; }
+.toast .toast-msg { word-break:break-word; }
+.toast .toast-meta { color:var(--muted); font-size:.8em; margin-top:2px; }
+@keyframes slideIn { from { transform:translateX(100%); opacity:0; } to { transform:translateX(0); opacity:1; } }
+
+@media (prefers-color-scheme: dark) {
+  .bell-row .lvl.WARN  { background:#451a03; color:#fcd34d; }
+  .bell-row .lvl.ERROR { background:#450a0a; color:#fca5a5; }
+  .log-line .lvl.INFO  { color:#7dd3fc; }
+  .log-line .lvl.WARN  { color:#fcd34d; }
+  .log-line .lvl.ERROR { color:#fca5a5; }
+}
 @media (prefers-color-scheme: dark) {
   :root {
     --bg:#0f172a; --card:#1e293b; --border:#334155; --text:#f1f5f9;
@@ -175,29 +304,72 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
 <body>
 <nav>
   <a href="/" class="nav-logo">Lokki <span id="navUnitName"></span></a>
-  <div style="margin-left:auto;display:flex;gap:16px;font-size:.85em">
+  <div style="margin-left:auto;display:flex;gap:14px;font-size:.85em;align-items:center">
     <span id="currentTime" style="color:var(--muted)"></span>
     <span id="uptime" style="color:var(--muted)"></span>
+    <div class="bell-wrap">
+      <button class="bell-btn" id="bellBtn" title="Alerts" onclick="toggleBellPanel(event)">🔔<span class="bell-badge" id="bellBadge">0</span></button>
+      <div class="bell-panel" id="bellPanel">
+        <div class="bell-panel-head">
+          <span>Alerts</span>
+          <span class="clear-btn" onclick="clearAllAlerts()">Mark all read</span>
+        </div>
+        <div id="bellList"></div>
+      </div>
+    </div>
   </div>
 </nav>
-<div class="hero">
-  <h1 id="heroTitle">Loading…</h1>
-  <p id="heroSubtitle"></p>
-  <div id="connStatus" style="margin-top:12px;font-size:.85em;opacity:.8"></div>
-</div>
-<main>
-  <h2 style="font-size:1.2em;margin:0 0 16px;font-weight:700">Fleet Status</h2>
-  <div id="fleet">Loading…</div>
-  <div style="margin-top:40px;padding-top:20px;border-top:1px solid var(--border);font-size:.85em;color:var(--muted);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-    <div>
-      <a href="/api/config" download="config.json" style="color:var(--brand)">📥 Export Config</a> ·
-      <a href="/index.html" style="color:var(--brand)">📄 Documentation</a> ·
-      <a href="/config-builder.html" style="color:var(--brand)">⚙️ Config Builder</a> ·
-      <button class="btn btn-danger" onclick="rebootDevice()">🔄 Reboot</button>
-    </div>
-    <button class="btn btn-danger" onclick="emergencyOff()">⚠️ Emergency Off</button>
+<div class="layout">
+  <aside class="rail">
+    <button id="rail-fleet" class="active" title="Fleet" onclick="switchView('fleet')">🌿</button>
+    <button id="rail-logs"  title="Logs"  onclick="switchView('logs')">📜</button>
+  </aside>
+  <div class="content">
+
+    <section id="view-fleet" class="view active">
+      <div class="hero">
+        <h1 id="heroTitle">Loading…</h1>
+        <p id="heroSubtitle"></p>
+        <div id="connStatus" style="margin-top:12px;font-size:.85em;opacity:.8"></div>
+      </div>
+      <main>
+        <h2 style="font-size:1.2em;margin:0 0 16px;font-weight:700">Fleet Status</h2>
+        <div id="fleet">Loading…</div>
+        <div style="margin-top:40px;padding-top:20px;border-top:1px solid var(--border);font-size:.85em;color:var(--muted);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <a href="/api/config" download="config.json" style="color:var(--brand)">📥 Export Config</a> ·
+            <a href="/index.html" style="color:var(--brand)">📄 Documentation</a> ·
+            <a href="/config-builder.html" style="color:var(--brand)">⚙️ Config Builder</a> ·
+            <button class="btn btn-danger" onclick="rebootDevice()">🔄 Reboot</button>
+          </div>
+          <button class="btn btn-danger" onclick="emergencyOff()">⚠️ Emergency Off</button>
+        </div>
+      </main>
+    </section>
+
+    <section id="view-logs" class="view">
+      <main>
+        <h2 style="font-size:1.2em;margin:16px 0;font-weight:700">Logs</h2>
+        <div class="logs-controls">
+          <span class="chip active" data-level="" onclick="setLogLevel(event,'')">All</span>
+          <span class="chip" data-level="INFO"  onclick="setLogLevel(event,'INFO')">Info</span>
+          <span class="chip" data-level="WARN"  onclick="setLogLevel(event,'WARN')">Warn</span>
+          <span class="chip" data-level="ERROR" onclick="setLogLevel(event,'ERROR')">Error</span>
+          <select id="logUnitFilter" onchange="refreshLogs(true)">
+            <option value="">All units</option>
+          </select>
+          <input type="text" id="logSearch" placeholder="Filter…" oninput="renderLogs()">
+          <span class="spacer"></span>
+          <label class="follow-toggle"><input type="checkbox" id="logFollow" checked> Follow tail</label>
+        </div>
+        <div class="logs-list" id="logsList"><div class="log-empty">Waiting for events…</div></div>
+        <div class="log-stats" id="logStats"></div>
+      </main>
+    </section>
+
   </div>
-</main>
+</div>
+<div id="toasts"></div>
 
 <div id="controlModal" class="modal">
   <div class="modal-content">
@@ -706,7 +878,208 @@ async function updateStatus() {
   } catch (e) { /* swallow polling errors */ }
 }
 
-window.onclick = e => { if (e.target.id === "controlModal") closeModal(); };
+// ============================================================
+// View switching — left rail toggles between fleet/logs sections.
+// Polling for /api/events runs regardless of which view is active
+// so the bell badge stays accurate even when on the Fleet view.
+// ============================================================
+function switchView(name) {
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + name));
+  document.querySelectorAll(".rail button").forEach(b => b.classList.toggle("active", b.id === "rail-" + name));
+  if (name === "logs") renderLogs();
+}
+
+// ============================================================
+// Events / Logs / Alerts
+// ------------------------------------------------------------
+// Single /api/events poll feeds three things:
+//   1. logs panel (filtered render)
+//   2. notification bell (WARN+ unread)
+//   3. transient toasts (newest WARN+ since last poll)
+// We track:
+//   - logBuffer: every event we've seen this session (capped to match
+//     coordinator's ring so we don't OOM the browser).
+//   - lastSeq: cursor passed back to /api/events.
+//   - readSeq: persisted in localStorage; alerts <= readSeq are "read".
+// ============================================================
+const LOG_BUFFER_CAP = 500;      // generous; coord caps itself anyway
+let logBuffer = [];
+let lastSeq = 0;
+let readSeq = parseInt(localStorage.getItem("lokki.readSeq") || "0", 10) || 0;
+let activeLogLevel = "";          // "", INFO, WARN, ERROR
+
+function setLogLevel(ev, level) {
+  activeLogLevel = level;
+  document.querySelectorAll(".logs-controls .chip").forEach(c => c.classList.remove("active"));
+  ev.currentTarget.classList.add("active");
+  renderLogs();
+}
+
+function refreshLogs() { renderLogs(); }
+
+function _matchesFilters(evt) {
+  if (activeLogLevel) {
+    const order = { DEBUG:0, INFO:1, WARN:2, ERROR:3, FATAL:4 };
+    if ((order[evt.level] || 0) < (order[activeLogLevel] || 0)) return false;
+  }
+  const u = document.getElementById("logUnitFilter").value;
+  if (u !== "" && String(evt.src) !== u) return false;
+  const q = document.getElementById("logSearch").value.trim().toLowerCase();
+  if (q && !(evt.msg || "").toLowerCase().includes(q)) return false;
+  return true;
+}
+
+function _fmtTs(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts * 1000);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
+}
+
+function _srcLabel(src) {
+  if (src === 0 || src === "0") return "coord";
+  return "u" + src;
+}
+
+function renderLogs() {
+  if (!document.getElementById("view-logs").classList.contains("active")) return;
+  const list = document.getElementById("logsList");
+  const stats = document.getElementById("logStats");
+  const filtered = logBuffer.filter(_matchesFilters);
+  if (!filtered.length) {
+    list.innerHTML = '<div class="log-empty">No matching events.</div>';
+  } else {
+    // Tail-first display: newest at bottom (terminal-style).
+    let h = "";
+    filtered.forEach(evt => {
+      h += `<div class="log-line"><span class="ts">${_fmtTs(evt.ts)}</span>` +
+           `<span class="src">${_srcLabel(evt.src)}</span>` +
+           `<span class="lvl ${evt.level}">${evt.level}</span>` +
+           `<span class="msg">${_escape(evt.msg)}</span></div>`;
+    });
+    list.innerHTML = h;
+    if (document.getElementById("logFollow").checked) {
+      list.scrollTop = list.scrollHeight;
+    }
+  }
+  stats.textContent = `${filtered.length} shown · ${logBuffer.length} cached · cursor ${lastSeq}`;
+}
+
+function _escape(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]
+  ));
+}
+
+function _refreshUnitFilter() {
+  // Populate dropdown with units seen in the log buffer.
+  const seen = new Set(logBuffer.map(e => e.src));
+  const sel = document.getElementById("logUnitFilter");
+  const cur = sel.value;
+  const opts = ['<option value="">All units</option>'];
+  Array.from(seen).sort((a, b) => a - b).forEach(s => {
+    opts.push(`<option value="${s}">${s === 0 ? "Coordinator" : "Unit " + s}</option>`);
+  });
+  if (opts.length !== sel.children.length) {
+    sel.innerHTML = opts.join("");
+    sel.value = cur;
+  }
+}
+
+// ----- Bell + toasts -----
+function _unreadAlerts() {
+  return logBuffer.filter(e => (e.level === "WARN" || e.level === "ERROR" || e.level === "FATAL")
+                            && e.seq > readSeq);
+}
+
+function _renderBell() {
+  const unread = _unreadAlerts();
+  const badge = document.getElementById("bellBadge");
+  if (unread.length) {
+    badge.textContent = unread.length > 99 ? "99+" : unread.length;
+    badge.classList.add("shown");
+  } else {
+    badge.classList.remove("shown");
+  }
+  const list = document.getElementById("bellList");
+  if (!unread.length) {
+    list.innerHTML = '<div class="log-empty">No new alerts.</div>';
+    return;
+  }
+  // Newest first in the panel.
+  let h = "";
+  unread.slice().reverse().forEach(evt => {
+    h += `<div class="bell-row">` +
+         `<span class="lvl ${evt.level}">${evt.level}</span>` +
+         `<span class="msg">${_escape(evt.msg)}</span>` +
+         `<div class="meta">${_srcLabel(evt.src)} · ${_fmtTs(evt.ts)}</div>` +
+         `</div>`;
+  });
+  list.innerHTML = h;
+}
+
+function toggleBellPanel(ev) {
+  ev.stopPropagation();
+  document.getElementById("bellPanel").classList.toggle("shown");
+}
+
+function clearAllAlerts() {
+  if (logBuffer.length) readSeq = logBuffer[logBuffer.length - 1].seq;
+  localStorage.setItem("lokki.readSeq", String(readSeq));
+  _renderBell();
+}
+
+function _showToast(evt) {
+  const wrap = document.getElementById("toasts");
+  const div = document.createElement("div");
+  div.className = "toast " + evt.level;
+  div.innerHTML = `<div class="toast-msg"><b>${evt.level}</b> ${_escape(evt.msg)}</div>` +
+                  `<div class="toast-meta">${_srcLabel(evt.src)} · ${_fmtTs(evt.ts)}</div>`;
+  wrap.appendChild(div);
+  const ttl = (evt.level === "INFO") ? 4000 : 8000;
+  setTimeout(() => { div.style.transition = "opacity .3s"; div.style.opacity = 0;
+                     setTimeout(() => div.remove(), 300); }, ttl);
+}
+
+// ----- Polling loop -----
+async function pollEvents() {
+  try {
+    const r = await fetch(`/api/events?since=${lastSeq}&limit=200`);
+    if (!r.ok) return;
+    const j = await r.json();
+    const evts = (j.data && j.data.events) || [];
+    if (!evts.length) return;
+    // Newly observed WARN+ → toast (but only if this isn't our very first
+    // poll, so reload doesn't blast a history of stale alerts).
+    const isFirstPoll = (lastSeq === 0);
+    evts.forEach(e => {
+      logBuffer.push(e);
+      if (!isFirstPoll && (e.level === "WARN" || e.level === "ERROR" || e.level === "FATAL")
+                       && e.seq > readSeq) {
+        _showToast(e);
+      }
+      lastSeq = Math.max(lastSeq, e.seq);
+    });
+    if (logBuffer.length > LOG_BUFFER_CAP) {
+      logBuffer = logBuffer.slice(-LOG_BUFFER_CAP);
+    }
+    _refreshUnitFilter();
+    _renderBell();
+    if (document.getElementById("view-logs").classList.contains("active")) renderLogs();
+  } catch (e) {
+    // Network blip: try again next tick.
+  }
+}
+
+window.onclick = e => {
+  if (e.target.id === "controlModal") closeModal();
+  const bell = document.getElementById("bellPanel");
+  if (bell && bell.classList.contains("shown")) {
+    if (!e.target.closest(".bell-wrap")) bell.classList.remove("shown");
+  }
+};
 
 init().then(() => {
   updateClock(); setInterval(updateClock, 1000);
@@ -715,6 +1088,8 @@ init().then(() => {
   // Tick "last seen" labels every second — the underlying data only refreshes
   // on /api/fleet polls (15 s), but the relative-time string moves every second.
   setInterval(tickLastSeen, 1000);
+  // Event poller: 3 s feels responsive without flooding the Pico's webserver.
+  pollEvents(); setInterval(pollEvents, 3000);
 });
 </script>
 </body>

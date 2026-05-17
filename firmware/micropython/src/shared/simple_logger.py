@@ -13,6 +13,15 @@ try:
 except Exception:
     _rtc = None
 
+# event_bus has no firmware deps, so this import is safe even at early boot.
+# The Logger tees every line into it so the dashboard's Logs view and the
+# notification system can render coordinator activity without us sprinkling
+# bus.push() calls across the codebase.
+try:
+    from shared.event_bus import event_bus as _bus
+except Exception:
+    _bus = None
+
 
 class Logger:
 
@@ -47,6 +56,12 @@ class Logger:
     def _log(self, level, msg):
         if self.LEVELS.get(level, 3) <= self.level:
             print(self._timestamp(), level + ":", msg)
+            if _bus is not None:
+                try:
+                    _bus.push(level, msg)
+                except Exception:
+                    # Bus failures must never break logging itself.
+                    pass
 
     def fatal(self, m): self._log("FATAL", m)
     def error(self, m): self._log("ERROR", m)

@@ -438,8 +438,18 @@ class LoRaProtocol:
     def send_pir_event(self, pir_id, state):
         self.send(PIR_EV, 0, {"id": pir_id, "state": state})
 
-    def send_error(self, code, msg):
-        self.send(ERR, 0, {"code": code, "msg": msg})
+    def send_error(self, level, msg, ts=None, src_seq=None):
+        """Forward a WARN/ERROR/FATAL line from this unit's event bus to the
+        coordinator. `level` is the severity, `msg` is the log line, `ts` is the
+        event's local epoch, `src_seq` is the event's local sequence number
+        (useful for the coord-side dedup window). Truncated to fit the LoRa
+        payload budget by the registered ERR fitter — see lora_protocol.fitter."""
+        payload = {"lvl": level, "msg": msg}
+        if ts is not None:
+            payload["ts"] = ts
+        if src_seq is not None:
+            payload["sq"] = src_seq
+        self.send(ERR, 0, payload)
 
     def broadcast_time_sync(self, epoch, tz_offset):
         self.send(TS, _BROADCAST, {"epoch": epoch, "tz": tz_offset})

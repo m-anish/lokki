@@ -13,6 +13,7 @@ from hardware.rtc_shared import rtc
 from comms.lora_protocol import lora_protocol
 from shared.simple_logger import Logger
 from shared.system_status import system_status
+from shared.event_bus import event_bus
 
 log = Logger()
 
@@ -156,6 +157,44 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
         await asyncio.sleep(interval_s)
 
 
+async def event_forward_task(min_level="WARN", interval_s=2, max_per_tick=3):
+    """Leaf task: drain the local event bus, forward only WARN+ entries to the
+    coordinator as ERR packets. Rate-limited so a fault loop on the leaf can't
+    flood the LoRa band — at most `max_per_tick` events per `interval_s`, and
+    we keep a small dedupe window so repeated identical lines coalesce.
+
+    Why this design:
+      * Each leaf decides what's worth forwarding (severity filter).
+      * The bus is the single source of truth — Logger already populates it.
+      * The forwarder is a passive subscriber; no log-call-site changes."""
+    last_seq = event_bus.stats()["last_seq"]
+    last_msgs = []     # short ring of recent forwarded msgs for dedupe
+    _DEDUPE = 6        # how many recent lines to compare against
+    while True:
+        try:
+            evts = event_bus.events_since(last_seq, level=min_level, limit=max_per_tick)
+            for evt in evts:
+                msg = evt["msg"]
+                if msg in last_msgs:
+                    last_seq = evt["seq"]
+                    continue
+                # Truncate to leave room for envelope + lvl/ts/seq fields.
+                # ERR fitter (registered below) will also trim if needed.
+                if len(msg) > 140:
+                    msg = msg[:140]
+                lora_protocol.send_error(
+                    evt["level"], msg, ts=evt["ts"], src_seq=evt["seq"]
+                )
+                last_msgs.append(msg)
+                if len(last_msgs) > _DEDUPE:
+                    last_msgs.pop(0)
+                last_seq = evt["seq"]
+        except Exception as e:
+            # Forwarder must never tank the leaf — fall through quietly.
+            print("[EVT_FWD] error:", e)
+        await asyncio.sleep(interval_s)
+
+
 async def fleet_timeout_task(fleet_manager, interval_s=10):
     """Coordinator task: mark leaves offline on heartbeat timeout."""
     while True:
@@ -184,6 +223,44 @@ def _register_lora_handlers(role, fleet_manager=None):
         def on_status_response(src, payload):
             fleet_manager.update(src, payload)
         lora_protocol.on("SRP", on_status_response)
+
+        # ERR from a leaf → push into the coordinator's event bus so the
+        # dashboard's Logs view and notification bell see leaf-side failures
+        # alongside coordinator-local activity. Per-leaf dedupe by src_seq
+        # avoids re-pushing the same event if the leaf retried mid-flight.
+        _seen_err = {}   # {leaf_id: set of recently-seen src_seq}
+        def on_remote_error(src, payload):
+            try:
+                level = payload.get("lvl", "ERROR")
+                msg   = payload.get("msg", "")
+                ts    = payload.get("ts")
+                sq    = payload.get("sq")
+                if sq is not None:
+                    seen = _seen_err.get(src)
+                    if seen is None:
+                        seen = []
+                        _seen_err[src] = seen
+                    if sq in seen:
+                        return
+                    seen.append(sq)
+                    if len(seen) > 16:
+                        seen.pop(0)
+                event_bus.push(level, msg, src=src, tag="leaf", ts=ts)
+            except Exception:
+                pass
+        lora_protocol.on("ERR", on_remote_error)
+
+    # Fitter for ERR: trim `msg` if the envelope would overflow. Drops about
+    # 8 B at a time until it fits, leaving level/ts/sq intact for correlation.
+    def _fit_err(payload, budget):
+        import json as _json
+        while len(_json.dumps(payload).encode()) > budget:
+            msg = payload.get("msg", "")
+            if len(msg) <= 8:
+                break
+            payload["msg"] = msg[:-8]
+        return payload
+    lora_protocol.fitter("ERR", _fit_err)
 
     def on_time_sync(src, payload):
         # Leaf only — set local RTC from coordinator TS broadcast
@@ -397,6 +474,12 @@ async def main():
     sys = cfg.get("system")
     role = cfg.role
 
+    # Event bus: configure size from config.json and stamp src on every event
+    # we emit locally. Done before any meaningful work so the Logs view shows
+    # boot-time activity too.
+    event_bus.set_size(sys.get("log_buffer_size", 100))
+    event_bus.set_unit_id(cfg.unit_id)
+
     log.info(f"[MAIN] Lokki booting — role={role} unit_id={cfg.unit_id} name={cfg.unit_name}")
 
     # Re-bind status LED to configured pin (default singleton uses GPIO 5)
@@ -530,6 +613,8 @@ async def main():
             heartbeat_broadcast_task(hb_interval, cfg.unit_id)
         ))
         tasks.append(asyncio.create_task(leaf_status_task()))
+        # Forward WARN+ events from local bus → coord via ERR LoRa msgs.
+        tasks.append(asyncio.create_task(event_forward_task()))
 
     log.info(f"[MAIN] Running {len(tasks)} tasks")
 

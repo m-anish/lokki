@@ -5,6 +5,7 @@ from core.config_manager import config_manager
 from core.priority_arbiter import priority_arbiter
 from shared.system_status import system_status
 from shared.simple_logger import Logger
+from shared.event_bus import event_bus
 
 log = Logger()
 
@@ -461,6 +462,41 @@ def handle_emergency_off():
         seq = lora_protocol.send_emergency_off(uid)
         results[str(uid)] = "sent" if seq else "send_failed"
     return _ok(results)
+
+
+# ------------------------------------------------------------------
+# Events / Logs
+# ------------------------------------------------------------------
+
+def handle_events(query):
+    """Serve events from the in-RAM bus to the dashboard's Logs view.
+    Query string supports:
+      since=<int>   only events newer than this seq (default 0)
+      level=<str>   minimum severity (DEBUG/INFO/WARN/ERROR/FATAL)
+      unit=<int>    only events from this unit_id
+      limit=<int>   max events returned (default 200, capped at 500)
+    """
+    q = query or {}
+    try:
+        since = int(q.get("since", 0))
+    except Exception:
+        since = 0
+    level = q.get("level")
+    src = q.get("unit")
+    try:
+        src = int(src) if src is not None else None
+    except Exception:
+        src = None
+    try:
+        limit = max(1, min(500, int(q.get("limit", 200))))
+    except Exception:
+        limit = 200
+
+    evts = event_bus.events_since(since, level=level, src=src, limit=limit)
+    return _ok({
+        "events": evts,
+        "stats":  event_bus.stats(),
+    })
 
 
 # ------------------------------------------------------------------
