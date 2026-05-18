@@ -49,6 +49,8 @@
         "subpacket_size":        { "type": "integer", "enum": [32, 64, 128, 200] },
         "lbt_enable":            { "type": "boolean" },
         "ambient_rssi_enable":   { "type": "boolean" },
+        "crypt_h":               { "type": "integer", "minimum": 0, "maximum": 255 },
+        "crypt_l":               { "type": "integer", "minimum": 0, "maximum": 255 },
         "heartbeat_interval_s":  { "type": "integer" },
         "heartbeat_timeout_s":   { "type": "integer" }
       }

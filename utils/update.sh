@@ -22,10 +22,17 @@ ROLE=""
 LEAF_ID=""
 SETUP_WIFI=0
 DEBUG=0
+# 16-bit fleet-wide LoRa encryption key (CRYPT_H, CRYPT_L registers).
+# Symmetric — every unit in the fleet must use the same pair. The
+# project-wide default is baked in here so a fresh-flashed fleet "just
+# works"; pass --crypt-h/--crypt-l to override per deployment.
+CRYPT_H="0x07"
+CRYPT_L="0x93"
 
 usage() {
     cat <<EOF
-Usage: $0 [--fresh --role=coordinator|leaf [--id=N] [--wifi] [--debug]]
+Usage: $0 [--fresh --role=coordinator|leaf [--id=N] [--wifi] [--debug]
+          [--crypt-h=NN] [--crypt-l=NN]]
 
 Without flags:
     Push code + web assets only. Preserves /config.json on the device.
@@ -39,6 +46,10 @@ With --fresh:
                                 you push a real config from the Config Builder.
     --debug                    Force system.log_level = "DEBUG" in the pushed
                                 config (overrides the sample/stub default of INFO).
+    --crypt-h=NN --crypt-l=NN  Override the fleet-wide LoRa encryption key bytes.
+                                Default 0x07 / 0x93. Accept hex (0xNN) or decimal.
+                                Same value MUST be used on every unit in the fleet,
+                                or modules will silently fail to decode each other.
 EOF
 }
 
@@ -51,11 +62,36 @@ while [ $# -gt 0 ]; do
         --id) shift; LEAF_ID="${1:-}" ;;
         --wifi) SETUP_WIFI=1 ;;
         --debug) DEBUG=1 ;;
+        --crypt-h=*) CRYPT_H="${1#--crypt-h=}" ;;
+        --crypt-h) shift; CRYPT_H="${1:-}" ;;
+        --crypt-l=*) CRYPT_L="${1#--crypt-l=}" ;;
+        --crypt-l) shift; CRYPT_L="${1:-}" ;;
         --help|-h) usage; exit 0 ;;
         *) echo "[update] Unknown arg: $1" >&2; usage; exit 2 ;;
     esac
     shift
 done
+
+# Normalize crypt values to decimal so jq and the heredoc consume them
+# uniformly. Accept either hex (0xNN) or plain decimal.
+_to_dec() {
+    local v="$1"
+    if [[ "$v" =~ ^0[xX][0-9a-fA-F]+$ ]]; then
+        printf '%d' "$v"
+    elif [[ "$v" =~ ^[0-9]+$ ]]; then
+        printf '%d' "$v"
+    else
+        echo "[update] ERROR: --crypt-h/--crypt-l must be 0..255 (got '$v')" >&2
+        exit 2
+    fi
+}
+CRYPT_H_DEC="$(_to_dec "$CRYPT_H")"
+CRYPT_L_DEC="$(_to_dec "$CRYPT_L")"
+if [ "$CRYPT_H_DEC" -lt 0 ] || [ "$CRYPT_H_DEC" -gt 255 ] \
+   || [ "$CRYPT_L_DEC" -lt 0 ] || [ "$CRYPT_L_DEC" -gt 255 ]; then
+    echo "[update] ERROR: crypt bytes must each be 0..255 (got h=$CRYPT_H_DEC l=$CRYPT_L_DEC)" >&2
+    exit 2
+fi
 
 if [ "$FRESH" = "1" ]; then
     case "$ROLE" in
@@ -201,6 +237,13 @@ if [ "$FRESH" = "1" ]; then
             jq_cmd+=' | .system.log_level="DEBUG"'
         fi
 
+        # Always set crypt bytes — even when they match the sample
+        # defaults, this keeps the push self-describing and surfaces
+        # any --crypt-h/--crypt-l override without a second code path.
+        echo "[update] Setting LoRa crypt key: h=$CRYPT_H_DEC l=$CRYPT_L_DEC"
+        jq_cmd+=" | .lora.crypt_h=\$ch | .lora.crypt_l=\$cl"
+        jq_args+=(--argjson ch "$CRYPT_H_DEC" --argjson cl "$CRYPT_L_DEC")
+
         if [ "$jq_cmd" = "." ]; then
             cp "$SAMPLE_CFG" "$TMP_CFG"
         else
@@ -250,10 +293,12 @@ if [ "$FRESH" = "1" ]; then
     "frequency_mhz": 868,
     "air_data_rate": 2400,
     "tx_power_dbm": 22,
-    "channel": 18,
+    "channel": 73,
     "subpacket_size": 200,
-    "lbt_enable": false,
-    "ambient_rssi_enable": false
+    "lbt_enable": true,
+    "ambient_rssi_enable": false,
+    "crypt_h": $CRYPT_H_DEC,
+    "crypt_l": $CRYPT_L_DEC
   },
   "timezone": { "name": "UTC", "utc_offset_hours": 0 },
   "hardware": {

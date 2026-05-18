@@ -339,7 +339,7 @@ class ConfigManager:
         air = lora.get("air_data_rate", 2400)
         if air not in (300, 1200, 2400, 4800, 9600, 19200, 38400, 62500):
             errors.append("lora.air_data_rate invalid; allowed: 300/1200/2400/4800/9600/19200/38400/62500")
-        chan = lora.get("channel", 18)
+        chan = lora.get("channel", 73)
         if not isinstance(chan, int) or chan < 0 or chan > 80:
             errors.append("lora.channel must be int 0–80")
         sub = lora.get("subpacket_size", 200)
@@ -349,6 +349,14 @@ class ConfigManager:
             errors.append("lora.lbt_enable must be bool if provided")
         if "ambient_rssi_enable" in lora and not isinstance(lora["ambient_rssi_enable"], bool):
             errors.append("lora.ambient_rssi_enable must be bool if provided")
+        # Encryption key bytes. Both ends of the fleet must share these
+        # or frames silently fail to decode — validate the byte range
+        # only; coordination is on the operator.
+        for key in ("crypt_h", "crypt_l"):
+            if key in lora:
+                v = lora[key]
+                if not isinstance(v, int) or v < 0 or v > 255:
+                    errors.append(f"lora.{key} must be int 0–255")
 
     def _validate_ldr(self, errors):
         ldr = self._config.get("ldr", {})

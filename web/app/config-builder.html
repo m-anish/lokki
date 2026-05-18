@@ -679,8 +679,8 @@
         <div class="grid2">
           <div class="field">
             <label class="field-label">Channel (0–80)</label>
-            <input id="l_channel" type="number" value="18" min="0" max="80" />
-            <div class="field-hint">All units in the fleet must share the same channel. 18 ≈ 868 MHz centre on EU modules; changing this on one unit without the others will break the link.</div>
+            <input id="l_channel" type="number" value="73" min="0" max="80" />
+            <div class="field-hint">All units in the fleet must share the same channel. 73 is the project-wide default.</div>
           </div>
           <div class="field">
             <label class="field-label">Air Data Rate</label>
@@ -691,6 +691,21 @@
               <option value="4800">4800 bps</option>
               <option value="9600">9600 bps (shortest range)</option>
             </select>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Listen Before Talk</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:.9em">
+              <input type="checkbox" id="l_lbt" checked />
+              <span>Wait for channel to be quiet before transmitting</span>
+            </label>
+            <div class="field-hint">Reduces collisions in multi-unit fleets. Recommended on. Each unit decides independently — no fleet coordination needed.</div>
+          </div>
+          <div class="field">
+            <label class="field-label">Encryption Key (hex, 4 chars)</label>
+            <input id="l_crypt" type="text" value="0793" maxlength="4" pattern="[0-9a-fA-F]{1,4}" style="font-family:ui-monospace,monospace" />
+            <div class="field-hint">16-bit symmetric key (CRYPT_H · CRYPT_L). MUST match across every unit in the fleet, or modules will silently fail to decode each other. Default 0793.</div>
           </div>
         </div>
       </div>
@@ -1865,15 +1880,24 @@ function buildConfig() {
       password: document.getElementById('w_password').value,
       hostname: document.getElementById('w_hostname').value.trim()||'lokki',
     },
-    lora: {
-      enabled:       true,
-      frequency_mhz: parseFloat(document.getElementById('l_freq').value)||868,
-      air_data_rate: parseInt(document.getElementById('l_adr').value)||2400,
-      tx_power_dbm:  parseInt(document.getElementById('l_power').value)||22,
-      // Default to 18 not 0 — firmware/sample/leaf-stub all use 18.
-      // A bare-form push with channel=0 would silently split the fleet.
-      channel:       parseInt(document.getElementById('l_channel').value)||18,
-    },
+    lora: (() => {
+      const cstr = (document.getElementById('l_crypt').value||'').trim().padStart(4, '0').slice(-4);
+      const cnum = parseInt(cstr, 16);
+      const cH = isNaN(cnum) ? 0x07 : (cnum >> 8) & 0xFF;
+      const cL = isNaN(cnum) ? 0x93 :  cnum       & 0xFF;
+      return {
+        enabled:       true,
+        frequency_mhz: parseFloat(document.getElementById('l_freq').value)||868,
+        air_data_rate: parseInt(document.getElementById('l_adr').value)||2400,
+        tx_power_dbm:  parseInt(document.getElementById('l_power').value)||22,
+        // Default to 73 not 0 — firmware/sample/leaf-stub all use 73.
+        // A bare-form push with channel=0 would silently split the fleet.
+        channel:       parseInt(document.getElementById('l_channel').value)||73,
+        lbt_enable:    document.getElementById('l_lbt').checked,
+        crypt_h:       cH,
+        crypt_l:       cL,
+      };
+    })(),
     timezone: {
       name:             document.getElementById('tz_name').value||'UTC',
       utc_offset_hours: parseFloat(document.getElementById('tz_offset').value)||0,
@@ -2209,6 +2233,14 @@ function applyConfigToForm(cfg) {
   const l=cfg.lora||{};
   set('l_freq', l.frequency_mhz); set('l_power', l.tx_power_dbm);
   set('l_channel', l.channel); set('l_adr', l.air_data_rate);
+  const lbtEl = document.getElementById('l_lbt');
+  if (lbtEl) lbtEl.checked = (l.lbt_enable !== false);   // default-on
+  const cryptEl = document.getElementById('l_crypt');
+  if (cryptEl) {
+    const h = (l.crypt_h != null) ? l.crypt_h : 0x07;
+    const w = (l.crypt_l != null) ? l.crypt_l : 0x93;
+    cryptEl.value = ((h << 8) | w).toString(16).padStart(4, '0').toUpperCase();
+  }
 
   const tz=cfg.timezone||{};
   set('tz_name', tz.name); set('tz_offset', tz.utc_offset_hours);

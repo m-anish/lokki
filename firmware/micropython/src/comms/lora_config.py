@@ -92,9 +92,19 @@ def build_register_payload(unit_id, lora_cfg):
     if sub not in _SUB_BITS:
         sub = 200
 
-    chan = int(lora_cfg.get("channel", 18))
-    lbt  = bool(lora_cfg.get("lbt_enable", False))
+    chan = int(lora_cfg.get("channel", 73))
+    # LBT default ON: in a multi-unit fleet sharing one channel, listen-
+    # before-talk noticeably reduces collisions at the cost of a small
+    # latency increase. Per-unit decision (each module decides whether
+    # to wait), so no fleet-coordination concern here.
+    lbt  = bool(lora_cfg.get("lbt_enable", True))
     ambient = bool(lora_cfg.get("ambient_rssi_enable", False))
+    # Crypt key (16-bit, two register bytes). MUST match across every
+    # unit in the fleet — a mismatch silently drops frames. Default is
+    # the project-wide bake-in (0x07, 0x93) so a fresh fleet "just works"
+    # without anyone having to think about it.
+    crypt_h = int(lora_cfg.get("crypt_h", 0x07)) & 0xFF
+    crypt_l = int(lora_cfg.get("crypt_l", 0x93)) & 0xFF
 
     # REG0: bits 7-5 UART baud, bits 4-3 parity, bits 2-0 air rate
     reg0 = (_BAUD_BITS[_PICO_UART_BAUD] << 5) | (_PAR_BITS["8N1"] << 3) | _AIR_BITS[air]
@@ -105,7 +115,7 @@ def build_register_payload(unit_id, lora_cfg):
     # 0b011 = 2000 ms is a benign default that matches the test harness)
     reg3 = (1 << 7) | (1 << 6) | ((1 if lbt else 0) << 4) | 0b011
 
-    return bytes([addh, addl, reg0, reg1, chan, reg3, 0x00, 0x00])
+    return bytes([addh, addl, reg0, reg1, chan, reg3, crypt_h, crypt_l])
 
 
 def decode_register_payload(b):
