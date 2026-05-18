@@ -667,14 +667,20 @@
           </div>
           <div class="field">
             <label class="field-label">TX Power (dBm)</label>
-            <input id="l_power" type="number" value="22" min="0" max="22" />
-            <div class="field-hint">Max 22 dBm. Reduce for shorter range and lower power draw.</div>
+            <select id="l_power">
+              <option value="22" selected>22 (max, longest range)</option>
+              <option value="17">17</option>
+              <option value="13">13</option>
+              <option value="10">10 (shortest range, lowest draw)</option>
+            </select>
+            <div class="field-hint">E220 register only accepts these four discrete levels.</div>
           </div>
         </div>
         <div class="grid2">
           <div class="field">
-            <label class="field-label">Channel (0–83)</label>
-            <input id="l_channel" type="number" value="0" min="0" max="83" />
+            <label class="field-label">Channel (0–80)</label>
+            <input id="l_channel" type="number" value="18" min="0" max="80" />
+            <div class="field-hint">All units in the fleet must share the same channel. 18 ≈ 868 MHz centre on EU modules; changing this on one unit without the others will break the link.</div>
           </div>
           <div class="field">
             <label class="field-label">Air Data Rate</label>
@@ -1864,7 +1870,9 @@ function buildConfig() {
       frequency_mhz: parseFloat(document.getElementById('l_freq').value)||868,
       air_data_rate: parseInt(document.getElementById('l_adr').value)||2400,
       tx_power_dbm:  parseInt(document.getElementById('l_power').value)||22,
-      channel:       parseInt(document.getElementById('l_channel').value)||0,
+      // Default to 18 not 0 — firmware/sample/leaf-stub all use 18.
+      // A bare-form push with channel=0 would silently split the fleet.
+      channel:       parseInt(document.getElementById('l_channel').value)||18,
     },
     timezone: {
       name:             document.getElementById('tz_name').value||'UTC',
@@ -2079,6 +2087,12 @@ function _startProgressPoll() {
         _setProgress(pct, 'Sending…', 'Please keep this page open.');
       } else if (p.phase === 'verifying') {
         _setProgress(95, 'Finishing up…', 'The device is saving the new settings.');
+      } else if (p.phase === 'retrying') {
+        // Smart-retry: leaf had a CRC fail and asked for a few specific
+        // chunks again. We hold the bar at 95 % rather than letting it
+        // walk backwards — the regression is more alarming than the
+        // honesty is helpful.
+        _setProgress(95, 'Patching up…', 'A few parts didn’t arrive — resending them.');
       }
       // success/failed terminal states are handled by the HTTP response, not the poll.
     } catch (e) {

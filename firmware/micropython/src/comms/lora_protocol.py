@@ -254,12 +254,18 @@ class LoRaProtocol:
                     log.warn(f"[LORA_PROTO] CFG_END rejected. Leaf is missing {len(missing)} chunks. Retrying only missing chunks...")
                     # Smart retry: re-send only the chunks the leaf didn't get.
                     # Indices stay the same so the leaf re-assembles correctly.
-                    # cfg_progress.sent represents "how many distinct chunks the
-                    # leaf has", so we set sent = total - len(missing) and tick
-                    # it up as we re-send each missing chunk.
+                    #
+                    # IMPORTANT for the dashboard's progress bar: do NOT
+                    # decrement cfg_progress["sent"] back to (total-missing)
+                    # during retry. The user has already seen the bar fill
+                    # to ~90%; resetting it to 60% and crawling back up
+                    # looks like a regression and shakes confidence. We
+                    # keep sent at its peak value (the loop already left
+                    # it at `total`), and switch phase to a new
+                    # "retrying" state. The dashboard renders that as
+                    # "Patching up… ~95%" with the bar held still.
                     for attempt_missing in range(3):
-                        self.cfg_progress["phase"] = "uploading"
-                        self.cfg_progress["sent"]  = len(chunks) - len(missing)
+                        self.cfg_progress["phase"] = "retrying"
                         log.info(f"[LORA_PROTO] Smart retry: sending {len(missing)} missing chunks...")
                         for m_idx in missing:
                             if 0 <= m_idx < len(chunks):
@@ -268,7 +274,6 @@ class LoRaProtocol:
                                     "chunk_index": m_idx,
                                     "data": chunks[m_idx].decode("utf-8", "ignore"),
                                 })
-                                self.cfg_progress["sent"] += 1
                                 await asyncio.sleep_ms(_CHUNK_DELAY_MS)
 
                         # Re-send CFG_END
@@ -464,26 +469,38 @@ class LoRaProtocol:
     def send_scene(self, dest, scene_name):
         return self.send(SC, dest, {"scene": scene_name})
 
-    def send_manual_override(self, dest, channels, relays, revert_s=0):
+    def send_manual_override(self, dest, channels, relays, revert_s=0, fade_ms=0):
         """Send ONE MO packet. Assumes the caller already fit the payload — use
-        send_manual_override_batched() for arbitrary-sized overrides."""
-        return self.send(MO, dest, {
+        send_manual_override_batched() for arbitrary-sized overrides.
+        fade_ms is applied uniformly to every channel in this packet (the leaf
+        reads it via payload.get('fade_ms', 0))."""
+        payload = {
             "ch": channels,
             "rl": relays,
             "revert_s": revert_s,
-        })
+        }
+        # Only include fade_ms when non-zero so we don't grow the envelope
+        # in the common case. The leaf's handler defaults to 0 anyway.
+        if fade_ms:
+            payload["fade_ms"] = fade_ms
+        return self.send(MO, dest, payload)
 
-    async def send_manual_override_batched(self, dest, channels, relays, revert_s=0):
+    async def send_manual_override_batched(self, dest, channels, relays, revert_s=0, fade_ms=0):
         """Splittable manual-override sender. Packs as many [id, value] pairs
         as the LoRa byte budget allows per packet, sends sequentially with a
         small inter-packet gap so the receiver's UART can drain. Returns True
         iff every packet was accepted by send() (i.e. fit and transmitted).
 
+        fade_ms is forwarded to the leaf on each packet so the leaf-side
+        arbiter actually fades. Bug from before this fix: fade_ms was
+        accepted by the API but dropped on the LoRa wire, so any leaf
+        override happened instantly regardless of the slider setting.
+
         Why this lives here, not in api_handlers: the 200B cap is a transport
         property. Application code shouldn't need to know about it."""
         # Empty override (revert_s broadcast, e.g. revert_s=-1 to clear).
         if not channels and not relays:
-            seq = self.send_manual_override(dest, [], [], revert_s)
+            seq = self.send_manual_override(dest, [], [], revert_s, fade_ms)
             return seq is not None
 
         # Budget the items per packet. Base payload skeleton without any items
@@ -495,6 +512,8 @@ class LoRaProtocol:
 
         def fits(buf_ch, buf_rl):
             probe = {"ch": buf_ch, "rl": buf_rl, "revert_s": revert_s}
+            if fade_ms:
+                probe["fade_ms"] = fade_ms
             return len(json.dumps(probe).encode()) <= _MAX_PAYLOAD_BYTES
 
         any_sent = False
@@ -525,7 +544,7 @@ class LoRaProtocol:
                 )
                 return False
 
-            seq = self.send_manual_override(dest, buf_ch, buf_rl, revert_s)
+            seq = self.send_manual_override(dest, buf_ch, buf_rl, revert_s, fade_ms)
             if seq is None:
                 return False
             any_sent = True

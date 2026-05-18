@@ -396,9 +396,11 @@ async def handle_manual_override(unit_id, payload):
             return _ok({"applied": "local"})
 
         # The protocol layer owns packet-size policy and splits internally if
-        # the combined payload would exceed the 200B LoRa cap.
+        # the combined payload would exceed the 200B LoRa cap. fade_ms is
+        # forwarded to the leaf so the slider's "Fade" setting actually
+        # applies remotely (it was being dropped on the wire previously).
         ok = await lora_protocol.send_manual_override_batched(
-            unit_id, channels, relays, revert_s
+            unit_id, channels, relays, revert_s, fade_ms
         )
         return _ok({"sent_to": unit_id}) if ok else _err("Send failed", 502)
     except Exception as e:
