@@ -422,7 +422,21 @@ class LoRaProtocol:
         return None
 
     def _check_pending_acks(self):
-        now     = time.time()
+        now = time.time()
+
+        # First sweep: drop entries whose ACK already came in but which
+        # were never popped (because the caller used a fire-and-forget
+        # send path — e.g. send_manual_override_batched — rather than
+        # _wait_ack()). Without this, we retry a message that the peer
+        # has already acknowledged: an attempt=1/2/3 warning storm in
+        # the logs and unnecessary LoRa airtime, exactly the symptom
+        # observed after the MO/HB-flood fix.
+        resolved_seqs = [s for s, v in self._pending.items()
+                         if v.get("resolved")]
+        for seq in resolved_seqs:
+            del self._pending[seq]
+
+        # Second sweep: real timeouts.
         expired = [s for s, v in self._pending.items()
                    if now - v["sent_at"] > _ACK_TIMEOUT_S]
         for seq in expired:
