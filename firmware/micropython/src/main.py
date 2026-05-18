@@ -416,9 +416,15 @@ def _register_lora_handlers(role, fleet_manager=None):
                         del _cfg_transfers[tid]
                         return
                     else:
-                        log.error(f"[LORA] Config transfer {tid} checksum mismatch")
+                        # Smart retry on coord will ask for whichever chunks
+                        # didn't decode. This is recoverable, not an error.
+                        log.warn(f"[LORA] Config transfer {tid} checksum mismatch — coord will retry")
                 else:
-                    log.error(f"[LORA] Config transfer {tid} missing {total - len(chunks)} chunks")
+                    # Missing-chunks is a normal-life condition on a noisy
+                    # channel; the coord's smart-retry path is designed
+                    # exactly for this. Demoted from ERROR to WARN so it
+                    # doesn't trip the bell badge on every config push.
+                    log.warn(f"[LORA] Config transfer {tid} missing {total - len(chunks)} chunks — coord will resend")
                     
                 # If we are here, it failed. Tell coordinator which chunks we need!
                 missing = [i for i in range(total) if i not in chunks]
