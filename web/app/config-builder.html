@@ -687,8 +687,8 @@
             <select id="l_adr">
               <option value="300">300 bps (longest range)</option>
               <option value="1200">1200 bps</option>
-              <option value="2400" selected>2400 bps (recommended)</option>
-              <option value="4800">4800 bps</option>
+              <option value="2400">2400 bps</option>
+              <option value="4800" selected>4800 bps (recommended)</option>
               <option value="9600">9600 bps (shortest range)</option>
             </select>
           </div>
@@ -1888,7 +1888,7 @@ function buildConfig() {
       return {
         enabled:       true,
         frequency_mhz: parseFloat(document.getElementById('l_freq').value)||868,
-        air_data_rate: parseInt(document.getElementById('l_adr').value)||2400,
+        air_data_rate: parseInt(document.getElementById('l_adr').value)||4800,
         tx_power_dbm:  parseInt(document.getElementById('l_power').value)||22,
         // Default to 73 not 0 — firmware/sample/leaf-stub all use 73.
         // A bare-form push with channel=0 would silently split the fleet.

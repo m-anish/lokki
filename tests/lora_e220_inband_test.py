@@ -79,7 +79,7 @@ WR_ADDL = 0xFF
 # REG0 — UART, parity, air rate
 WR_BAUD_BITS   = 0b011    # 0b011 = 9600. See datasheet table 6.1.
 WR_PARITY_BITS = 0b00     # 8N1
-WR_AIR_BITS    = 0b010    # 0b010 = 2.4 kbps
+WR_AIR_BITS    = 0b011    # 0b011 = 4.8 kbps — project-wide default
 
 # REG1 — sub-packet, ambient RSSI, TX power
 WR_SUBPKT_BITS    = 0b00  # 200 B

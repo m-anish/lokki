@@ -80,10 +80,10 @@ def build_register_payload(unit_id, lora_cfg):
     write_nvram()."""
     addh, addl = _addr_for_unit(unit_id)
 
-    air = int(lora_cfg.get("air_data_rate", 2400))
+    air = int(lora_cfg.get("air_data_rate", 4800))
     if air not in _AIR_BITS:
-        log.warn(f"[LORA_CFG] air_data_rate {air} not in {sorted(_AIR_BITS)}; defaulting to 2400")
-        air = 2400
+        log.warn(f"[LORA_CFG] air_data_rate {air} not in {sorted(_AIR_BITS)}; defaulting to 4800")
+        air = 4800
     pwr = int(lora_cfg.get("tx_power_dbm", 22))
     if pwr not in _PWR_BITS:
         log.warn(f"[LORA_CFG] tx_power_dbm {pwr} not in {sorted(_PWR_BITS)}; defaulting to 22")

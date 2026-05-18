@@ -336,7 +336,7 @@ class ConfigManager:
         pwr = lora.get("tx_power_dbm", 22)
         if pwr not in (10, 13, 17, 22):
             errors.append("lora.tx_power_dbm must be one of 10, 13, 17, 22")
-        air = lora.get("air_data_rate", 2400)
+        air = lora.get("air_data_rate", 4800)
         if air not in (300, 1200, 2400, 4800, 9600, 19200, 38400, 62500):
             errors.append("lora.air_data_rate invalid; allowed: 300/1200/2400/4800/9600/19200/38400/62500")
         chan = lora.get("channel", 73)

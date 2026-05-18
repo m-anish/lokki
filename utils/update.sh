@@ -313,7 +313,7 @@ if [ "$FRESH" = "1" ]; then
   "lora": {
     "enabled": true,
     "frequency_mhz": 868,
-    "air_data_rate": 2400,
+    "air_data_rate": 4800,
     "tx_power_dbm": 22,
     "channel": 73,
     "subpacket_size": 200,
