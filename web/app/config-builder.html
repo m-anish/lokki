@@ -679,8 +679,8 @@
         <div class="grid2">
           <div class="field">
             <label class="field-label">Channel (0–80)</label>
-            <input id="l_channel" type="number" value="73" min="0" max="80" />
-            <div class="field-hint">All units in the fleet must share the same channel. 73 is the project-wide default.</div>
+            <input id="l_channel" type="number" value="18" min="0" max="80" />
+            <div class="field-hint">All units in the fleet must share the same channel. 18 ≈ 868 MHz centre on EU modules.</div>
           </div>
           <div class="field">
             <label class="field-label">Air Data Rate</label>
@@ -704,8 +704,8 @@
           </div>
           <div class="field">
             <label class="field-label">Encryption Key (hex, 4 chars)</label>
-            <input id="l_crypt" type="text" value="0793" maxlength="4" pattern="[0-9a-fA-F]{1,4}" style="font-family:ui-monospace,monospace" />
-            <div class="field-hint">16-bit symmetric key (CRYPT_H · CRYPT_L). MUST match across every unit in the fleet, or modules will silently fail to decode each other. Default 0793.</div>
+            <input id="l_crypt" type="text" value="0000" maxlength="4" pattern="[0-9a-fA-F]{1,4}" style="font-family:ui-monospace,monospace" />
+            <div class="field-hint">16-bit symmetric key (CRYPT_H · CRYPT_L). 0000 disables encryption. If you set this, every unit in the fleet MUST share the same value or modules silently drop frames.</div>
           </div>
         </div>
       </div>
@@ -1883,8 +1883,8 @@ function buildConfig() {
     lora: (() => {
       const cstr = (document.getElementById('l_crypt').value||'').trim().padStart(4, '0').slice(-4);
       const cnum = parseInt(cstr, 16);
-      const cH = isNaN(cnum) ? 0x07 : (cnum >> 8) & 0xFF;
-      const cL = isNaN(cnum) ? 0x93 :  cnum       & 0xFF;
+      const cH = isNaN(cnum) ? 0x00 : (cnum >> 8) & 0xFF;
+      const cL = isNaN(cnum) ? 0x00 :  cnum       & 0xFF;
       return {
         enabled:       true,
         frequency_mhz: parseFloat(document.getElementById('l_freq').value)||868,
@@ -1892,7 +1892,7 @@ function buildConfig() {
         tx_power_dbm:  parseInt(document.getElementById('l_power').value)||22,
         // Default to 73 not 0 — firmware/sample/leaf-stub all use 73.
         // A bare-form push with channel=0 would silently split the fleet.
-        channel:       parseInt(document.getElementById('l_channel').value)||73,
+        channel:       parseInt(document.getElementById('l_channel').value)||18,
         lbt_enable:    document.getElementById('l_lbt').checked,
         crypt_h:       cH,
         crypt_l:       cL,
@@ -2237,8 +2237,8 @@ function applyConfigToForm(cfg) {
   if (lbtEl) lbtEl.checked = (l.lbt_enable === true);   // default-off
   const cryptEl = document.getElementById('l_crypt');
   if (cryptEl) {
-    const h = (l.crypt_h != null) ? l.crypt_h : 0x07;
-    const w = (l.crypt_l != null) ? l.crypt_l : 0x93;
+    const h = (l.crypt_h != null) ? l.crypt_h : 0x00;
+    const w = (l.crypt_l != null) ? l.crypt_l : 0x00;
     cryptEl.value = ((h << 8) | w).toString(16).padStart(4, '0').toUpperCase();
   }
 

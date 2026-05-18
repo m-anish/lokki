@@ -87,8 +87,9 @@ WR_RSSI_AMBIENT   = False # ambient noise reporting (separate from per-frame RSS
 WR_TX_POWER_BITS  = 0b00  # 22 dBm
 
 # REG4 — channel (the actual register at addr 0x04; we call this CHAN
-# because the datasheet does). 73 is the project-wide fleet default.
-WR_CHANNEL = 73
+# because the datasheet does). 18 is the project-wide fleet default
+# (~868 MHz centre on EU modules).
+WR_CHANNEL = 18
 
 # REG5 — RSSI byte, fixed/transparent mode, LBT, WOR cycle.
 # Defaults below match the production firmware so this script doubles
@@ -101,9 +102,10 @@ WR_LBT        = False     # default OFF — LBT silently drops frames if channel
                           # never becomes quiet within timeout, hurting reliability
 WR_WOR_BITS   = 0b011     # 2000 ms WOR period (only used if WOR mode entered)
 
-# Encryption key — fleet-wide default. MUST match across every unit.
-WR_CRYPT_H = 0x07
-WR_CRYPT_L = 0x93
+# Encryption key — fleet-wide default of 0x0000 (no encryption). If
+# you set this, every unit MUST share the same value.
+WR_CRYPT_H = 0x00
+WR_CRYPT_L = 0x00
 
 # 0xC0 → save to NVRAM (survives power cycles, costs flash writes).
 # 0xC2 → RAM only (volatile, safe to spam during testing).

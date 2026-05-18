@@ -24,11 +24,12 @@ LEAF_ID=""
 SETUP_WIFI=0
 DEBUG=0
 # 16-bit fleet-wide LoRa encryption key (CRYPT_H, CRYPT_L registers).
-# Symmetric — every unit in the fleet must use the same pair. The
-# project-wide default is baked in here so a fresh-flashed fleet "just
-# works"; pass --crypt-h/--crypt-l to override per deployment.
-CRYPT_H="0x07"
-CRYPT_L="0x93"
+# Symmetric — every unit in the fleet must use the same pair. Defaults
+# to 0x00 / 0x00 (no encryption) so partial-rollout upgrades don't
+# silently break the link. Operators wanting confidentiality pass
+# --crypt-h/--crypt-l with a shared non-zero value.
+CRYPT_H="0x00"
+CRYPT_L="0x00"
 
 usage() {
     cat <<EOF
@@ -48,9 +49,10 @@ With --fresh:
     --debug                    Force system.log_level = "DEBUG" in the pushed
                                 config (overrides the sample/stub default of INFO).
     --crypt-h=NN --crypt-l=NN  Override the fleet-wide LoRa encryption key bytes.
-                                Default 0x07 / 0x93. Accept hex (0xNN) or decimal.
-                                Same value MUST be used on every unit in the fleet,
-                                or modules will silently fail to decode each other.
+                                Default 0x00 / 0x00 (no encryption). Accept hex
+                                (0xNN) or decimal. Same value MUST be used on every
+                                unit in the fleet, or modules will silently fail to
+                                decode each other.
 EOF
 }
 
@@ -315,7 +317,7 @@ if [ "$FRESH" = "1" ]; then
     "frequency_mhz": 868,
     "air_data_rate": 4800,
     "tx_power_dbm": 22,
-    "channel": 73,
+    "channel": 18,
     "subpacket_size": 200,
     "lbt_enable": false,
     "ambient_rssi_enable": false,
