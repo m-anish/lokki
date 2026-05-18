@@ -93,11 +93,15 @@ def build_register_payload(unit_id, lora_cfg):
         sub = 200
 
     chan = int(lora_cfg.get("channel", 73))
-    # LBT default ON: in a multi-unit fleet sharing one channel, listen-
-    # before-talk noticeably reduces collisions at the cost of a small
-    # latency increase. Per-unit decision (each module decides whether
-    # to wait), so no fleet-coordination concern here.
-    lbt  = bool(lora_cfg.get("lbt_enable", True))
+    # LBT default OFF. We tried defaulting it ON for collision reduction
+    # but the E220 silently DROPS frames when LBT times out unable to
+    # find a quiet channel — and AUX still cycles cleanly, so the
+    # transport can't tell the difference between "LBT dropped my frame"
+    # and "receiver missed it". Result: occasional CFG_CHUNK losses
+    # beyond what smart-retry can paper over, manifesting as
+    # "config sometimes doesn't apply" on a busy channel. LBT is opt-in
+    # for operators who explicitly want it.
+    lbt  = bool(lora_cfg.get("lbt_enable", False))
     ambient = bool(lora_cfg.get("ambient_rssi_enable", False))
     # Crypt key (16-bit, two register bytes). MUST match across every
     # unit in the fleet — a mismatch silently drops frames. Default is

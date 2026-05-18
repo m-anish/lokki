@@ -7,6 +7,7 @@ SRC_DIR="$REPO_ROOT/firmware/micropython/src"
 WEB_DIR="$REPO_ROOT/web/app"
 SAMPLE_CFG="$SRC_DIR/config/samples/config.json.sample"
 SAMPLE_SUN="$REPO_ROOT/firmware/micropython/config/samples/sun_times.json.sample"
+INBAND_TEST="$REPO_ROOT/tests/lora_e220_inband_test.py"
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -193,6 +194,27 @@ mpremote connect auto fs cp "$WEB_DIR/config.schema.json" :www/
 # `fs cp -r` on mpremote creates the destination dir if needed.
 mpremote connect auto fs cp -r "$WEB_DIR/vendor" :www/
 
+# In-band E220 register tool — shipped alongside the firmware so a
+# field unit can be recovered without bringing the bridge hardware.
+# Idea: if runtime register config fails (e.g. corrupt config.json,
+# leaf orphaned by a bad lora_config push), the operator can boot the
+# Pico into this script by renaming it to main.py and re-pushing
+# good defaults to the E220's NVRAM (PERSIST=True). After NVRAM is
+# clean, restore the real main.py and reboot.
+#
+# Usage from a host shell with the device plugged in:
+#   mpremote connect auto cp :/main.py  :/main.py.bak
+#   mpremote connect auto cp :/tools/lora_inband_test.py :/main.py
+#   mpremote connect auto reset
+#   ... edit OP/WR_* via the running REPL or re-flash with new values ...
+#   mpremote connect auto cp :/main.py.bak :/main.py
+#   mpremote connect auto reset
+if [ -f "$INBAND_TEST" ]; then
+    mk_remote_dir "tools"
+    echo "[update] Flashing in-band LoRa test tool -> :/tools/lora_inband_test.py"
+    mpremote connect auto fs cp "$INBAND_TEST" ":tools/lora_inband_test.py"
+fi
+
 # ---------------------------------------------------------------------------
 # Optional: starter config push (--fresh)
 # ---------------------------------------------------------------------------
@@ -295,7 +317,7 @@ if [ "$FRESH" = "1" ]; then
     "tx_power_dbm": 22,
     "channel": 73,
     "subpacket_size": 200,
-    "lbt_enable": true,
+    "lbt_enable": false,
     "ambient_rssi_enable": false,
     "crypt_h": $CRYPT_H_DEC,
     "crypt_l": $CRYPT_L_DEC

@@ -697,10 +697,10 @@
           <div class="field">
             <label class="field-label">Listen Before Talk</label>
             <label style="display:flex;align-items:center;gap:8px;font-size:.9em">
-              <input type="checkbox" id="l_lbt" checked />
+              <input type="checkbox" id="l_lbt" />
               <span>Wait for channel to be quiet before transmitting</span>
             </label>
-            <div class="field-hint">Reduces collisions in multi-unit fleets. Recommended on. Each unit decides independently — no fleet coordination needed.</div>
+            <div class="field-hint">Off by default. LBT can SILENTLY DROP frames if the channel never becomes quiet within its timeout — manifests as occasional config-push failures. Only enable on genuinely busy channels.</div>
           </div>
           <div class="field">
             <label class="field-label">Encryption Key (hex, 4 chars)</label>
@@ -2234,7 +2234,7 @@ function applyConfigToForm(cfg) {
   set('l_freq', l.frequency_mhz); set('l_power', l.tx_power_dbm);
   set('l_channel', l.channel); set('l_adr', l.air_data_rate);
   const lbtEl = document.getElementById('l_lbt');
-  if (lbtEl) lbtEl.checked = (l.lbt_enable !== false);   // default-on
+  if (lbtEl) lbtEl.checked = (l.lbt_enable === true);   // default-off
   const cryptEl = document.getElementById('l_crypt');
   if (cryptEl) {
     const h = (l.crypt_h != null) ? l.crypt_h : 0x07;
