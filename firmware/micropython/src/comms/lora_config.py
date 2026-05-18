@@ -222,7 +222,7 @@ def read(transport):
         return None
     # Tiny tail wait so the last byte of the 11-byte reply finishes
     # shifting into the Pico's UART RX FIFO.
-    time.sleep_ms(20)
+    time.sleep_ms(400) # The datasheet specifies 300 ms max for the whole read op, but we found that some modules (especially under load) can take a bit longer. 400 ms is a safe margin.
     reply = transport._uart.read()
     _set_mode(transport, (0, 0))             # back to NORMAL
     if reply is None or len(reply) < 11:
@@ -254,7 +254,7 @@ def write(transport, payload8, persist=False):
         log.warn("[LORA_CFG] write: AUX never returned HIGH after command")
         _set_mode(transport, (0, 0))
         return False
-    time.sleep_ms(20)
+    time.sleep_ms(400) # Extra delay to give the module a moment to finish its internal write
     reply = transport._uart.read()
     _set_mode(transport, (0, 0))             # back to NORMAL
     if reply is None or len(reply) < 11:
