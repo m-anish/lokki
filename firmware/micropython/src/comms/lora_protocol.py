@@ -148,10 +148,11 @@ class LoRaProtocol:
                     f"or use a batched sender if the command is splittable)"
                 )
                 return None
-            lora_transport.send(
-                dest if dest != _BROADCAST else 0xFFFF,
-                raw
-            )
+            # Transport maps logical dest → (DESTH, DESTL) per the FIXED-mode
+            # address scheme. _BROADCAST (255), 0xFFFF, and None all collapse
+            # to the (0xFF, 0xFF) broadcast destination; 0..8 map to leaf or
+            # coord directly.
+            lora_transport.send(dest, raw)
             if msg_type in _ACK_REQUIRED:
                 self._pending[seq] = {
                     "msg": envelope,
@@ -306,6 +307,11 @@ class LoRaProtocol:
         log.info("[LORA_PROTO] Listener started")
         while True:
             try:
+                # Cooperative pause while a register operation is in flight.
+                # See lora_transport.config_in_progress + comms/lora_config.py.
+                if lora_transport.config_in_progress:
+                    await asyncio.sleep_ms(50)
+                    continue
                 raw = lora_transport.recv()
                 if raw:
                     # The transport stripped the trailing RSSI byte the E220
@@ -350,11 +356,12 @@ class LoRaProtocol:
         seq      = msg.get("seq", 0)
         payload  = msg.get("p", {})
 
-        # Application-layer destination filtering. The E220 modules run in
-        # transparent mode (no hardware-level address filter), so every unit
-        # on the same channel sees every packet. Drop frames not addressed
-        # to us — except broadcasts (dest == _BROADCAST or 0xFFFF) and our
-        # own ACKs (which can come from anywhere).
+        # Defence-in-depth destination filter. The E220 now runs in FIXED
+        # mode and hardware-filters by ADDR (coord at 0xFFFF accepts all,
+        # leaves only their own + 0xFFFF broadcasts), so most off-target
+        # frames are dropped before reaching the UART. This check still
+        # catches the broadcast-to-everyone-but-app-cares-only-about-N
+        # case and is cheap.
         if msg_type != ACK and dest != self._unit_id and dest != _BROADCAST and dest != 0xFFFF:
             return
 

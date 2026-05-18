@@ -248,8 +248,12 @@ if [ "$FRESH" = "1" ]; then
   "lora": {
     "enabled": true,
     "frequency_mhz": 868,
+    "air_data_rate": 2400,
     "tx_power_dbm": 22,
-    "channel": 0
+    "channel": 18,
+    "subpacket_size": 200,
+    "lbt_enable": false,
+    "ambient_rssi_enable": false
   },
   "timezone": { "name": "UTC", "utc_offset_hours": 0 },
   "hardware": {

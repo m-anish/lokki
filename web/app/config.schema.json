@@ -43,9 +43,12 @@
       "properties": {
         "enabled":               { "type": "boolean" },
         "frequency_mhz":         { "type": "number", "minimum": 862, "maximum": 920 },
-        "air_data_rate":         { "type": "integer", "enum": [300, 1200, 2400, 4800, 9600] },
-        "tx_power_dbm":          { "type": "integer", "minimum": 0, "maximum": 22 },
-        "channel":               { "type": "integer", "minimum": 0, "maximum": 83 },
+        "air_data_rate":         { "type": "integer", "enum": [300, 1200, 2400, 4800, 9600, 19200, 38400, 62500] },
+        "tx_power_dbm":          { "type": "integer", "enum": [10, 13, 17, 22] },
+        "channel":               { "type": "integer", "minimum": 0, "maximum": 80 },
+        "subpacket_size":        { "type": "integer", "enum": [32, 64, 128, 200] },
+        "lbt_enable":            { "type": "boolean" },
+        "ambient_rssi_enable":   { "type": "boolean" },
         "heartbeat_interval_s":  { "type": "integer" },
         "heartbeat_timeout_s":   { "type": "integer" }
       }

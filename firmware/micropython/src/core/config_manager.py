@@ -334,8 +334,21 @@ class ConfigManager:
         if not isinstance(freq, (int, float)) or freq < 800 or freq > 930:
             errors.append("lora.frequency_mhz must be 800–930")
         pwr = lora.get("tx_power_dbm", 22)
-        if not isinstance(pwr, int) or pwr < 0 or pwr > 22:
-            errors.append("lora.tx_power_dbm must be 0–22")
+        if pwr not in (10, 13, 17, 22):
+            errors.append("lora.tx_power_dbm must be one of 10, 13, 17, 22")
+        air = lora.get("air_data_rate", 2400)
+        if air not in (300, 1200, 2400, 4800, 9600, 19200, 38400, 62500):
+            errors.append("lora.air_data_rate invalid; allowed: 300/1200/2400/4800/9600/19200/38400/62500")
+        chan = lora.get("channel", 18)
+        if not isinstance(chan, int) or chan < 0 or chan > 80:
+            errors.append("lora.channel must be int 0–80")
+        sub = lora.get("subpacket_size", 200)
+        if sub not in (32, 64, 128, 200):
+            errors.append("lora.subpacket_size must be one of 32/64/128/200")
+        if "lbt_enable" in lora and not isinstance(lora["lbt_enable"], bool):
+            errors.append("lora.lbt_enable must be bool if provided")
+        if "ambient_rssi_enable" in lora and not isinstance(lora["ambient_rssi_enable"], bool):
+            errors.append("lora.ambient_rssi_enable must be bool if provided")
 
     def _validate_ldr(self, errors):
         ldr = self._config.get("ldr", {})

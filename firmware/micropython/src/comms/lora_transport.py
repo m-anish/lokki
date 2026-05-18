@@ -1,48 +1,42 @@
 """E220-900T22D LoRa transport layer.
 
-Runtime philosophy: the firmware does NOT enter CONFIG mode at boot, does
-NOT issue any register-mode commands, and does NOT bounce M0/M1. Modules
-are provisioned ONCE via utils/e220_provisioner_cli.py (over a Pico-side
-bridge that runs separately) and then live forever in their NVRAM-set
-state.
+Runtime philosophy: program the E220's volatile registers at boot from
+config.json (one source of truth), then operate in FIXED-mode for
+hardware-directed addressing. NVRAM is left untouched — reboot
+re-derives. This replaces the earlier bridge-only provisioning workflow,
+which we kept around because we *thought* runtime register writes
+wedged the RF path; extensive testing (tests/lora_e220_inband_test.py)
+showed that was actually a sequencing bug in the old transport, not
+silicon.
 
-Why: extensive hardware testing on this Pico-2 + E220-900T22D combination
-showed that any UART command exchange in CONFIG mode (read OR write) wedges
-the radio's RX path, even when written values are identical to the existing
-state. Mode-pin bouncing alone is fine. The fix is to never enter CONFIG
-mode at runtime — and the cost is zero: addressing happens in our own
-JSON envelope (`s`/`d` fields), not at the hardware level.
+Address scheme (set per-unit in lora_config.apply_from_config):
+  coord (unit_id == 0):  ADDR = 0xFFFF (monitor / sees everything)
+  leaf  (unit_id  > 0):  ADDR = 0x00<id>
 
-What this transport DOES do:
-  - Open UART0 at 9600 8N1 (matches the modules' provisioned UART rate)
-  - Drive M0=0, M1=0 (NORMAL mode — transmit + receive)
-  - Wait for AUX HIGH so we know the module is actually ready
-  - Send raw payload bytes via uart.write()
-  - Receive raw payload bytes via uart.read(), stripping the trailing
-    RSSI byte that the module appends per provisioning (REG3 bit 7 = 1)
+Wire framing in FIXED mode: every TX is prefixed by [DESTH, DESTL, CHAN]
+which the module strips before air transmission and which the receiver
+never sees. send() handles this prefixing transparently — callers pass
+a logical `dest_id` (0..8 or 0xFF for broadcast).
 
-If a module hasn't been provisioned (still at factory defaults), the
-trailing-byte strip will eat real payload data. So provisioning with
---rssi-byte is a hard requirement; documented at the deploy step.
+RSSI byte: forced ON in REG3 bit 7. recv() unconditionally strips the
+trailing byte and stashes the decoded dBm on last_rssi_dbm.
 """
 
 import time
 from machine import UART, Pin
 from core.config_manager import config_manager
 from shared.simple_logger import Logger
+from comms import lora_config
 
 log = Logger()
 
-# Operating modes via M0/M1 — we only ever use NORMAL.
-_MODE_NORMAL = (0, 0)
-
-# AUX is the module's ready/busy line. HIGH = idle (radio listening). LOW
-# = transmitting / receiving / processing. Before transmit we wait for AUX
-# HIGH, otherwise we'd race the previous TX or an in-flight RX.
+# AUX is the module's ready/busy line. HIGH = idle.
 _AUX_POLL_MS    = 10
 _AUX_TIMEOUT_S  = 5
-_BAUD           = 9600
-_BROADCAST_ADDR = 0xFFFF
+_BAUD           = 9600          # Pico ↔ E220 UART rate. Matches PROGRAM-mode
+                                # required baud so we never deinit/reinit
+                                # the UART around register operations.
+_BROADCAST_ADDR = 0xFF          # high-level "send to everyone"
 
 
 class LoRaTimeoutError(Exception):
@@ -58,15 +52,21 @@ class LoRaTransport:
         self._aux     = None
         self._channel = 0
         self._ready   = False
-        # Set True once UART + mode pins are up. There's no register-mode
-        # round-trip to fail anymore, so this is purely a "did the
-        # constructor run cleanly" flag.
         self.config_ok = False
-        # RSSI of the most recently received frame, in dBm. None until we
-        # actually receive something. Populated in recv() by stripping
-        # the RSSI byte the module appends (when provisioned with REG3
-        # bit 7 = 1).
+        # RSSI of the most recently received frame in dBm. None until we
+        # actually receive something. Populated by recv() from the
+        # trailing byte the module appends (REG3 bit 7 = 1 enforced in
+        # lora_config.build_register_payload).
         self.last_rssi_dbm = None
+        # Cooperative "stop touching M0/M1 and the UART" flag. set by
+        # lora_config when a register read/write is in flight; observed
+        # by send() and the protocol-layer listen task. Cheaper than a
+        # full asyncio.Lock and avoids propagating async-ness through
+        # every caller in the codebase.
+        self.config_in_progress = False
+        # Live decoded view of the registers we last applied — exposed
+        # via /api/lora-config for the dashboard.
+        self.last_applied = None
 
     def init(self):
         log.info("[LORA] Starting initialization...")
@@ -88,32 +88,46 @@ class LoRaTransport:
 
             self._uart = UART(uart_id, baudrate=_BAUD,
                               tx=Pin(tx_pin), rx=Pin(rx_pin))
-            # Channel is informational only — the module's actual channel
-            # is whatever was set in NVRAM during provisioning. We log
-            # the configured value so any mismatch with the provisioned
-            # state is easy to spot.
-            self._channel = lora.get("channel", 0)
+            self._channel = int(lora.get("channel", 18))
 
             log.info(f"[LORA] AUX at boot = {self._aux.value()} "
                      f"(should be 1; if 0, module is busy or wired wrong)")
 
-            # Drive M0=0, M1=0. That's all we ever do to the mode pins.
+            # Start in NORMAL mode so the module is in a known state
+            # before we attempt the register write.
             self._m0.value(0)
             self._m1.value(0)
             time.sleep_ms(100)
 
-            # Wait for AUX HIGH so we know the radio is actually idle and
-            # listening before we try to transmit.
             if not self._wait_aux_settled(timeout_s=_AUX_TIMEOUT_S):
                 log.warn("[LORA] AUX did not settle HIGH at boot — module "
-                         "may be busy or unprovisioned. Continuing anyway.")
+                         "may be busy or wired wrong. Continuing anyway.")
             else:
                 log.debug("[LORA] AUX settled HIGH — radio is idle")
 
+            # Program the module's volatile registers from config.json.
+            # FIXED mode + per-unit ADDR + RSSI byte ON. NVRAM is left
+            # untouched; reboot re-derives. See lora_config.py for the
+            # full payload composition.
+            unit_id = config_manager.unit_id
+            ok = lora_config.apply_from_config(self, unit_id, lora,
+                                               persist=False)
+            if ok:
+                self.last_applied = lora_config.decode_register_payload(
+                    lora_config.build_register_payload(unit_id, lora)
+                )
+                log.info(f"[LORA] Volatile registers programmed for unit {unit_id} "
+                         f"(ADDR={self.last_applied['addr_hex']}, "
+                         f"channel={self.last_applied['channel']}, "
+                         f"air_rate={self.last_applied['air_rate']}, "
+                         f"tx_power={self.last_applied['tx_power_dbm']} dBm)")
+            else:
+                log.error("[LORA] Failed to program volatile registers. "
+                          "Module will run in whatever state NVRAM holds — "
+                          "expect address/mode mismatch.")
+
             self._ready    = True
-            self.config_ok = True
-            log.info(f"[LORA] Transport ready (NORMAL mode, configured channel={self._channel}, "
-                     "module config from NVRAM — no runtime register writes)")
+            self.config_ok = ok
 
         except Exception as e:
             log.error(f"[LORA] Init failed: {e}")
@@ -126,34 +140,30 @@ class LoRaTransport:
     # ------------------------------------------------------------------
 
     def send(self, dest_id, payload_bytes):
-        """Transmit `payload_bytes`. `dest_id` is informational at the
-        transport layer (modules are in transparent mode and the byte
-        stream goes out as-is). It's surfaced here for symmetry with
-        what the protocol layer expects.
+        """Transmit `payload_bytes` to `dest_id`.
+
+        `dest_id` semantics:
+          0           → coord (DEST = 0x0000)
+          1..8        → leaf with that unit_id (DEST = 0x00<id>)
+          255 / 0xFFFF→ broadcast (DEST = 0xFFFF)
+
+        In FIXED mode the module strips the 3-byte [DESTH, DESTL, CHAN]
+        header before air transmission, so the receiver never sees it.
         """
         if not self._ready:
             return False
+        if self.config_in_progress:
+            # Don't touch the UART while a register op is in flight.
+            # Caller (protocol layer) will retry on its next tick.
+            return False
+
+        destH, destL = self._encode_dest(dest_id)
+        header = bytes([destH, destL, self._channel])
+
         self._wait_aux()
-        # Transparent mode: no [DESTH][DESTL][CHAN] header. Bytes go
-        # straight to the air. Destination filtering happens at the
-        # protocol layer via the JSON envelope's `d` field.
-        self._uart.write(payload_bytes)
-        
-        # Give the E220 a moment to pull AUX LOW. At 9600 baud, the first byte
-        # takes ~1ms to transmit over UART, after which the module drops AUX.
-        # We poll briefly so back-to-back send()s don't concatenate packets in
-        # the Pico's UART TX buffer (would exceed the module's 200B limit).
-        #
-        # The AUX-low pulse is short (a few ms), and on a busy CPU we routinely
-        # *miss* the falling edge — by the time we look, AUX has already
-        # cycled low-and-back-high. The old code waited a full second and
-        # logged a WARN, flooding the notifications surface with cosmetic
-        # noise on every missed edge (see investigation in the dashboard
-        # observability work). The wait now caps at 150 ms (plenty for the
-        # back-to-back saturation case we actually care about) and the
-        # "didn't see AUX low" condition is logged at DEBUG instead of WARN
-        # since it usually means we missed the pulse, not that the module
-        # ignored the UART.
+        self._uart.write(header + payload_bytes)
+
+        # Brief AUX-low watch — see commit history for the rationale.
         deadline_ms = time.ticks_add(time.ticks_ms(), 150)
         while self._aux.value() == 1:
             if time.ticks_diff(deadline_ms, time.ticks_ms()) <= 0:
@@ -161,27 +171,23 @@ class LoRaTransport:
                           "(likely missed the pulse; data was transmitted)")
                 break
             time.sleep_ms(1)
-            
         return True
 
     def recv(self):
         """Return application-payload bytes from the UART buffer, or None.
 
-        Modules provisioned with REG3 bit 7 = 1 append one RSSI byte to
-        every received frame. We strip it, decode `RSSI_dBm = -(256 - byte)`,
-        and stash on `self.last_rssi_dbm` for the protocol layer to surface.
-
-        IMPORTANT: this assumes the module *is* provisioned with
-        --rssi-byte. If it's not, the trailing-byte strip eats real
-        payload data and JSON parsing will fail.
+        The trailing RSSI byte (REG3 bit 7 = 1, enforced at init) is
+        stripped and decoded into last_rssi_dbm. FIXED-mode RX does NOT
+        include the destination header — the module strips it before
+        forwarding to UART.
         """
         if not self._ready or not self._uart.any():
             return None
-            
-        # The E220's AUX pin goes LOW while it is transmitting data to us over UART.
-        # If we read immediately while AUX is LOW, we might read a partial packet
-        # (and erroneously strip the last byte of the chunk as the RSSI byte).
-        # We wait for AUX to go HIGH, indicating the module has finished its output.
+        if self.config_in_progress:
+            return None
+
+        # AUX is LOW while the module forwards data to UART. Read after
+        # AUX HIGH to ensure we have the complete frame.
         deadline = time.time() + 2
         waited = False
         while self._aux.value() == 0:
@@ -190,32 +196,20 @@ class LoRaTransport:
                 log.warn("[LORA] AUX timeout while receiving")
                 break
             time.sleep_ms(2)
-            
+
         if waited:
             log.debug("[LORA] recv waited for AUX HIGH to ensure complete packet")
-            
-        # Read the complete packet
-        # Wait a tiny bit more just in case the last byte is still shifting in
+
         time.sleep_ms(2)
-        
-        # Read up to 256 bytes (default MicroPython UART RX buffer size, which fits
-        # our 200B max payload + headers + RSSI byte).
         raw = self._uart.read(256)
-        
-        # We might have read in a while loop until everything is gathered, 
-        # but waiting for AUX should ensure everything is in the RX buffer.
-        # Let's see if there is more.
         while self._uart.any():
             more = self._uart.read(256)
             if more:
                 raw += more
-                
-        if not raw:
+
+        if not raw or len(raw) < 2:
             return None
-        if len(raw) < 2:
-            # One-byte frame is junk (probably noise). Drop.
-            return None
-            
+
         rssi_byte = raw[-1]
         self.last_rssi_dbm = -(256 - rssi_byte)
         return raw[:-1]
@@ -224,8 +218,15 @@ class LoRaTransport:
         return self._ready and self._uart.any() > 0
 
     # ------------------------------------------------------------------
-    # AUX discipline
+    # Internal
     # ------------------------------------------------------------------
+
+    def _encode_dest(self, dest_id):
+        """Map logical dest_id → (DESTH, DESTL) per the project's address
+        scheme. Anything that looks like a broadcast → 0xFFFF."""
+        if dest_id is None or dest_id == _BROADCAST_ADDR or dest_id == 0xFFFF:
+            return (0xFF, 0xFF)
+        return (0x00, int(dest_id) & 0xFF)
 
     def _wait_aux_settled(self, timeout_s):
         deadline = time.time() + timeout_s
@@ -236,14 +237,11 @@ class LoRaTransport:
         return False
 
     def _wait_aux(self):
-        """Pre-transmit guard: AUX must be HIGH before we send. Raises
-        LoRaTimeoutError if AUX stays LOW past _AUX_TIMEOUT_S — that
-        usually means the module is wedged or the wire is broken."""
         deadline = time.time() + _AUX_TIMEOUT_S
         while self._aux.value() == 0:
             if time.time() > deadline:
                 log.error(f"[LORA] AUX stuck LOW for {_AUX_TIMEOUT_S}s — "
-                          "verify wiring and provisioning state")
+                          "verify wiring and register state")
                 raise LoRaTimeoutError("AUX timeout — channel busy")
             time.sleep_ms(_AUX_POLL_MS)
 
