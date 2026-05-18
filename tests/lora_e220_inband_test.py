@@ -30,12 +30,16 @@
 
 import time
 from machine import Pin, UART
+try:
+    import neopixel
+except Exception:
+    neopixel = None
 
 
 # ============================================================
 # What to do this run
 # ============================================================
-OP = "READ"        # READ | WRITE | TX | RX | WEDGE_STRESS
+OP = "READ"        # READ | WRITE | TX | RX | WEDGE_STRESS | RWR | RR | RWT_LOOP
 
 
 # ============================================================
@@ -48,6 +52,12 @@ M0_PIN   = 2
 M1_PIN   = 3
 AUX_PIN  = 4
 
+# WS2812 status LED — matches the leaf's status_led_pin / led_color_order.
+# Flashed red on TX, green on RX. Set LED_PIN to None to disable.
+LED_PIN   = 5
+LED_ORDER = "RGB"   # the abstract color order the user sees; hw is GRB
+LED_FLASH_MS = 60
+
 # UART baud while in NORMAL mode. The module forces 9600 in CONFIG
 # regardless of REG0 baud bits, so the script always switches the UART
 # baud around mode changes.
@@ -57,11 +67,14 @@ DATA_BAUD = 9600
 # ============================================================
 # WRITE op — register payload to program
 # ============================================================
-# 16-bit module address. With FIXED transmission mode (REG3 bit 6 = 1),
-# the module's hardware filter drops frames not addressed to this
-# (ADDH, ADDL) or to the broadcast 0xFFFF.
-WR_ADDH = 0x00
-WR_ADDL = 0x01
+# 16-bit module address. 0xFFFF is the broadcast / accept-everything
+# address — set both Picos here to avoid futzing with per-Pico
+# addressing while we're still validating that runtime config works at
+# all. Per the datasheet transparent mode shouldn't filter by ADDR, but
+# empirically these modules do, so matching addresses is the simplest
+# fix.
+WR_ADDH = 0xFF
+WR_ADDL = 0xFF
 
 # REG0 — UART, parity, air rate
 WR_BAUD_BITS   = 0b011    # 0b011 = 9600. See datasheet table 6.1.
@@ -129,6 +142,18 @@ WS_TX_PER_CYCLE   = 10
 WS_RX_LISTEN_S    = 5
 WS_INTER_DELAY_MS = 100
 
+# ============================================================
+# RWT_LOOP op (Read - Write - Transmit, in a loop)
+# ============================================================
+# End-to-end validation: do RF photons actually reach a peer Pico after
+# each register WRITE? Pair this Pico with another running OP="RX".
+# If frames keep arriving on the RX side, in-band config is safe.
+# If frames stop after cycle 1, the WRITE is wedging the RF path even
+# though manual READs still work afterwards.
+RWT_CYCLES        = 50
+RWT_DELAY_MS      = 1000  # between cycles
+RWT_INTRA_DELAY_MS = 100  # between R/W/T within a cycle
+
 
 # ============================================================
 # Module-level constants — DO NOT edit unless following the datasheet
@@ -151,6 +176,36 @@ m0  = Pin(M0_PIN,  Pin.OUT, value=0)
 m1  = Pin(M1_PIN,  Pin.OUT, value=0)
 aux = Pin(AUX_PIN, Pin.IN)
 uart = UART(UART_ID, baudrate=DATA_BAUD, tx=Pin(TX_PIN), rx=Pin(RX_PIN))
+
+# ============================================================
+# LED helper (red on TX, green on RX)
+# ============================================================
+_np = None
+if neopixel is not None and LED_PIN is not None:
+    try:
+        _np = neopixel.NeoPixel(Pin(LED_PIN), 1)
+    except Exception:
+        _np = None
+
+
+def _led_set(r, g, b):
+    if _np is None:
+        return
+    # WS2812 hardware order is GRB. If the user thinks in "RGB", we
+    # swap; if they've set LED_ORDER="GRB" we trust them.
+    if LED_ORDER == "RGB":
+        _np[0] = (g, r, b)
+    else:
+        _np[0] = (r, g, b)
+    _np.write()
+
+
+def _led_blink(r, g, b, ms=None):
+    if _np is None:
+        return
+    _led_set(r, g, b)
+    time.sleep_ms(ms if ms is not None else LED_FLASH_MS)
+    _led_set(0, 0, 0)
 
 
 # ============================================================
@@ -203,13 +258,24 @@ def _drain_uart():
         uart.read(n)
 
 
+_current_baud = DATA_BAUD
+
 def _switch_uart_baud(baud):
-    """The E220's UART baud is fixed at 9600 while in PROGRAM mode but
-    follows REG0 once back in NORMAL. We re-init the UART around mode
-    transitions so both sides agree."""
-    global uart
+    """The E220's UART baud is fixed at 9600 in PROGRAM mode but follows
+    REG0 in NORMAL. If the two bauds differ we have to re-init the UART
+    around mode transitions; if they're the same (e.g. running NORMAL at
+    9600 too), the deinit/reinit dance is *worse than useless*: it
+    leaves the RP2350's UART peripheral in a transient state that the
+    next register-read times out against.
+    Empirically: WRITE → TX → deinit/reinit-at-same-baud → READ fails.
+    Same flow without the deinit/reinit works fine."""
+    global uart, _current_baud
+    if baud == _current_baud:
+        return                                  # nothing to do — preserve UART state
     uart.deinit()
     uart = UART(UART_ID, baudrate=baud, tx=Pin(TX_PIN), rx=Pin(RX_PIN))
+    _current_baud = baud
+    _managed_delay(50)                          # let the peripheral settle
 
 
 # ============================================================
@@ -263,6 +329,13 @@ def op_read():
     [0xC1, 0x00, 0x08, ...8 reg bytes] → NORMAL → decode + print.
     No data path touched."""
     print("[READ] Entering PROGRAM mode")
+    # CRITICAL: wait until the module is idle (AUX HIGH) BEFORE we touch
+    # the UART baud or M0/M1. If we tear down the UART while the module
+    # is still flushing a previous TX, the in-flight byte gets cut and
+    # the module enters a confused state where the very next register
+    # read returns nothing. (Confirmed empirically with WEDGE_STRESS.)
+    if not wait_aux_high(2000):
+        print("[READ] Module still busy (AUX LOW > 2s) — aborting"); return False
     _switch_uart_baud(CONFIG_BAUD)
     if not set_mode("PROGRAM"):
         print("[READ] AUX did not go HIGH on PROGRAM entry — aborting"); return False
@@ -292,6 +365,9 @@ def op_write():
     11-byte echo with cmd swapped to 0xC1 → NORMAL → verify echo
     matches what we sent."""
     print("[WRITE] Entering PROGRAM mode (persist=%s)" % PERSIST)
+    # Same front-edge AUX guard as op_read — see comment there.
+    if not wait_aux_high(2000):
+        print("[WRITE] Module still busy (AUX LOW > 2s) — aborting"); return False
     _switch_uart_baud(CONFIG_BAUD)
     if not set_mode("PROGRAM"):
         print("[WRITE] AUX did not go HIGH on PROGRAM entry — aborting"); return False
@@ -335,6 +411,7 @@ def _tx_one(seq):
     else:
         frame = body
     uart.write(frame)
+    _led_blink(255, 0, 0)   # red flash on send
 
 
 def op_tx():
@@ -352,6 +429,11 @@ def op_tx():
             print("[TX] %d sent" % i)
         time.sleep_ms(TX_INTERVAL_MS)
     print("[TX] done")
+
+
+def _on_rx_frame():
+    """Hook for RX visual feedback — green flash."""
+    _led_blink(0, 255, 0)
 
 
 def _print_rx_frame(raw):
@@ -402,6 +484,7 @@ def op_rx():
             raw = uart.read()
             if raw:
                 count += 1
+                _on_rx_frame()
                 _print_rx_frame(raw)
         time.sleep_ms(20)
     print("[RX] done, %d frames received" % count)
@@ -431,6 +514,12 @@ def op_wedge_stress():
         for i in range(WS_TX_PER_CYCLE):
             _tx_one(cycle * 1000 + i)
             time.sleep_ms(150)
+        # Wait for the final TX frame to actually leave the air before we
+        # disturb the module again. uart.write() returns when the Pico is
+        # done shoving bytes into the E220's UART; the module then needs
+        # time to RF-transmit them. AUX goes LOW during TX and back HIGH
+        # when done — that's our "fully drained" signal.
+        wait_aux_high(3000)
         time.sleep_ms(WS_INTER_DELAY_MS)
 
         if not op_read():
@@ -448,6 +537,7 @@ def op_wedge_stress():
                 raw = uart.read()
                 if raw:
                     rx_count += 1
+                    _on_rx_frame()
             time.sleep_ms(20)
         rx_log.append(rx_count)
         print("[STRESS] Cycle %d: rx=%d in %ds" % (cycle, rx_count, WS_RX_LISTEN_S))
@@ -466,6 +556,100 @@ def op_wedge_stress():
         print("[STRESS] FAIL: RX appears to wedge after register writes")
     else:
         print("[STRESS] PASS: RX survives register writes")
+
+
+def op_rr():
+    """Two READs back-to-back with NORMAL mode in between. Strips
+    everything else away — no TX, no register write. If this fails on
+    the second READ, we know the issue is consecutive PROGRAM-mode ops
+    in the same boot, not anything to do with TX or with mutating
+    registers."""
+    print("\n[RR] === First READ ===")
+    if not op_read():
+        print("[RR] First READ failed — module probably wasn't ready at boot."); return
+    print("\n[RR] === Settle in NORMAL for 500 ms ===")
+    if not set_mode("NORMAL"):
+        print("[RR] Couldn't return to NORMAL between reads."); return
+    time.sleep_ms(500)
+    print("\n[RR] === Second READ ===")
+    if not op_read():
+        print("\n[RR] FAIL: second consecutive READ returned no data.")
+        print("[RR] This proves the issue is consecutive PROGRAM-mode ops,")
+        print("[RR] not anything to do with writes or transparent-mode TX.")
+        return
+    print("\n[RR] PASS: two READs in the same boot both succeeded.")
+
+
+def op_rwt_loop():
+    """Read-Write-Transmit loop. Pair with another Pico in OP='RX'.
+
+    Each cycle:
+      1. READ current registers (confirm we can talk to the module).
+      2. WRITE the same register payload back (volatile). This is the
+         operation we want to prove safe — if it's going to wedge the
+         RF path, we'll see no further TX frames arriving on the peer.
+      3. Send one TX frame (numbered sequentially).
+      4. Settle in NORMAL for RWT_DELAY_MS, then repeat.
+
+    On the partner Pico, run OP='RX'. The pass criterion is: frames keep
+    arriving on the partner across all RWT_CYCLES cycles. The fail mode
+    is: frames stop arriving after cycle 1 (the first WRITE)."""
+    print("[RWT] %d cycles of read-write-tx, %d ms between cycles" % (RWT_CYCLES, RWT_DELAY_MS))
+    print("[RWT] Pair me with a second Pico running OP='RX' on the same channel.")
+    print("[RWT] Watch the peer's REPL — frames stopping = WRITE wedged the RF path.")
+
+    for cycle in range(1, RWT_CYCLES + 1):
+        print("\n[RWT] === Cycle %d/%d ===" % (cycle, RWT_CYCLES))
+
+        if not op_read():
+            print("[RWT] FAIL at cycle %d: READ failed" % cycle); return
+        time.sleep_ms(RWT_INTRA_DELAY_MS)
+
+        if not op_write():
+            print("[RWT] FAIL at cycle %d: WRITE failed" % cycle); return
+        time.sleep_ms(RWT_INTRA_DELAY_MS)
+
+        # TX one frame from NORMAL mode. op_write() left us in NORMAL.
+        if not wait_aux_high(2000):
+            print("[RWT] WARN: AUX still LOW before TX (cycle %d)" % cycle)
+        _tx_one(cycle)
+        print("[RWT] Cycle %d: TX'd frame seq=%d. Check peer's REPL." % (cycle, cycle))
+        # Wait for the frame to actually leave the air before the next cycle.
+        wait_aux_high(3000)
+        time.sleep_ms(RWT_DELAY_MS)
+
+    print("\n[RWT] All %d cycles completed on the TX side without local error." % RWT_CYCLES)
+    print("[RWT] If the peer's REPL shows %d frames received, in-band config is safe." % RWT_CYCLES)
+
+
+def op_rwr():
+    """READ → WRITE (with WR_ADDL changed) → READ, NORMAL between each.
+    Verifies the second READ reflects what WRITE just put in volatile.
+    This is what you asked for: simplest test of back-to-back ops with a
+    meaningful register change in the middle."""
+    print("\n[RWR] === First READ (initial state) ===")
+    if not op_read():
+        print("[RWR] First READ failed."); return
+    print("\n[RWR] === Settle in NORMAL for 500 ms ===")
+    if not set_mode("NORMAL"):
+        print("[RWR] Couldn't return to NORMAL after first READ."); return
+    time.sleep_ms(500)
+    print("\n[RWR] === WRITE (changing ADDL to 0x%02X) ===" % WR_ADDL)
+    if not op_write():
+        print("\n[RWR] FAIL: WRITE failed.")
+        print("[RWR] Means a READ followed by a WRITE wedges the module.")
+        return
+    print("\n[RWR] === Settle in NORMAL for 500 ms ===")
+    if not set_mode("NORMAL"):
+        print("[RWR] Couldn't return to NORMAL after WRITE."); return
+    time.sleep_ms(500)
+    print("\n[RWR] === Second READ (should reflect the WRITE) ===")
+    if not op_read():
+        print("\n[RWR] FAIL: second READ failed after a successful WRITE.")
+        print("[RWR] This is the 'WRITE wedges subsequent reads' shape.")
+        return
+    print("\n[RWR] PASS: READ → WRITE → READ all completed in one boot.")
+    print("[RWR] The second READ above should show ADDL = 0x%02X." % WR_ADDL)
 
 
 # ============================================================
@@ -488,8 +672,11 @@ def main():
     elif OP == "TX":            op_tx()
     elif OP == "RX":            op_rx()
     elif OP == "WEDGE_STRESS":  op_wedge_stress()
+    elif OP == "RR":            op_rr()
+    elif OP == "RWR":           op_rwr()
+    elif OP == "RWT_LOOP":      op_rwt_loop()
     else:
-        print("[ERR] Unknown OP %r. Pick READ | WRITE | TX | RX | WEDGE_STRESS." % OP)
+        print("[ERR] Unknown OP %r. Pick READ | WRITE | TX | RX | WEDGE_STRESS | RR | RWR | RWT_LOOP." % OP)
 
 
 main()
