@@ -74,8 +74,17 @@ class LoRaTransport:
             hw   = config_manager.get("hardware")
             lora = config_manager.get("lora")
 
-            self._m0  = Pin(hw.get("lora_m0_pin",  2), Pin.OUT)
-            self._m1  = Pin(hw.get("lora_m1_pin",  3), Pin.OUT)
+            # Atomic creation at LOW — critical. If we use
+            # Pin(..., Pin.OUT) without value=0, the GPIO is driven OUT
+            # but at an indeterminate initial level for a short window
+            # before our explicit value(0). The module sees M0/M1
+            # glitch HIGH, briefly enters CONFIG mode, then back to
+            # NORMAL. That hidden mode-bounce leaves the module in a
+            # state where the first register-mode write fails with
+            # "short reply None" (looks like the WEDGE_STRESS bug from
+            # earlier in this session — same root, different trigger).
+            self._m0  = Pin(hw.get("lora_m0_pin",  2), Pin.OUT, value=0)
+            self._m1  = Pin(hw.get("lora_m1_pin",  3), Pin.OUT, value=0)
             self._aux = Pin(hw.get("lora_aux_pin", 4), Pin.IN)
 
             uart_id = hw.get("lora_uart_id", 0)

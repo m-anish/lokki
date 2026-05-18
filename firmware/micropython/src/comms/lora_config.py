@@ -231,21 +231,35 @@ def write(transport, payload8, persist=False):
     return ok
 
 
+_APPLY_MAX_ATTEMPTS = 3
+
+
 def apply_from_config(transport, unit_id, lora_cfg, persist=False):
     """Compose the right register payload for this unit and write it
     via write(). This is the boot-time entry point — call it once after
     transport.init() has set up the UART and pins.
 
     Holds transport.config_in_progress for the duration so the listen
-    task and senders cooperatively step aside. Returns True iff the
-    written values readback verbatim."""
+    task and senders cooperatively step aside. Retries up to 3 times
+    on transient failures (occasional short reply from the module
+    when state is borderline) before giving up. Returns True iff the
+    written values readback verbatim within the retry budget."""
     payload = build_register_payload(unit_id, lora_cfg)
     log.info(f"[LORA_CFG] apply_from_config unit_id={unit_id} payload={payload.hex()} "
              f"persist={persist}")
 
     transport.config_in_progress = True
     try:
-        ok = write(transport, payload, persist=persist)
+        for attempt in range(1, _APPLY_MAX_ATTEMPTS + 1):
+            ok = write(transport, payload, persist=persist)
+            if ok:
+                if attempt > 1:
+                    log.info(f"[LORA_CFG] write succeeded on attempt {attempt}")
+                break
+            # Failed. Give the module a moment to settle, then try again.
+            log.warn(f"[LORA_CFG] write attempt {attempt}/{_APPLY_MAX_ATTEMPTS} "
+                     f"failed; retrying after 200 ms")
+            time.sleep_ms(200)
     finally:
         transport.config_in_progress = False
 
