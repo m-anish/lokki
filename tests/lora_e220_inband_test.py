@@ -347,7 +347,15 @@ def op_read():
     _drain_uart()
 
     uart.write(bytes([CMD_READ_REGS, REG_ADDR_CFG, PL_CONFIG]))
-    _managed_delay(200)   # leave time for module to assemble reply
+    # Wait for the module to actually have a reply ready — AUX HIGH is
+    # the deterministic "done processing" semaphore. The blind 200 ms
+    # delay was the root cause of years of intermittent register-op
+    # failures: if the module took longer (LBT delay, channel busy,
+    # slower silicon revision), uart.read() saw an incomplete buffer.
+    if not wait_aux_high(2000):
+        print("[READ] AUX never returned HIGH after command — aborting")
+        set_mode("NORMAL"); _switch_uart_baud(DATA_BAUD); return False
+    _managed_delay(20)    # tail wait so the last reply byte finishes shifting
     reply = uart.read()
     if reply is None or len(reply) < 11:
         print("[READ] Short reply (got %r)" % reply)
@@ -381,7 +389,13 @@ def op_write():
     frame = build_write_frame(PERSIST)
     print("[WRITE] TX 11 bytes:", " ".join("%02X" % b for b in frame))
     uart.write(frame)
-    _managed_delay(300)   # writes take a bit longer than reads
+    # AUX-HIGH after write — see op_read for the same fix. NVRAM writes
+    # are slightly slower (flash sector update) so the wait is more
+    # important here than for reads.
+    if not wait_aux_high(2000):
+        print("[WRITE] AUX never returned HIGH after command — aborting")
+        set_mode("NORMAL"); _switch_uart_baud(DATA_BAUD); return False
+    _managed_delay(20)
     reply = uart.read()
     if reply is None or len(reply) < 11:
         print("[WRITE] Short reply (got %r) — module probably rejected the frame" % reply)

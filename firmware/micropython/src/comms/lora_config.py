@@ -208,7 +208,21 @@ def read(transport):
         return None
     _drain_uart(transport._uart)
     transport._uart.write(bytes([_CMD_READ_REGS, _REG_ADDR_CFG, _PL_CONFIG]))
-    time.sleep_ms(200)
+    # Wait for AUX to go HIGH again — that's the module saying
+    # "I've processed your command and the reply is on the UART."
+    # The original code used a blind 200 ms sleep here, which is the
+    # source of a long string of intermittent register-op failures:
+    # if the module took longer than 200 ms (LBT delay, channel
+    # collision, just a slower silicon revision), uart.read() saw a
+    # partial/empty buffer and we declared the module wedged. The
+    # AUX-HIGH semaphore is the deterministic signal.
+    if not _wait_aux_high(transport, 2000):
+        log.warn("[LORA_CFG] read: AUX never returned HIGH after command")
+        _set_mode(transport, (0, 0))
+        return None
+    # Tiny tail wait so the last byte of the 11-byte reply finishes
+    # shifting into the Pico's UART RX FIFO.
+    time.sleep_ms(20)
     reply = transport._uart.read()
     _set_mode(transport, (0, 0))             # back to NORMAL
     if reply is None or len(reply) < 11:
@@ -233,7 +247,14 @@ def write(transport, payload8, persist=False):
     _drain_uart(transport._uart)
     frame = bytes([cmd, _REG_ADDR_CFG, _PL_CONFIG]) + bytes(payload8)
     transport._uart.write(frame)
-    time.sleep_ms(300)
+    # Same fix as read(): wait for AUX HIGH instead of a blind delay.
+    # NVRAM writes can be slower than RAM writes (flash sector write),
+    # but the AUX semaphore covers both cases.
+    if not _wait_aux_high(transport, 2000):
+        log.warn("[LORA_CFG] write: AUX never returned HIGH after command")
+        _set_mode(transport, (0, 0))
+        return False
+    time.sleep_ms(20)
     reply = transport._uart.read()
     _set_mode(transport, (0, 0))             # back to NORMAL
     if reply is None or len(reply) < 11:
