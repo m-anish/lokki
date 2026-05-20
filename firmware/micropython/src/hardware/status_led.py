@@ -183,10 +183,21 @@ class StatusLED:
         # wire order. For an RGB-native chip we swap r and g so the wire
         # bytes come out correct from the chip's perspective.
         if self._color_order == "RGB":
-            self._np[0] = (g, r, bb)
+            tup = (g, r, bb)
         else:
-            self._np[0] = (r, g, bb)
+            tup = (r, g, bb)
+        self._np[0] = tup
         self._np.write()
+        # Diagnostic: log every actual write to the LED. If a state
+        # change SAYS amber should be showing but no write logs amber
+        # bytes, the write isn't being reached. If a write logs amber
+        # then green immediately after, something is racing us.
+        # Promote to debug only — chatty in production, useful while
+        # chasing visibility bugs.
+        self._log.debug(
+            "[LED] _write order={} brightness={} state={} r,g,b={},{},{} → np[0]={}"
+            .format(self._color_order, brightness, self._state_name,
+                    self._r, self._g, self._b, tup))
 
     async def run_pattern(self):
         import asyncio
