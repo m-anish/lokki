@@ -8,6 +8,7 @@ WEB_DIR="$REPO_ROOT/web/app"
 SAMPLE_CFG="$SRC_DIR/config/samples/config.json.sample"
 SAMPLE_SUN="$REPO_ROOT/firmware/micropython/config/samples/sun_times.json.sample"
 INBAND_TEST="$REPO_ROOT/tests/lora_e220_inband_test.py"
+COLOR_TEST="$REPO_ROOT/firmware/micropython/tools/color_test.py"
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -215,6 +216,16 @@ if [ -f "$INBAND_TEST" ]; then
     mk_remote_dir "tools"
     echo "[update] Flashing in-band LoRa test tool -> :/tools/lora_inband_test.py"
     mpremote connect auto fs cp "$INBAND_TEST" ":tools/lora_inband_test.py"
+fi
+
+# Status-LED colour-cycle tool. Run on the device with:
+#   mpremote exec "exec(open('/tools/color_test.py').read())"
+# Useful for sanity-checking the WS2812 and previewing how named
+# colour constants in src/hardware/status_led.py render.
+if [ -f "$COLOR_TEST" ]; then
+    mk_remote_dir "tools"
+    echo "[update] Flashing status-LED color tool -> :/tools/color_test.py"
+    mpremote connect auto fs cp "$COLOR_TEST" ":tools/color_test.py"
 fi
 
 # ---------------------------------------------------------------------------
