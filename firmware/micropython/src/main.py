@@ -535,15 +535,6 @@ async def main():
     status_led.set_state("booting")
     asyncio.create_task(status_led.run_pattern())
 
-    # Deliberate half-second white flash so the operator sees a clear
-    # "I just woke up" cue, regardless of how fast the rest of init runs.
-    # Without this, the brief dim-white set_state("booting") frame gets
-    # overwritten by lora_init (cyan) within ~30 ms — below the
-    # threshold of perception. The flash uses run_pattern's flash_event
-    # path; the explicit await lets it actually display before we move on.
-    status_led.flash_event(*FLASH_BOOT_RGB, ms=500)
-    await asyncio.sleep_ms(550)
-
     # --- Config ---
     if config_manager.safe_mode_reason:
         log.error(f"[MAIN] Config load failed: {config_manager.safe_mode_reason}")
@@ -563,8 +554,19 @@ async def main():
 
     log.info(f"[MAIN] Lokki booting — role={role} unit_id={cfg.unit_id} name={cfg.unit_name}")
 
-    # Re-bind status LED to configured pin (default singleton uses GPIO 5)
+    # Re-bind status LED to configured pin + color order BEFORE the boot
+    # flash, otherwise we'd flash with the default GRB ordering even on
+    # boards configured as RGB. White is r=g=b so this doesn't matter
+    # cosmetically today, but it's the correct order-of-operations and
+    # protects us if FLASH_BOOT_RGB ever changes to a non-grayscale colour.
     status_led.init_from_config(hw)
+
+    # Deliberate half-second white flash so the operator sees a clear
+    # "I just woke up" cue, regardless of how fast the rest of init
+    # runs. brightness=0.9 because the default 0.4 was hard to see in
+    # ambient light; this one is meant to be unmissable.
+    status_led.flash_event(*FLASH_BOOT_RGB, brightness=0.9, ms=500)
+    await asyncio.sleep_ms(550)
 
     # --- LoRa init — FIRST so any failure can be retried via soft-reset
     # ---
@@ -597,7 +599,7 @@ async def main():
             # Half-second red flash so the operator can see the failure
             # at a glance before the soft-reset blanks the LED. Then
             # flush log lines and reboot.
-            status_led.flash_event(*FLASH_LORA_FAIL_RGB, ms=500)
+            status_led.flash_event(*FLASH_LORA_FAIL_RGB, brightness=0.9, ms=500)
             await asyncio.sleep_ms(550)             # let the flash actually display
             new_count = lora_retry + 1
             _lora_retry_write(new_count)
@@ -606,7 +608,7 @@ async def main():
             _machine.soft_reset()                   # does not return
         # success path: half-second blue flash to confirm, then clear
         # the retry counter and continue boot.
-        status_led.flash_event(*FLASH_LORA_OK_RGB, ms=500)
+        status_led.flash_event(*FLASH_LORA_OK_RGB, brightness=0.9, ms=500)
         await asyncio.sleep_ms(550)
         _lora_retry_clear()
         log.info("[MAIN] LoRa init OK")
