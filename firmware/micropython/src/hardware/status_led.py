@@ -172,6 +172,17 @@ class StatusLED:
             self._np[0] = (g, r, bb)
         else:
             self._np[0] = (r, g, bb)
+        # Double-write with a brief gap. Some WS2812 chips (especially
+        # clones) need an explicit ~50 µs LOW reset between back-to-back
+        # frames to latch the new color, and there are reports that
+        # MicroPython's PIO-driven NeoPixel on RP2350 occasionally
+        # doesn't deliver enough gap from inside an asyncio task. A
+        # second write a millisecond later gives the chip a clear
+        # second chance to latch — cheap insurance for a control LED
+        # that's not in a tight loop.
+        self._np.write()
+        import time as _t
+        _t.sleep_ms(1)
         self._np.write()
 
     async def run_pattern(self):
