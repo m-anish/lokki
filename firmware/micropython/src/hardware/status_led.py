@@ -54,7 +54,7 @@ _STATES = {
     "error":             COLOR_RED     + (0.5,  "blink"), # red blink — something's wrong
     "lora_recovering":   COLOR_RED     + (0.3,  "pulse"), # slow red pulse — LoRa init retry
     "lora_disabled":     COLOR_PURPLE  + (0.25, "solid"), # purple solid — LoRa init failed 3×
-    "reset_armed":       COLOR_AMBER   + (0.6,  "solid"), # amber solid — button is held; release for soft_reset
+    "reset_armed":       COLOR_YELLOW  + (0.3,  "solid"), # yellow solid — button is held; release for soft_reset
     "reset_warning":     COLOR_RED     + (0.9,  "blink"), # red fast blink — keep holding to commit factory reset
     "off":               (0, 0, 0)     + (0.0,  "solid"), # off
 }
@@ -183,21 +183,10 @@ class StatusLED:
         # wire order. For an RGB-native chip we swap r and g so the wire
         # bytes come out correct from the chip's perspective.
         if self._color_order == "RGB":
-            tup = (g, r, bb)
+            self._np[0] = (g, r, bb)
         else:
-            tup = (r, g, bb)
-        self._np[0] = tup
+            self._np[0] = (r, g, bb)
         self._np.write()
-        # Diagnostic: log every actual write to the LED. If a state
-        # change SAYS amber should be showing but no write logs amber
-        # bytes, the write isn't being reached. If a write logs amber
-        # then green immediately after, something is racing us.
-        # Promote to debug only — chatty in production, useful while
-        # chasing visibility bugs.
-        self._log.debug(
-            "[LED] _write order={} brightness={} state={} r,g,b={},{},{} → np[0]={}"
-            .format(self._color_order, brightness, self._state_name,
-                    self._r, self._g, self._b, tup))
 
     async def run_pattern(self):
         import asyncio
