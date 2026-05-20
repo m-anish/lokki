@@ -11,7 +11,7 @@ from hardware.pwm_control import pwm_controller
 from hardware.relay_control import relay_controller
 from hardware.pir_manager import pir_manager
 from hardware.ldr_monitor import ldr_monitor
-from hardware.status_led import status_led
+from hardware.status_led import status_led, FLASH_LORA_OK_RGB, FLASH_LORA_FAIL_RGB
 from hardware.rtc_shared import rtc
 from comms.lora_protocol import lora_protocol
 from comms.lora_transport import lora_transport
@@ -580,12 +580,20 @@ async def main():
             lora_ok = False
 
         if not lora_ok:
+            # Half-second red flash so the operator can see the failure
+            # at a glance before the soft-reset blanks the LED. Then
+            # flush log lines and reboot.
+            status_led.flash_event(*FLASH_LORA_FAIL_RGB, ms=500)
+            await asyncio.sleep_ms(550)             # let the flash actually display
             new_count = lora_retry + 1
             _lora_retry_write(new_count)
             log.warn(f"[MAIN] LoRa init failed — soft-resetting (attempt {new_count}/{_LORA_MAX_RETRIES})")
             _time.sleep_ms(500)                     # let log line flush over USB / event bus
             _machine.soft_reset()                   # does not return
-        # success path: clear counter, continue boot
+        # success path: half-second blue flash to confirm, then clear
+        # the retry counter and continue boot.
+        status_led.flash_event(*FLASH_LORA_OK_RGB, ms=500)
+        await asyncio.sleep_ms(550)
         _lora_retry_clear()
         log.info("[MAIN] LoRa init OK")
 
