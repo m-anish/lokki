@@ -144,16 +144,48 @@ class StatusLED:
                     self._write(self._brightness)
                 continue
 
+            # Snapshot the state we entered the loop with. If anything
+            # in this tuple changes mid-cycle (a set_state from the
+            # main flow, or a flash_event waiting to be picked up),
+            # we bail out early so the loop doesn't keep rendering
+            # the previous pattern's brightness curve with the *new*
+            # color/brightness — the "green-fadeout-from-a-purple-base"
+            # bug that previously made set_state transitions look
+            # weird and ate flash_event() requests for up to 800 ms.
+            token = (self._pattern, self._r, self._g, self._b, self._brightness)
+
+            def _state_unchanged():
+                return ((self._pattern, self._r, self._g, self._b, self._brightness) == token
+                        and self._flash_pending is None)
+
             if self._pattern == "blink":
                 self._write(self._brightness)
-                await asyncio.sleep_ms(_BLINK_ON_MS)
+                # Poll every 20 ms during the ON half so a fresh
+                # set_state / flash_event is honored within ~20 ms.
+                slept = 0
+                while slept < _BLINK_ON_MS and _state_unchanged():
+                    await asyncio.sleep_ms(20)
+                    slept += 20
+                if not _state_unchanged():
+                    continue
                 self._write(0)
-                await asyncio.sleep_ms(_BLINK_OFF_MS)
+                slept = 0
+                while slept < _BLINK_OFF_MS and _state_unchanged():
+                    await asyncio.sleep_ms(20)
+                    slept += 20
             elif self._pattern == "pulse":
+                interrupted = False
                 for step in range(0, 20):
+                    if not _state_unchanged():
+                        interrupted = True
+                        break
                     self._write(self._brightness * step / 20)
                     await asyncio.sleep_ms(_PULSE_STEP_MS)
+                if interrupted:
+                    continue
                 for step in range(20, 0, -1):
+                    if not _state_unchanged():
+                        break
                     self._write(self._brightness * step / 20)
                     await asyncio.sleep_ms(_PULSE_STEP_MS)
             else:
