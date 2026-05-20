@@ -72,7 +72,11 @@ async def run(pin_num):
                 # the operator wouldn't see clean hold-time feedback.
                 status_led.lock(True)
                 status_led.set_state("reset_armed", force=True)
-                log.debug(f"[RESET_BTN] Armed at {held} ms — release for soft_reset")
+                log.info(f"[RESET_BTN] Armed at {held} ms — LED should now be amber. "
+                         f"state_name={status_led.state_name} "
+                         f"r,g,b={status_led._r},{status_led._g},{status_led._b} "
+                         f"brightness={status_led._brightness} "
+                         f"pattern={status_led._pattern} locked={status_led._locked}")
 
             # Cross the warning threshold → escalate visual.
             if state == "armed" and held >= _WARNING_MS:
