@@ -15,7 +15,7 @@
       "additionalProperties": false,
       "properties": {
         "role":                   { "type": "string", "enum": ["coordinator", "leaf"] },
-        "unit_id":                { "type": "integer", "minimum": 0, "maximum": 8 },
+        "unit_id":                { "type": "integer", "enum": [0, 1, 2, 3, 4, 5, 6, 7, 8, 99] },
         "unit_name":              { "type": "string", "minLength": 1 },
         "peers":                  { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 8 } },
         "log_level":              { "type": "string", "enum": ["DEBUG", "INFO", "WARN", "WARNING", "ERROR"] },

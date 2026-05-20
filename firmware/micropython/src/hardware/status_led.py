@@ -19,6 +19,10 @@ _STATES = {
     "error":             (255, 0,   0,   0.5,  "blink"), # red blink — something's wrong, e.g. failed to connect to WiFi or LoRa
     "lora_recovering":   (255, 0,   0,   0.3,  "pulse"), # slow red pulse — LoRa init failed, soft-resetting to retry
     "lora_disabled":     (180, 0,   200, 0.25, "solid"), # purple solid — LoRa init failed 3× → running without LoRa
+    # Reset-button hold feedback. Operator presses → debounce → armed
+    # (amber) → warning (red blink) → factory reset.
+    "reset_armed":       (255, 140, 0,   0.6,  "solid"), # amber solid — button is held; release for soft_reset
+    "reset_warning":     (255, 0,   0,   0.9,  "blink"), # red fast blink — keep holding to commit factory reset
     "off":               (0,   0,   0,   0.0,  "solid"), # off
 }
 

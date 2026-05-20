@@ -80,6 +80,61 @@ class ConfigManager:
             raise
         self._atomic_write(self._config)
 
+    # ------------------------------------------------------------------
+    # Factory-reset to unclaimed leaf (unit_id = 99)
+    # ------------------------------------------------------------------
+    # Used by the long-press reset-button flow on leaves. Preserves the
+    # fleet-wide LoRa, hardware, timezone, and (vestigial on leaves) wifi
+    # sections so the freshly-reset leaf can still talk to the rest of the
+    # fleet on the same channel/crypt — otherwise it'd be orphaned with
+    # default LoRa settings and the operator would need a USB cable to
+    # recover. Replaces system + everything user-configurable with
+    # the unclaimed defaults.
+    # ------------------------------------------------------------------
+
+    _UNCLAIMED_SYSTEM = {
+        "role":                   "leaf",
+        "unit_id":                99,
+        "unit_name":              "Unclaimed Leaf",
+        "log_level":              "INFO",
+        "log_buffer_size":        100,
+        "heartbeat_interval_s":   30,
+        "heartbeat_timeout_s":    120,
+        "pwm_update_interval_ms": 500,
+    }
+
+    _UNCLAIMED_LED_CHANNELS = [
+        {"id": i, "name": f"Channel {i}", "gpio_pin": pin,
+         "enabled": False, "default_duty_percent": 0, "time_windows": []}
+        for i, pin in zip(range(1, 9), (16, 17, 18, 19, 22, 15, 14, 13))
+    ]
+
+    def factory_reset_unclaimed(self):
+        """Overwrite /config.json with a default 'unclaimed leaf' config.
+        Preserves the lora/hardware/timezone/wifi sections from the
+        current config so the leaf stays on the fleet's channel and key.
+        Caller is responsible for calling machine.reset() afterwards."""
+        old = self._config or {}
+        new = {
+            "version":       old.get("version", "1.0"),
+            "system":        dict(self._UNCLAIMED_SYSTEM),
+            "wifi":          old.get("wifi", {"ssid": "N/A", "password": ""}),
+            "lora":          old.get("lora", {}),
+            "timezone":      old.get("timezone", {"name": "UTC", "utc_offset_hours": 0}),
+            "hardware":      old.get("hardware", {}),
+            "ldr":           {"enabled": False, "smoothing_window_s": 60, "cap_rules": []},
+            "pir":           [],
+            "relays":        [],
+            "led_channels":  [dict(ch) for ch in self._UNCLAIMED_LED_CHANNELS],
+            "scenes":        [],
+            "notifications": {"mqtt_enabled": False},
+        }
+        # We write directly without going through replace() / _validate(),
+        # because the validator allows id=99 only for the "unclaimed"
+        # role — and we're trusting our own defaults here. _atomic_write
+        # still gives us power-loss safety via the tmp + rename dance.
+        self._atomic_write(new)
+
     def _atomic_write(self, cfg):
         """Write config via tmp + rename to survive power loss mid-write.
 
@@ -257,14 +312,17 @@ class ConfigManager:
             errors.append("system.role must be 'coordinator' or 'leaf'")
 
         uid = s.get("unit_id")
-        if not isinstance(uid, int) or uid < 0 or uid > 8:
-            errors.append("system.unit_id must be int 0–8")
+        # unit_id is 0 for coord, 1..8 for claimed leaves, 99 for an
+        # unclaimed leaf (factory-reset state, waiting to be claimed
+        # via the dashboard wizard).
+        if not isinstance(uid, int) or (uid != 99 and (uid < 0 or uid > 8)):
+            errors.append("system.unit_id must be int 0–8, or 99 (unclaimed)")
 
         if role == "coordinator" and uid != 0:
             errors.append("coordinator must have unit_id 0")
 
         if role == "leaf" and uid == 0:
-            errors.append("leaf unit_id must be 1–8")
+            errors.append("leaf unit_id must be 1–8 (or 99 if unclaimed)")
 
         hb = s.get("heartbeat_interval_s", 30)
         if not isinstance(hb, int) or hb < 5 or hb > 3600:
