@@ -11,7 +11,12 @@ from hardware.pwm_control import pwm_controller
 from hardware.relay_control import relay_controller
 from hardware.pir_manager import pir_manager
 from hardware.ldr_monitor import ldr_monitor
-from hardware.status_led import status_led, FLASH_LORA_OK_RGB, FLASH_LORA_FAIL_RGB
+from hardware.status_led import (
+    status_led,
+    FLASH_LORA_OK_RGB,
+    FLASH_LORA_FAIL_RGB,
+    FLASH_BOOT_RGB,
+)
 from hardware.rtc_shared import rtc
 from comms.lora_protocol import lora_protocol
 from comms.lora_transport import lora_transport
@@ -529,6 +534,15 @@ async def safe_mode():
 async def main():
     status_led.set_state("booting")
     asyncio.create_task(status_led.run_pattern())
+
+    # Deliberate half-second white flash so the operator sees a clear
+    # "I just woke up" cue, regardless of how fast the rest of init runs.
+    # Without this, the brief dim-white set_state("booting") frame gets
+    # overwritten by lora_init (cyan) within ~30 ms — below the
+    # threshold of perception. The flash uses run_pattern's flash_event
+    # path; the explicit await lets it actually display before we move on.
+    status_led.flash_event(*FLASH_BOOT_RGB, ms=500)
+    await asyncio.sleep_ms(550)
 
     # --- Config ---
     if config_manager.safe_mode_reason:

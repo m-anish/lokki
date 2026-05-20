@@ -33,6 +33,7 @@ _FLASH_MS              = 80      # short, snappy event indicator
 _FLASH_BRIGHTNESS      = 0.4
 FLASH_LORA_OK_RGB      = (0,   80,  255)   # blue
 FLASH_LORA_FAIL_RGB    = (255, 0,   0)     # red
+FLASH_BOOT_RGB         = (255, 255, 255)   # white — "I just woke up"
 
 
 class StatusLED:
