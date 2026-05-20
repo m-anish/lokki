@@ -64,18 +64,20 @@ async def run(pin_num):
             if state == "idle" and held >= _DEBOUNCE_MS:
                 state = "armed"
                 prev_led_state = status_led.state_name
-                # Suppress event-flashes (HB receive/send pulses, etc.)
-                # for the duration of the hold — otherwise a stray HB
-                # blue/red flash mid-gesture overrides our amber LED
-                # and the operator sees a confusing color glitch.
-                status_led.suppress_flashes(True)
-                status_led.set_state("reset_armed")
+                # Take exclusive ownership of the LED for the
+                # duration of the hold. Without the lock,
+                # leaf_status_task (fires every 2 s) or
+                # fleet_timeout_task (every 10 s) or an HB flash
+                # would override our amber/red-blink sequence and
+                # the operator wouldn't see clean hold-time feedback.
+                status_led.lock(True)
+                status_led.set_state("reset_armed", force=True)
                 log.debug(f"[RESET_BTN] Armed at {held} ms — release for soft_reset")
 
             # Cross the warning threshold → escalate visual.
             if state == "armed" and held >= _WARNING_MS:
                 state = "warning"
-                status_led.set_state("reset_warning")
+                status_led.set_state("reset_warning", force=True)
                 log.warn(f"[RESET_BTN] Held {held} ms — keep holding to factory-reset")
 
             # Cross the factory-reset threshold → commit immediately,
@@ -87,7 +89,7 @@ async def run(pin_num):
                 if role == "coordinator":
                     log.error("[RESET_BTN] Long-press detected on coordinator — refusing "
                               "(factory-reset would orphan the fleet)")
-                    status_led.suppress_flashes(False)
+                    status_led.lock(False)
                     if prev_led_state:
                         status_led.set_state(prev_led_state)
                     # Treat as no-op; wait for release before allowing next gesture.
@@ -97,7 +99,7 @@ async def run(pin_num):
                         config_manager.factory_reset_unclaimed()
                     except Exception as e:
                         log.error(f"[RESET_BTN] factory_reset_unclaimed failed: {e}")
-                        status_led.suppress_flashes(False)
+                        status_led.lock(False)
                         if prev_led_state:
                             status_led.set_state(prev_led_state)
                         # Give up — wait for release.
@@ -110,7 +112,7 @@ async def run(pin_num):
             if state == "armed":
                 # Short press — release in the soft_reset window.
                 log.warn(f"[RESET_BTN] Released after {held} ms — issuing soft_reset")
-                status_led.suppress_flashes(False)
+                status_led.lock(False)
                 if prev_led_state:
                     status_led.set_state(prev_led_state)
                 await asyncio.sleep_ms(100)
@@ -123,7 +125,7 @@ async def run(pin_num):
                 # and it's the safer of the two.
                 log.warn(f"[RESET_BTN] Released after {held} ms in warning state — "
                          "soft_reset (factory-reset aborted before 5 s)")
-                status_led.suppress_flashes(False)
+                status_led.lock(False)
                 if prev_led_state:
                     status_led.set_state(prev_led_state)
                 await asyncio.sleep_ms(100)
@@ -131,7 +133,7 @@ async def run(pin_num):
                 return
             elif state == "committing":
                 # Coord refusal path — restore LED, reset counters.
-                status_led.suppress_flashes(False)
+                status_led.lock(False)
                 if prev_led_state:
                     status_led.set_state(prev_led_state)
 

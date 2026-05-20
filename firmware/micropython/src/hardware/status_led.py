@@ -75,12 +75,15 @@ class StatusLED:
         # restores. Calling flash_event() from sync code is safe — the
         # request is just a tuple swap, no async overhead.
         self._flash_pending = None
-        # If True, flash_event() is a no-op. Set by callers who own the
-        # LED for an irreversible UI moment (e.g. reset_button's
-        # amber/red-blink hold-time feedback) so an HB-receive flash
-        # doesn't blink the LED to blue/red mid-gesture and confuse
-        # the operator.
-        self._flashes_suppressed = False
+        # When locked, set_state() and flash_event() both become no-ops.
+        # Used by callers who own the LED for an irreversible UI moment
+        # (currently: the reset_button hold-time feedback) so periodic
+        # background tasks — leaf_status_task fires every 2 s,
+        # fleet_timeout_task every 10 s, HB flash on every receive —
+        # don't trample the amber/red-blink sequence mid-gesture.
+        # Callers acquire via lock(True), pass force=True on set_state
+        # to write through the lock, and release via lock(False).
+        self._locked = False
         # Byte order on the wire. MicroPython's neopixel writes in GRB which
         # matches standard WS2812 chips. Some clones / variants are RGB-native
         # — same wire bytes get interpreted with R and G swapped, so what we
@@ -104,7 +107,11 @@ class StatusLED:
         # waiting for run_pattern's next tick.
         self._write(self._brightness)
 
-    def set_state(self, state_name):
+    def set_state(self, state_name, force=False):
+        # Respect lock unless the caller explicitly opts out. Callers
+        # that hold the lock pass force=True to update the locked LED.
+        if self._locked and not force:
+            return
         entry = _STATES.get(state_name, _STATES["off"])
         self._r, self._g, self._b, self._brightness, self._pattern = entry
         self._state_name = state_name
@@ -135,23 +142,22 @@ class StatusLED:
     def flash_event(self, r, g, b, brightness=_FLASH_BRIGHTNESS, ms=_FLASH_MS):
         """Request a one-shot LED flash, overriding the current base color
         for `ms`. Picked up by run_pattern on its next loop tick (≤100 ms
-        latency). Safe to call from sync code (LoRa receive handlers,
-        heartbeat send path). Coalesces: if a flash is already pending,
-        the new one replaces it — better than letting requests queue up
-        unbounded during a heartbeat storm. Becomes a no-op when
-        suppress_flashes(True) is in effect."""
-        if self._flashes_suppressed:
+        latency). Safe to call from sync code. Coalesces: if a flash is
+        already pending, the new one replaces it — better than letting
+        requests queue up unbounded during a heartbeat storm. Becomes
+        a no-op when the LED is locked."""
+        if self._locked:
             return
         self._flash_pending = (r, g, b, brightness, ms)
 
-    def suppress_flashes(self, suppress):
-        """Toggle whether flash_event() actually fires. Used by the
-        reset-button hold-time feedback so an HB-receive flash doesn't
-        interrupt the amber/red-blink hold sequence."""
-        self._flashes_suppressed = bool(suppress)
-        if suppress:
-            # Clear any flash that was already queued but not yet
-            # displayed by run_pattern.
+    def lock(self, locked):
+        """Acquire / release exclusive ownership of the LED. While
+        locked, both set_state() (without force=True) and flash_event()
+        are no-ops. Used by reset_button so leaf_status_task / HB-flash
+        / fleet_timeout_task can't trample the hold-time feedback."""
+        self._locked = bool(locked)
+        if locked:
+            # Clear any flash that was already queued but not yet displayed.
             self._flash_pending = None
 
     def _write(self, brightness):
