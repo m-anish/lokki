@@ -64,6 +64,11 @@ async def run(pin_num):
             if state == "idle" and held >= _DEBOUNCE_MS:
                 state = "armed"
                 prev_led_state = status_led.state_name
+                # Suppress event-flashes (HB receive/send pulses, etc.)
+                # for the duration of the hold — otherwise a stray HB
+                # blue/red flash mid-gesture overrides our amber LED
+                # and the operator sees a confusing color glitch.
+                status_led.suppress_flashes(True)
                 status_led.set_state("reset_armed")
                 log.debug(f"[RESET_BTN] Armed at {held} ms — release for soft_reset")
 
@@ -82,6 +87,7 @@ async def run(pin_num):
                 if role == "coordinator":
                     log.error("[RESET_BTN] Long-press detected on coordinator — refusing "
                               "(factory-reset would orphan the fleet)")
+                    status_led.suppress_flashes(False)
                     if prev_led_state:
                         status_led.set_state(prev_led_state)
                     # Treat as no-op; wait for release before allowing next gesture.
@@ -91,6 +97,7 @@ async def run(pin_num):
                         config_manager.factory_reset_unclaimed()
                     except Exception as e:
                         log.error(f"[RESET_BTN] factory_reset_unclaimed failed: {e}")
+                        status_led.suppress_flashes(False)
                         if prev_led_state:
                             status_led.set_state(prev_led_state)
                         # Give up — wait for release.
@@ -103,6 +110,7 @@ async def run(pin_num):
             if state == "armed":
                 # Short press — release in the soft_reset window.
                 log.warn(f"[RESET_BTN] Released after {held} ms — issuing soft_reset")
+                status_led.suppress_flashes(False)
                 if prev_led_state:
                     status_led.set_state(prev_led_state)
                 await asyncio.sleep_ms(100)
@@ -115,6 +123,7 @@ async def run(pin_num):
                 # and it's the safer of the two.
                 log.warn(f"[RESET_BTN] Released after {held} ms in warning state — "
                          "soft_reset (factory-reset aborted before 5 s)")
+                status_led.suppress_flashes(False)
                 if prev_led_state:
                     status_led.set_state(prev_led_state)
                 await asyncio.sleep_ms(100)
@@ -122,6 +131,7 @@ async def run(pin_num):
                 return
             elif state == "committing":
                 # Coord refusal path — restore LED, reset counters.
+                status_led.suppress_flashes(False)
                 if prev_led_state:
                     status_led.set_state(prev_led_state)
 

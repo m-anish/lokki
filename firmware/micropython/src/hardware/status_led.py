@@ -2,28 +2,47 @@ import neopixel
 from machine import Pin
 
 
+# WS2812 visually-calibrated color palette.
+#
+# Why a palette: the three channels on a WS2812 are not perceptually
+# linear. Pure red at digital 255 is much brighter than pure blue at 255.
+# Green at low values looks weak relative to red at the same value, so
+# CSS amber (255, 191, 0) actually displays as red-orange on a WS2812 —
+# the green channel disappears. These constants are tuned for "this is
+# what the colour name suggests on a WS2812" rather than matching their
+# sRGB monitor counterparts. Use these constants in _STATES, never raw
+# tuples, so colours stay consistent and recalibratable in one place.
+COLOR_WHITE   = (255, 255, 255)
+COLOR_RED     = (255, 0,   0)
+COLOR_GREEN   = (0,   255, 0)
+COLOR_BLUE    = (0,   80,  255)
+COLOR_AMBER   = (255, 230, 0)    # boosted green so it reads as gold/amber, not red-orange
+COLOR_ORANGE  = (255, 100, 0)
+COLOR_YELLOW  = (255, 220, 0)
+COLOR_CYAN    = (0,   255, 220)
+COLOR_MAGENTA = (255, 0,   160)
+COLOR_PURPLE  = (180, 0,   200)
+
+
 # Named states → (r, g, b, brightness 0.0–1.0, pattern)
 # Patterns: "solid", "pulse", "blink"
 _STATES = {
-    "booting":           (255, 255, 255, 0.15, "pulse"), # white pulse — booting up, not yet ready
-    "wifi_connecting":   (0,   100, 255, 0.4,  "blink"), # blue blink — trying to connect to WiFi
-    "lora_init":         (0,   255, 220, 0.3,  "solid"), # cyan solid — WiFi up, now initializing LoRa
-    "running_ok":        (0,   255, 0,   0.08, "solid"), # green solid — all systems nominal, leaf is online and connected to coordinator
-    # Same green-solid base as running_ok. The "lora is alive" cue is now
-    # an event-driven flash via flash_event() — see callers in main.py
-    # heartbeat send/receive paths. Color of the flash (blue vs red)
-    # surfaces the boot-time lora_transport.config_ok result.
-    "running_lora_ok":   (0,   255, 0,   0.08, "solid"),
-    "leaf_offline":      (255, 180, 0,   0.15, "solid"), # orange solid — leaf is running but not connected to coordinator (e.g. coordinator offline, out of range, or WiFi down on coordinator)
-    "manual_override":   (255, 0,   160, 0.2,  "solid"), # magenta — manual control active (more red than blue so it's clearly distinct from the blue heartbeat flash)
-    "error":             (255, 0,   0,   0.5,  "blink"), # red blink — something's wrong, e.g. failed to connect to WiFi or LoRa
-    "lora_recovering":   (255, 0,   0,   0.3,  "pulse"), # slow red pulse — LoRa init failed, soft-resetting to retry
-    "lora_disabled":     (180, 0,   200, 0.25, "solid"), # purple solid — LoRa init failed 3× → running without LoRa
-    # Reset-button hold feedback. Operator presses → debounce → armed
-    # (amber) → warning (red blink) → factory reset.
-    "reset_armed":       (255, 140, 0,   0.6,  "solid"), # amber solid — button is held; release for soft_reset
-    "reset_warning":     (255, 0,   0,   0.9,  "blink"), # red fast blink — keep holding to commit factory reset
-    "off":               (0,   0,   0,   0.0,  "solid"), # off
+    "booting":           COLOR_WHITE   + (0.15, "pulse"), # white pulse — booting up, not yet ready
+    "wifi_connecting":   (0, 100, 255) + (0.4,  "blink"), # blue blink — trying to connect to WiFi
+    "lora_init":         COLOR_CYAN    + (0.3,  "solid"), # cyan solid — WiFi up, now initializing LoRa
+    "running_ok":        COLOR_GREEN   + (0.08, "solid"), # green solid — all systems nominal
+    # Same green-solid base as running_ok. The "lora is alive" cue is
+    # now an event-driven flash via flash_event() — see callers in
+    # main.py heartbeat send/receive paths.
+    "running_lora_ok":   COLOR_GREEN   + (0.08, "solid"),
+    "leaf_offline":      COLOR_ORANGE  + (0.15, "solid"), # orange solid — leaf is running but not connected to coord
+    "manual_override":   COLOR_MAGENTA + (0.2,  "solid"), # magenta — manual control active
+    "error":             COLOR_RED     + (0.5,  "blink"), # red blink — something's wrong
+    "lora_recovering":   COLOR_RED     + (0.3,  "pulse"), # slow red pulse — LoRa init retry
+    "lora_disabled":     COLOR_PURPLE  + (0.25, "solid"), # purple solid — LoRa init failed 3×
+    "reset_armed":       COLOR_AMBER   + (0.6,  "solid"), # amber solid — button is held; release for soft_reset
+    "reset_warning":     COLOR_RED     + (0.9,  "blink"), # red fast blink — keep holding to commit factory reset
+    "off":               (0, 0, 0)     + (0.0,  "solid"), # off
 }
 
 _BLINK_ON_MS   = 200
@@ -56,6 +75,12 @@ class StatusLED:
         # restores. Calling flash_event() from sync code is safe — the
         # request is just a tuple swap, no async overhead.
         self._flash_pending = None
+        # If True, flash_event() is a no-op. Set by callers who own the
+        # LED for an irreversible UI moment (e.g. reset_button's
+        # amber/red-blink hold-time feedback) so an HB-receive flash
+        # doesn't blink the LED to blue/red mid-gesture and confuse
+        # the operator.
+        self._flashes_suppressed = False
         # Byte order on the wire. MicroPython's neopixel writes in GRB which
         # matches standard WS2812 chips. Some clones / variants are RGB-native
         # — same wire bytes get interpreted with R and G swapped, so what we
@@ -104,8 +129,21 @@ class StatusLED:
         latency). Safe to call from sync code (LoRa receive handlers,
         heartbeat send path). Coalesces: if a flash is already pending,
         the new one replaces it — better than letting requests queue up
-        unbounded during a heartbeat storm."""
+        unbounded during a heartbeat storm. Becomes a no-op when
+        suppress_flashes(True) is in effect."""
+        if self._flashes_suppressed:
+            return
         self._flash_pending = (r, g, b, brightness, ms)
+
+    def suppress_flashes(self, suppress):
+        """Toggle whether flash_event() actually fires. Used by the
+        reset-button hold-time feedback so an HB-receive flash doesn't
+        interrupt the amber/red-blink hold sequence."""
+        self._flashes_suppressed = bool(suppress)
+        if suppress:
+            # Clear any flash that was already queued but not yet
+            # displayed by run_pattern.
+            self._flash_pending = None
 
     def _write(self, brightness):
         b = max(0.0, min(1.0, brightness))
