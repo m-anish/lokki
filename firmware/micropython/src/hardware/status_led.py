@@ -4,21 +4,35 @@ from machine import Pin
 
 # WS2812 visually-calibrated color palette.
 #
-# Why a palette: the three channels on a WS2812 are not perceptually
-# linear. Pure red at digital 255 is much brighter than pure blue at 255.
-# Green at low values looks weak relative to red at the same value, so
-# CSS amber (255, 191, 0) actually displays as red-orange on a WS2812 —
-# the green channel disappears. These constants are tuned for "this is
-# what the colour name suggests on a WS2812" rather than matching their
-# sRGB monitor counterparts. Use these constants in _STATES, never raw
-# tuples, so colours stay consistent and recalibratable in one place.
+# Important: these are NOT sRGB values. WS2812 channels are not
+# perceptually linear — the green LED's intrinsic brightness is
+# noticeably stronger than red's at the same digital value, so a
+# CSS-amber RGB triple like (255, 191, 0) reads as green-dominant
+# yellow on a WS2812, not as amber. "Visually correct" amber on the
+# physical LED needs R-dominance well beyond sRGB ratios.
+#
+# Empirically, on the WS2812s used in this project, there's no
+# stable middle-ground hue between "looks like red/orange" and
+# "looks like green/yellow" — the perceptual gap collapses. So
+# COLOR_AMBER below is deliberately tilted toward *orange* — the
+# operator sees a colour that's clearly different from
+# running_lora_ok's green, which is what the LED is actually for.
+# Trying to land on screen-accurate amber on this hardware is a
+# false economy.
+#
+# Per-channel gain compensation would be the proper architectural
+# fix (multiply G by ~0.5 in _write, then use sRGB-correct color
+# values everywhere), but it would also dim the existing green
+# states meaningfully and we'd have to recalibrate every state.
+# Worth doing later if we find a second case where a colour
+# constant matters; not worth doing for one state.
 COLOR_WHITE   = (255, 255, 255)
 COLOR_RED     = (255, 0,   0)
 COLOR_GREEN   = (0,   255, 0)
 COLOR_BLUE    = (0,   80,  255)
-COLOR_AMBER   = (220, 255, 0)    # green-dominant so it reads as amber/yellow on WS2812 (red appears stronger than green at same digital value)
-COLOR_ORANGE  = (255, 100, 0)
-COLOR_YELLOW  = (255, 220, 0)
+COLOR_AMBER   = (255, 100, 0)    # WS2812 reads this as orange-amber. R-dominant on purpose — see comment block above.
+COLOR_ORANGE  = (255, 60,  0)
+COLOR_YELLOW  = (255, 200, 0)
 COLOR_CYAN    = (0,   255, 220)
 COLOR_MAGENTA = (255, 0,   160)
 COLOR_PURPLE  = (180, 0,   200)
@@ -172,17 +186,6 @@ class StatusLED:
             self._np[0] = (g, r, bb)
         else:
             self._np[0] = (r, g, bb)
-        # Double-write with a brief gap. Some WS2812 chips (especially
-        # clones) need an explicit ~50 µs LOW reset between back-to-back
-        # frames to latch the new color, and there are reports that
-        # MicroPython's PIO-driven NeoPixel on RP2350 occasionally
-        # doesn't deliver enough gap from inside an asyncio task. A
-        # second write a millisecond later gives the chip a clear
-        # second chance to latch — cheap insurance for a control LED
-        # that's not in a tight loop.
-        self._np.write()
-        import time as _t
-        _t.sleep_ms(1)
         self._np.write()
 
     async def run_pattern(self):
