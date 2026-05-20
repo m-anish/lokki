@@ -691,6 +691,15 @@ async def main():
     tasks.append(asyncio.create_task(schedule_task(interval_ms)))
     tasks.append(asyncio.create_task(pir_manager.run_all()))
     tasks.append(asyncio.create_task(ldr_monitor.run()))
+
+    # Physical reset button → machine.soft_reset() after ~200 ms hold.
+    # Quick way to force-restart a unit in the field without pulling
+    # power, and lets us drive the (A)+(B) LoRa-retry recovery loop
+    # manually if we ever need to.
+    reset_btn_pin = hw.get("reset_btn_pin")
+    if reset_btn_pin is not None:
+        from hardware.reset_button import run as run_reset_button_task
+        tasks.append(asyncio.create_task(run_reset_button_task(reset_btn_pin)))
     # Only start the LoRa listener if init actually succeeded. With LoRa
     # disabled the listen loop would spin on a transport that never
     # gets frames; cleaner to skip it entirely.
