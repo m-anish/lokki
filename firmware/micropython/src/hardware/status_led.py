@@ -16,7 +16,7 @@ COLOR_WHITE   = (255, 255, 255)
 COLOR_RED     = (255, 0,   0)
 COLOR_GREEN   = (0,   255, 0)
 COLOR_BLUE    = (0,   80,  255)
-COLOR_AMBER   = (255, 230, 0)    # boosted green so it reads as gold/amber, not red-orange
+COLOR_AMBER   = (220, 255, 0)    # green-dominant so it reads as amber/yellow on WS2812 (red appears stronger than green at same digital value)
 COLOR_ORANGE  = (255, 100, 0)
 COLOR_YELLOW  = (255, 220, 0)
 COLOR_CYAN    = (0,   255, 220)
@@ -99,16 +99,25 @@ class StatusLED:
         if pin != self._gpio_pin:
             self._gpio_pin = pin
             self._np = neopixel.NeoPixel(Pin(pin), 1)
-        if self._pattern == "solid":
-            self._write(self._brightness)
+        # Same rationale as set_state: write immediately so the LED
+        # reflects the current state right after config init, not
+        # waiting for run_pattern's next tick.
+        self._write(self._brightness)
 
     def set_state(self, state_name):
         entry = _STATES.get(state_name, _STATES["off"])
         self._r, self._g, self._b, self._brightness, self._pattern = entry
         self._state_name = state_name
         self._log.debug(f"[LED] set_state({state_name}) -> pattern={self._pattern}")
-        if self._pattern == "solid":
-            self._write(self._brightness)
+        # Always write the new color immediately, regardless of pattern.
+        # If we only wrote for "solid" (as before), the LED would hold
+        # the previous color until run_pattern's next loop iteration
+        # picked up the new pattern — up to 50 ms later. That gap can
+        # produce a visible mid-transition glitch (e.g. amber→red blink
+        # showing a brief green frame on the WS2812 update boundary).
+        # Writing immediately makes set_state visually atomic; the
+        # blink/pulse pattern then takes over from there.
+        self._write(self._brightness)
 
     @property
     def state_name(self):
