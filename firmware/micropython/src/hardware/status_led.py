@@ -3,17 +3,22 @@ from machine import Pin
 
 
 # Named states → (r, g, b, brightness 0.0–1.0, pattern)
-# Patterns: "solid", "pulse", "blink", "heartbeat"
+# Patterns: "solid", "pulse", "blink"
 _STATES = {
     "booting":           (255, 255, 255, 0.15, "pulse"), # white pulse — booting up, not yet ready
     "wifi_connecting":   (0,   100, 255, 0.4,  "blink"), # blue blink — trying to connect to WiFi
     "lora_init":         (0,   255, 220, 0.3,  "solid"), # cyan solid — WiFi up, now initializing LoRa
     "running_ok":        (0,   255, 0,   0.08, "solid"), # green solid — all systems nominal, leaf is online and connected to coordinator
-    # Green base + periodic blue flash — indicates LoRa is up and active
-    "running_lora_ok":   (0,   255, 0,   0.08, "heartbeat"), # same as running_ok but with heartbeat pattern to show LoRa is active
+    # Same green-solid base as running_ok. The "lora is alive" cue is now
+    # an event-driven flash via flash_event() — see callers in main.py
+    # heartbeat send/receive paths. Color of the flash (blue vs red)
+    # surfaces the boot-time lora_transport.config_ok result.
+    "running_lora_ok":   (0,   255, 0,   0.08, "solid"),
     "leaf_offline":      (255, 180, 0,   0.15, "solid"), # orange solid — leaf is running but not connected to coordinator (e.g. coordinator offline, out of range, or WiFi down on coordinator)
     "manual_override":   (255, 0,   160, 0.2,  "solid"), # magenta — manual control active (more red than blue so it's clearly distinct from the blue heartbeat flash)
     "error":             (255, 0,   0,   0.5,  "blink"), # red blink — something's wrong, e.g. failed to connect to WiFi or LoRa
+    "lora_recovering":   (255, 0,   0,   0.3,  "pulse"), # slow red pulse — LoRa init failed, soft-resetting to retry
+    "lora_disabled":     (180, 0,   200, 0.25, "solid"), # purple solid — LoRa init failed 3× → running without LoRa
     "off":               (0,   0,   0,   0.0,  "solid"), # off
 }
 
@@ -21,11 +26,13 @@ _BLINK_ON_MS   = 200
 _BLINK_OFF_MS  = 200
 _PULSE_STEP_MS = 20
 
-# Heartbeat: hold base colour for BASE ms, then flash blue for FLASH ms
-_HB_BASE_MS  = 3500
-_HB_FLASH_MS = 500
-_HB_R, _HB_G, _HB_B = 0, 80, 255   # blue — same convention as Meshtastic
-_HB_BRIGHTNESS = 0.4
+# Event-flash defaults (used by main.py's HB send/receive paths via
+# flash_event). Same blue convention as Meshtastic; red for the
+# "lora config failed at boot" case.
+_FLASH_MS              = 80      # short, snappy event indicator
+_FLASH_BRIGHTNESS      = 0.4
+FLASH_LORA_OK_RGB      = (0,   80,  255)   # blue
+FLASH_LORA_FAIL_RGB    = (255, 0,   0)     # red
 
 
 class StatusLED:
@@ -38,6 +45,12 @@ class StatusLED:
         self._brightness = 0.0
         self._pattern = "solid"
         self._task = None
+        # One-shot flash request. None = no pending flash; otherwise
+        # (r, g, b, brightness, ms). run_pattern picks it up on its
+        # next loop iteration, overrides the base color for ms, then
+        # restores. Calling flash_event() from sync code is safe — the
+        # request is just a tuple swap, no async overhead.
+        self._flash_pending = None
         # Byte order on the wire. MicroPython's neopixel writes in GRB which
         # matches standard WS2812 chips. Some clones / variants are RGB-native
         # — same wire bytes get interpreted with R and G swapped, so what we
@@ -80,6 +93,15 @@ class StatusLED:
     def off(self):
         self.set_state("off")
 
+    def flash_event(self, r, g, b, brightness=_FLASH_BRIGHTNESS, ms=_FLASH_MS):
+        """Request a one-shot LED flash, overriding the current base color
+        for `ms`. Picked up by run_pattern on its next loop tick (≤100 ms
+        latency). Safe to call from sync code (LoRa receive handlers,
+        heartbeat send path). Coalesces: if a flash is already pending,
+        the new one replaces it — better than letting requests queue up
+        unbounded during a heartbeat storm."""
+        self._flash_pending = (r, g, b, brightness, ms)
+
     def _write(self, brightness):
         b = max(0.0, min(1.0, brightness))
         r = int(self._r * b)
@@ -97,6 +119,30 @@ class StatusLED:
     async def run_pattern(self):
         import asyncio
         while True:
+            # Event-flash takes priority over the base pattern. This is
+            # how heartbeat send/receive surfaces visually: callers fire
+            # flash_event() and we briefly override the base color here,
+            # then restore. Polled rather than awaited so sync callers
+            # don't need an event loop reference.
+            if self._flash_pending is not None:
+                fr, fg, fb, fbright, fms = self._flash_pending
+                self._flash_pending = None
+                # Write the flash color directly, bypassing self._r/g/b
+                # so we don't corrupt the base state.
+                br = max(0.0, min(1.0, fbright))
+                pr, pg, pb = int(fr * br), int(fg * br), int(fb * br)
+                if self._color_order == "RGB":
+                    self._np[0] = (pg, pr, pb)
+                else:
+                    self._np[0] = (pr, pg, pb)
+                self._np.write()
+                await asyncio.sleep_ms(fms)
+                # Restore base. For animated patterns the next tick of
+                # the loop redraws naturally; for solid we redraw now.
+                if self._pattern == "solid":
+                    self._write(self._brightness)
+                continue
+
             if self._pattern == "blink":
                 self._write(self._brightness)
                 await asyncio.sleep_ms(_BLINK_ON_MS)
@@ -109,30 +155,10 @@ class StatusLED:
                 for step in range(20, 0, -1):
                     self._write(self._brightness * step / 20)
                     await asyncio.sleep_ms(_PULSE_STEP_MS)
-            elif self._pattern == "heartbeat":
-                # Hold base colour, checking every 100 ms for a state change
-                steps = _HB_BASE_MS // 100
-                for _ in range(steps):
-                    self._write(self._brightness)
-                    await asyncio.sleep_ms(100)
-                    if self._pattern != "heartbeat":
-                        break
-                else:
-                    # State unchanged — fire the blue flash. Honour the same
-                    # color-order swap the rest of the LED uses.
-                    fr = int(_HB_R * _HB_BRIGHTNESS)
-                    fg = int(_HB_G * _HB_BRIGHTNESS)
-                    fb = int(_HB_B * _HB_BRIGHTNESS)
-                    if self._color_order == "RGB":
-                        self._np[0] = (fg, fr, fb)
-                    else:
-                        self._np[0] = (fr, fg, fb)
-                    self._np.write()
-                    self._log.debug(f"[LED] Heartbeat blue flash: color_order={self._color_order} rgb=({fr},{fg},{fb})")
-                    await asyncio.sleep_ms(_HB_FLASH_MS)
             else:
-                # solid — nothing to animate, yield and wait
-                await asyncio.sleep_ms(100)
+                # solid — nothing to animate, just yield so flash_event
+                # gets polled on a tight cadence.
+                await asyncio.sleep_ms(50)
 
 
 status_led = StatusLED()

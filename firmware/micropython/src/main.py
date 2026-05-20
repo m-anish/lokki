@@ -1,5 +1,8 @@
 import asyncio
 import gc
+import os
+import time as _time
+import machine as _machine
 
 from core.config_manager import config_manager
 from core.schedule_engine import schedule_engine
@@ -11,11 +14,50 @@ from hardware.ldr_monitor import ldr_monitor
 from hardware.status_led import status_led
 from hardware.rtc_shared import rtc
 from comms.lora_protocol import lora_protocol
+from comms.lora_transport import lora_transport
 from shared.simple_logger import Logger
 from shared.system_status import system_status
 from shared.event_bus import event_bus
 
 log = Logger()
+
+
+# ------------------------------------------------------------------
+# LoRa boot retry — persistent counter across soft_reset
+# ------------------------------------------------------------------
+# The E220 module is timing-sensitive at power-on: sometimes the first
+# register-write round-trip in apply_from_config fails ("short reply
+# None") immediately after a cold boot, but a subsequent Thonny
+# "Stop/Restart Backend" (= machine.soft_reset()) reliably gets it
+# right. We use a tiny on-flash counter to do the same thing
+# automatically: if LoRa init fails, increment the counter, soft-reset,
+# and try again. After 3 failed attempts we give up and continue boot
+# with LoRa disabled (slot 'lora_disabled' LED state — purple solid).
+_LORA_RETRY_FILE  = "/lora_retry_count"
+_LORA_MAX_RETRIES = 3
+
+
+def _lora_retry_read():
+    try:
+        with open(_LORA_RETRY_FILE, "r") as f:
+            return int(f.read().strip() or 0)
+    except Exception:
+        return 0
+
+
+def _lora_retry_write(n):
+    try:
+        with open(_LORA_RETRY_FILE, "w") as f:
+            f.write(str(n))
+    except Exception:
+        pass
+
+
+def _lora_retry_clear():
+    try:
+        os.remove(_LORA_RETRY_FILE)
+    except Exception:
+        pass
 
 
 # ------------------------------------------------------------------
@@ -132,6 +174,16 @@ async def ram_telemetry_task(interval_s):
         await asyncio.sleep(interval_s)
 
 
+def _hb_flash_rgb():
+    """Pick the heartbeat-flash color from the boot-time LoRa config
+    outcome. Blue when the volatile-register write succeeded; red when
+    it didn't (the module is running in whatever NVRAM state it had,
+    which is probably wrong and the operator should know)."""
+    from hardware.status_led import FLASH_LORA_OK_RGB, FLASH_LORA_FAIL_RGB
+    from comms.lora_transport import lora_transport as _lt
+    return FLASH_LORA_OK_RGB if getattr(_lt, "config_ok", False) else FLASH_LORA_FAIL_RGB
+
+
 async def heartbeat_broadcast_task(interval_s, unit_id):
     """Leaf task: send HB to coordinator at regular intervals with jitter."""
     jitter_ms = unit_id * 500
@@ -151,6 +203,10 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
                 "rssi":    lora_protocol.last_rx_rssi,
             }
             lora_protocol.send_heartbeat(payload)
+            # Flash the LED on the actual send event (not on a periodic
+            # timer). Blue = lora config OK at boot; red = config failed.
+            r, g, b = _hb_flash_rgb()
+            status_led.flash_event(r, g, b)
         except Exception as e:
             log.error(f"[HB] Broadcast error: {e}")
             system_status.record_error(f"hb: {e}")
@@ -218,6 +274,11 @@ def _register_lora_handlers(role, fleet_manager=None):
     if role == "coordinator" and fleet_manager:
         def on_heartbeat(src, payload):
             fleet_manager.update(src, payload)
+            # Visible "HB arrived" pulse — blue if our LoRa config came up
+            # clean at boot, red if it didn't. Per-event flash, not a
+            # periodic timer.
+            r, g, b = _hb_flash_rgb()
+            status_led.flash_event(r, g, b)
         lora_protocol.on("HB", on_heartbeat)
 
         def on_status_response(src, payload):
@@ -491,6 +552,45 @@ async def main():
     # Re-bind status LED to configured pin (default singleton uses GPIO 5)
     status_led.init_from_config(hw)
 
+    # --- LoRa init — FIRST so any failure can be retried via soft-reset
+    # ---
+    # The E220 module's register-write path is borderline-flaky after a
+    # cold power-on; a Thonny soft-restart reliably gets it working.
+    # Mimic that automatically: if apply_from_config fails inside
+    # lora_transport.init(), increment a persistent counter and
+    # machine.soft_reset() to retry. After 3 failed soft-resets, give
+    # up and continue boot with LoRa disabled.
+    lora_retry = _lora_retry_read()
+    if lora_retry >= _LORA_MAX_RETRIES:
+        log.error(f"[MAIN] LoRa init failed {lora_retry}× — proceeding without LoRa")
+        status_led.set_state("lora_disabled")
+        _lora_retry_clear()
+        lora_ok = False
+    else:
+        if lora_retry > 0:
+            log.warn(f"[MAIN] LoRa recovery boot — attempt {lora_retry + 1}/{_LORA_MAX_RETRIES}")
+            status_led.set_state("lora_recovering")
+        else:
+            status_led.set_state("lora_init")
+        try:
+            lora_protocol.init()                    # calls lora_transport.init() → apply_from_config
+            lora_ok = lora_transport.config_ok
+        except Exception as e:
+            log.error(f"[MAIN] LoRa init exception: {e}")
+            lora_ok = False
+
+        if not lora_ok:
+            new_count = lora_retry + 1
+            _lora_retry_write(new_count)
+            log.warn(f"[MAIN] LoRa init failed — soft-resetting (attempt {new_count}/{_LORA_MAX_RETRIES})")
+            _time.sleep_ms(500)                     # let log line flush over USB / event bus
+            _machine.soft_reset()                   # does not return
+        # success path: clear counter, continue boot
+        _lora_retry_clear()
+        log.info("[MAIN] LoRa init OK")
+
+    system_status.set_connection_status(lora=lora_ok)
+
     # --- Hardware init ---
     freq_hz = hw.get("pwm_freq_hz", 1000)
     gamma   = hw.get("gamma", 2.2)
@@ -512,25 +612,6 @@ async def main():
     schedule_engine.init_from_config(cfg.get("led_channels"), cfg.get("relays"))
     priority_arbiter.init_from_config(cfg.get("led_channels"), cfg.get("relays"))
 
-    # --- LoRa init ---
-    # No runtime register writes any more. The LoRa module is provisioned
-    # ONCE via utils/e220_provisioner_cli.py (over a Pico-side bridge) and
-    # then runs forever in NVRAM-set state. lora_transport.init() just
-    # opens the UART, drives M0=0/M1=0, and waits for AUX HIGH.
-    #
-    # Modules MUST be provisioned with --rssi-byte (REG3 bit 7 = 1) — the
-    # transport's recv() unconditionally strips a trailing byte and treats
-    # it as RSSI. Without that provisioning the strip eats real payload
-    # data and JSON parsing fails.
-    status_led.set_state("lora_init")
-    try:
-        lora_protocol.init()
-        system_status.set_connection_status(lora=True)
-    except Exception as e:
-        log.error(f"[MAIN] LoRa init failed: {e}")
-        system_status.set_connection_status(lora=False)
-        system_status.record_error(f"lora_init: {e}")
-
     # --- Fleet manager init (coordinator) ---
     fleet_mgr = None
     if role == "coordinator":
@@ -540,8 +621,11 @@ async def main():
         from coordinator.api_handlers import load_leaf_cache_from_flash
         load_leaf_cache_from_flash()
 
-    # --- Register LoRa message handlers ---
-    _register_lora_handlers(role, fleet_mgr)
+    # --- Register LoRa message handlers (only if transport is healthy) ---
+    if lora_ok:
+        _register_lora_handlers(role, fleet_mgr)
+    else:
+        log.warn("[MAIN] LoRa disabled — skipping protocol handler registration")
 
     # --- WiFi + NTP (coordinator only) ---
     wifi_ok = False
@@ -583,7 +667,11 @@ async def main():
     tasks.append(asyncio.create_task(schedule_task(interval_ms)))
     tasks.append(asyncio.create_task(pir_manager.run_all()))
     tasks.append(asyncio.create_task(ldr_monitor.run()))
-    tasks.append(asyncio.create_task(lora_protocol.listen_task()))
+    # Only start the LoRa listener if init actually succeeded. With LoRa
+    # disabled the listen loop would spin on a transport that never
+    # gets frames; cleaner to skip it entirely.
+    if lora_ok:
+        tasks.append(asyncio.create_task(lora_protocol.listen_task()))
 
     if i2c_sensors.has_sensors:
         tasks.append(asyncio.create_task(i2c_sensors.run()))
@@ -595,7 +683,8 @@ async def main():
 
     if role == "coordinator":
         tasks.append(asyncio.create_task(fleet_timeout_task(fleet_mgr)))
-        tasks.append(asyncio.create_task(time_sync_task()))
+        if lora_ok:
+            tasks.append(asyncio.create_task(time_sync_task()))
         if wifi_ok:
             # MQTT notifications (if enabled)
             try:
@@ -614,13 +703,15 @@ async def main():
             except Exception as e:
                 log.error(f"[MAIN] Web server init failed: {e}")
     else:
-        # Leaf: broadcast heartbeats to coordinator
-        tasks.append(asyncio.create_task(
-            heartbeat_broadcast_task(hb_interval, cfg.unit_id)
-        ))
+        # Leaf: broadcast heartbeats to coordinator. Skip the LoRa-
+        # dependent tasks if init failed; leaf still runs schedule/PWM/
+        # relays locally, just no fleet visibility.
+        if lora_ok:
+            tasks.append(asyncio.create_task(
+                heartbeat_broadcast_task(hb_interval, cfg.unit_id)
+            ))
+            tasks.append(asyncio.create_task(event_forward_task()))
         tasks.append(asyncio.create_task(leaf_status_task()))
-        # Forward WARN+ events from local bus → coord via ERR LoRa msgs.
-        tasks.append(asyncio.create_task(event_forward_task()))
 
     log.info(f"[MAIN] Running {len(tasks)} tasks")
 
