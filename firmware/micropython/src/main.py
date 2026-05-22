@@ -32,14 +32,23 @@ log = Logger()
 # ------------------------------------------------------------------
 # The E220 module is timing-sensitive at power-on: sometimes the first
 # register-write round-trip in apply_from_config fails ("short reply
-# None") immediately after a cold boot, but a subsequent Thonny
-# "Stop/Restart Backend" (= machine.soft_reset()) reliably gets it
-# right. We use a tiny on-flash counter to do the same thing
-# automatically: if LoRa init fails, increment the counter, soft-reset,
-# and try again. After 3 failed attempts we give up and continue boot
-# with LoRa disabled (slot 'lora_disabled' LED state — purple solid).
-_LORA_RETRY_FILE  = "/lora_retry_count"
-_LORA_MAX_RETRIES = 3
+# None") immediately after a cold boot, but a subsequent
+# machine.soft_reset() reliably gets it right. We mimic that
+# automatically: if LoRa init fails, increment a persistent counter,
+# sleep with an exponential backoff, and soft_reset. After
+# _LORA_MAX_RETRIES failed attempts we give up and continue boot with
+# LoRa disabled (lora_disabled purple LED) — the unit's local
+# scheduler / PWM / relays / WiFi / dashboard all still work, just
+# no LoRa traffic.
+#
+# Backoff models the human-observed behavior: manual button presses
+# with a few seconds between them eventually succeed where back-to-
+# back retries don't. The module appears to need increasing settle
+# time as failures stack up. Total budget ≈ 20 s in the worst case.
+_LORA_RETRY_FILE      = "/lora_retry_count"
+_LORA_MAX_RETRIES     = 7
+_LORA_BACKOFF_BASE_MS = 200    # delays: 200, 400, 800, 1600, 3200, 6400, 8000ms
+_LORA_BACKOFF_CAP_MS  = 8000
 
 
 def _lora_retry_read():
@@ -254,6 +263,28 @@ async def event_forward_task(min_level="WARN", interval_s=2, max_per_tick=3):
             # Forwarder must never tank the leaf — fall through quietly.
             print("[EVT_FWD] error:", e)
         await asyncio.sleep(interval_s)
+
+
+async def lora_status_flash_task(interval_s=10):
+    """Coordinator task: periodically flash the WS2812 to surface LoRa
+    health. Leaves get this for free via the HB-send path
+    (heartbeat_broadcast_task fires flash_event() on every TX, every
+    ~30 s). Coord doesn't transmit HBs — it only flashes on receive,
+    which means a coord sitting in a fleet with no online leaves has
+    no visible heartbeat at all. This task adds one: blue flash if
+    LoRa is up, red flash if not, every interval_s seconds.
+
+    Stays passive — uses flash_event(), so the base state (running_ok
+    green / leaf_offline orange / lora_disabled purple / manual_override
+    magenta) keeps showing between flashes. The flash itself is the
+    'I'm alive' cue."""
+    while True:
+        await asyncio.sleep(interval_s)
+        if system_status.lora_connected:
+            r, g, b = FLASH_LORA_OK_RGB
+        else:
+            r, g, b = FLASH_LORA_FAIL_RGB
+        status_led.flash_event(r, g, b)
 
 
 async def fleet_timeout_task(fleet_manager, interval_s=10):
@@ -576,8 +607,20 @@ async def main():
     # lora_transport.init(), increment a persistent counter and
     # machine.soft_reset() to retry. After 3 failed soft-resets, give
     # up and continue boot with LoRa disabled.
+    # Honor lora.enabled = false — explicit operator opt-out lets a
+    # board with no LoRa module wired skip the boot-time retry storm
+    # entirely. Boots straight into degraded mode (lora_disabled
+    # purple) and everything else (scheduler, PWM, relays, dashboard)
+    # works normally.
+    lora_explicitly_disabled = not cfg.get("lora").get("enabled", True)
+
     lora_retry = _lora_retry_read()
-    if lora_retry >= _LORA_MAX_RETRIES:
+    if lora_explicitly_disabled:
+        log.warn("[MAIN] LoRa disabled by config (lora.enabled = false) — skipping init")
+        status_led.set_state("lora_disabled")
+        _lora_retry_clear()
+        lora_ok = False
+    elif lora_retry >= _LORA_MAX_RETRIES:
         log.error(f"[MAIN] LoRa init failed {lora_retry}× — proceeding without LoRa")
         status_led.set_state("lora_disabled")
         _lora_retry_clear()
@@ -597,14 +640,21 @@ async def main():
 
         if not lora_ok:
             # Half-second red flash so the operator can see the failure
-            # at a glance before the soft-reset blanks the LED. Then
-            # flush log lines and reboot.
+            # at a glance before the soft-reset blanks the LED.
             status_led.flash_event(*FLASH_LORA_FAIL_RGB, brightness=0.9, ms=500)
             await asyncio.sleep_ms(550)             # let the flash actually display
             new_count = lora_retry + 1
             _lora_retry_write(new_count)
-            log.warn(f"[MAIN] LoRa init failed — soft-resetting (attempt {new_count}/{_LORA_MAX_RETRIES})")
-            _time.sleep_ms(500)                     # let log line flush over USB / event bus
+            # Exponential backoff. Doubles each attempt, capped. Mimics
+            # the human-observed behaviour that manual reset-button
+            # presses with a few seconds between them eventually
+            # succeed where back-to-back automatic retries don't —
+            # the module appears to need increasing settle time.
+            backoff_ms = min(_LORA_BACKOFF_CAP_MS,
+                             _LORA_BACKOFF_BASE_MS * (2 ** (new_count - 1)))
+            log.warn(f"[MAIN] LoRa init failed — sleeping {backoff_ms} ms then "
+                     f"soft-resetting (attempt {new_count}/{_LORA_MAX_RETRIES})")
+            _time.sleep_ms(backoff_ms + 500)        # backoff + log-flush window
             _machine.soft_reset()                   # does not return
         # success path: half-second blue flash to confirm, then clear
         # the retry counter and continue boot.
@@ -716,6 +766,11 @@ async def main():
 
     if role == "coordinator":
         tasks.append(asyncio.create_task(fleet_timeout_task(fleet_mgr)))
+        # Periodic blue/red flash so a coord with no online leaves
+        # still shows visible LoRa-health feedback. Runs regardless of
+        # lora_ok — when LoRa is disabled it flashes red, which is
+        # exactly the info the operator needs to see.
+        tasks.append(asyncio.create_task(lora_status_flash_task()))
         if lora_ok:
             tasks.append(asyncio.create_task(time_sync_task()))
         if wifi_ok:
