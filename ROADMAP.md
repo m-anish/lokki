@@ -96,7 +96,7 @@ These are less certain but worth tracking:
 - **I2C sensor expansion** — temperature, humidity, CO₂, and occupancy count sensors feeding into schedule decisions and MQTT events
 - **Physical scene cycling** — repurpose a spare GPIO button to step through scenes locally without any dashboard
 - **Config backup and restore** — export full fleet configuration (all units) as a single archive from the dashboard; restore to a replacement unit
-- **Secure remote access** — built-in support for a tunnelling solution (e.g., Cloudflare Tunnel) so the dashboard is reachable from outside the LAN without port forwarding
+- **Secure remote access via a self-hosted relay** — each coordinator gets a stable public URL (e.g. `abc1234.lokki.app`) by opening an outbound WebSocket to a Lokki-operated relay. Public traffic is proxied over that tunnel; auth and TLS are handled at the relay so the Pico stays simple, and the dashboard renders a QR code of its own public URL. No companion hardware, no port forwarding. **Design:** [docs/relay-design.md](docs/relay-design.md).
 
 ---
 
