@@ -47,7 +47,7 @@ The module replies with `C1 <reg> <len> <values>` (echo back the current content
 | 0x06 | REG3 | 7 | **RSSI byte append** (1 = trailing RSSI byte on every received packet) |
 | | | 6 | **Transmission method** (1 = fixed-point — required for our addressing) |
 
-The firmware writes registers 0x00..0x06 in a single `C0 00 07 <values>` command on boot. Frequency-to-channel conversion: `channel = round(frequency_mhz - 850)`. So 868 MHz → channel 18 → effective 868.125 MHz.
+The firmware writes registers 0x00..0x06 in a single `C0 00 07 <values>` command on boot. Frequency-to-channel conversion: `channel = round(frequency_mhz - 850)`. The project default is **channel 73 ≈ 923.125 MHz** with crypt key **0x0793**; every unit in the fleet must share both, or modules silently drop each other's frames.
 
 ### RSSI Byte Append
 

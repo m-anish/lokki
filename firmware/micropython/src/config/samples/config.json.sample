@@ -24,12 +24,12 @@
     "frequency_mhz": 868,
     "air_data_rate": 4800,
     "tx_power_dbm": 22,
-    "channel": 18,
+    "channel": 73,
     "subpacket_size": 200,
     "lbt_enable": false,
     "ambient_rssi_enable": false,
-    "crypt_h": 0,
-    "crypt_l": 0
+    "crypt_h": 7,
+    "crypt_l": 147
   },
 
   "timezone": {

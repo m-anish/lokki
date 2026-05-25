@@ -397,7 +397,7 @@ class ConfigManager:
         air = lora.get("air_data_rate", 4800)
         if air not in (300, 1200, 2400, 4800, 9600, 19200, 38400, 62500):
             errors.append("lora.air_data_rate invalid; allowed: 300/1200/2400/4800/9600/19200/38400/62500")
-        chan = lora.get("channel", 18)
+        chan = lora.get("channel", 73)
         if not isinstance(chan, int) or chan < 0 or chan > 80:
             errors.append("lora.channel must be int 0–80")
         sub = lora.get("subpacket_size", 200)

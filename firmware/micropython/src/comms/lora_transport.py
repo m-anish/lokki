@@ -97,7 +97,7 @@ class LoRaTransport:
 
             self._uart = UART(uart_id, baudrate=_BAUD,
                               tx=Pin(tx_pin), rx=Pin(rx_pin))
-            self._channel = int(lora.get("channel", 18))
+            self._channel = int(lora.get("channel", 73))
 
             log.info(f"[LORA] AUX at boot = {self._aux.value()} "
                      f"(should be 1; if 0, module is busy or wired wrong)")

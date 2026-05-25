@@ -76,7 +76,9 @@ Coordinator only. Leaf ignores this block.
   "frequency_mhz": 868,         // confirm region — 865-867 India, 868 EU
   "air_data_rate": 2400,        // bps — lower = longer range
   "tx_power_dbm": 22,           // max for E220-900T22D
-  "channel": 0                  // E220 channel (0–83 depending on variant)
+  "channel": 73,                // E220 channel (0–80); freq_mhz = 850 + channel
+  "crypt_h": 7,                 // CRYPT_H register (0–255). Default 0x07.
+  "crypt_l": 147                // CRYPT_L register (0–255). Default 0x93.
 }
 ```
 

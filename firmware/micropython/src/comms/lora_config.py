@@ -92,7 +92,7 @@ def build_register_payload(unit_id, lora_cfg):
     if sub not in _SUB_BITS:
         sub = 200
 
-    chan = int(lora_cfg.get("channel", 18))
+    chan = int(lora_cfg.get("channel", 73))
     # LBT default OFF. We tried defaulting it ON for collision reduction
     # but the E220 silently DROPS frames when LBT times out unable to
     # find a quiet channel — and AUX still cycles cleanly, so the
@@ -105,13 +105,13 @@ def build_register_payload(unit_id, lora_cfg):
     ambient = bool(lora_cfg.get("ambient_rssi_enable", False))
     # Crypt key (16-bit, two register bytes). MUST match across every
     # unit in the fleet — a mismatch silently drops frames. Default is
-    # 0x0000 (no encryption); operators who want air-level confidentiality
-    # set both bytes to a shared non-zero value via config.json or
-    # update.sh's --crypt-h/--crypt-l flags. Defaulting to non-zero in
-    # firmware caused too many "did the upgrade break my fleet?"
-    # situations during partial rollouts.
-    crypt_h = int(lora_cfg.get("crypt_h", 0x00)) & 0xFF
-    crypt_l = int(lora_cfg.get("crypt_l", 0x00)) & 0xFF
+    # 0x0793 — a project-wide shared key so fresh boards out of the box
+    # already share keys with the rest of the fleet. Operators who want
+    # a stronger shared secret can override per-unit via config.json or
+    # update.sh's --crypt-h/--crypt-l flags. (Set both to 0x00 to
+    # disable encryption entirely.)
+    crypt_h = int(lora_cfg.get("crypt_h", 0x07)) & 0xFF
+    crypt_l = int(lora_cfg.get("crypt_l", 0x93)) & 0xFF
 
     # REG0: bits 7-5 UART baud, bits 4-3 parity, bits 2-0 air rate
     reg0 = (_BAUD_BITS[_PICO_UART_BAUD] << 5) | (_PAR_BITS["8N1"] << 3) | _AIR_BITS[air]

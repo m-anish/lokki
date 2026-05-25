@@ -12,10 +12,10 @@ Examples:
     # 2. Read the current config:
     python3 utils/e220_provisioner_cli.py --port /dev/tty.usbmodem1101 read
 
-    # 3. Set ADDL=1, channel 18, transparent, per-packet RSSI byte ON,
-    #    and persist to NVRAM:
+    # 3. Set ADDL=1, channel 73 (project default), transparent, per-packet
+    #    RSSI byte ON, and persist to NVRAM:
     python3 utils/e220_provisioner_cli.py --port /dev/tty.usbmodem1101 \\
-        write --addl 1 --channel 18 --rssi-byte --persist
+        write --addl 1 --channel 73 --rssi-byte --persist
 
     # 4. After a persist, power-cycle the Pico for clean re-init.
 
@@ -173,7 +173,7 @@ def main():
     w = sub.add_parser("write", help="Write a new config (volatile by default)")
     w.add_argument("--addh",      type=parse_byte, default=0x00, help="ADDH (0x00..0xFF)")
     w.add_argument("--addl",      type=parse_byte, default=0x00, help="ADDL (0x00..0xFF)")
-    w.add_argument("--channel",   type=int,        default=18,    help="0..80 (freq=850.125+CH)")
+    w.add_argument("--channel",   type=int,        default=73,    help="0..80 (freq=850.125+CH); project default 73")
     w.add_argument("--baud",      choices=list(_BAUD),    default="9600")
     w.add_argument("--parity",    choices=list(_PARITY),  default="8N1")
     w.add_argument("--air",       choices=list(_AIR),     default="2.4k")
