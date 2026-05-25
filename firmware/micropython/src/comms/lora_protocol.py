@@ -21,6 +21,7 @@ CFG_START = "CFG_START"
 CFG_CHUNK = "CFG_CHUNK"
 CFG_END   = "CFG_END"
 EO        = "EO"          # Emergency Off — all outputs to zero
+BLINK     = "BLINK"       # "blink your status LED so the operator can identify you" — used by the claim wizard
 
 # ACK required for these types
 _ACK_REQUIRED = {SC, MO, EO, CFG_END}
@@ -172,7 +173,12 @@ class LoRaProtocol:
     # Chunked config transfer (coordinator → leaf)
     # ------------------------------------------------------------------
 
-    async def send_config(self, dest_id, config_str):
+    async def send_config(self, dest_id, config_str, target_uid=None):
+        """If target_uid is given, the leaf will compare it against its own
+        chip UID and ignore the transfer if they don't match. Used by the
+        claim wizard so that a single CFG_START aimed at the shared
+        unit_id=99 address only takes effect on the specific freshly-
+        factory-reset board the operator picked."""
         data    = config_str.encode()
         total   = len(data)
         chunks  = []
@@ -185,7 +191,8 @@ class LoRaProtocol:
         checksum    = "{:08x}".format(_crc32(data))
 
         log.info(f"[LORA_PROTO] Config transfer {transfer_id}: "
-                 f"{len(chunks)} chunks → unit {dest_id}")
+                 f"{len(chunks)} chunks → unit {dest_id}"
+                 + (f" (target_uid={target_uid})" if target_uid else ""))
 
         self.cfg_progress = {
             "unit_id": dest_id,
@@ -199,11 +206,14 @@ class LoRaProtocol:
             # CFG_START
             self.cfg_progress["phase"] = "starting"
             self.cfg_progress["sent"]  = 0
-            seq = self.send(CFG_START, dest_id, {
+            cfg_start_payload = {
                 "transfer_id": transfer_id,
                 "total_chunks": len(chunks),
                 "total_bytes": total,
-            })
+            }
+            if target_uid:
+                cfg_start_payload["target_uid"] = target_uid
+            seq = self.send(CFG_START, dest_id, cfg_start_payload)
             ack = await self._wait_ack(seq)
             if not ack or not ack.get("ok", True):
                 log.warn(f"[LORA_PROTO] CFG_START no ACK or rejected (attempt {attempt})")
@@ -571,6 +581,15 @@ class LoRaProtocol:
 
     def send_emergency_off(self, dest):
         return self.send(EO, dest)
+
+    def send_blink(self, dest, target_uid=None):
+        """Tell a leaf (or all leaves with matching target_uid) to flash
+        their status LED so the operator can physically identify which
+        board they're about to claim. Fire-and-forget — no ACK."""
+        payload = {}
+        if target_uid:
+            payload["target_uid"] = target_uid
+        return self.send(BLINK, dest, payload)
 
 
 lora_protocol = LoRaProtocol()

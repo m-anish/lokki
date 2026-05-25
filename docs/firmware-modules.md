@@ -492,11 +492,15 @@ Each handler receives the parsed request, calls the appropriate module, and retu
 
 **Key handlers:**
 ```python
-handle_fleet_status()          → fleet_manager.get_all()
-handle_unit_config_push(id)    → lora_protocol.send_config(id, config_str)
-handle_scene_apply(name, ids)  → lora_protocol.send(SC, id, {"scene": name})
-handle_manual_override(id)     → lora_protocol.send(MO, id, payload)
-handle_manual_clear(id)        → lora_protocol.send(MO, id, {"revert_s": -1})
+handle_fleet_status()             → {fleet: fleet_manager.get_all(),
+                                     unclaimed: fleet_manager.get_unclaimed_all()}
+handle_unit_config_push(id)       → lora_protocol.send_config(id, config_str)
+handle_scene_apply(name, ids)     → lora_protocol.send(SC, id, {"scene": name})
+handle_manual_override(id)        → lora_protocol.send(MO, id, payload)
+handle_manual_clear(id)           → lora_protocol.send(MO, id, {"revert_s": -1})
+handle_unclaimed_blink(chip_uid)  → lora_protocol.send_blink(99, target_uid=chip_uid)
+handle_unclaimed_claim(chip_uid)  → lora_protocol.send_config(99, blank_slate,
+                                                              target_uid=chip_uid)
 ```
 
 **Dependencies:** `coordinator/fleet_manager`, `comms/lora_protocol`, `core/config_manager`

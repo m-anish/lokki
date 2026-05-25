@@ -546,6 +546,118 @@ def handle_request_status(unit_id):
 
 
 # ------------------------------------------------------------------
+# Unclaimed-leaf onboarding (claim wizard)
+# ------------------------------------------------------------------
+# Leaves that have been factory-reset (long-press of the reset button)
+# come up as unit_id=99 and broadcast HBs that include their chip UID.
+# The dashboard surfaces them as "New device" cards; these endpoints
+# back the wizard's two actions: "Flash to identify" (BLINK) and "Claim"
+# (push a real config so the leaf reboots into its new unit_id).
+# ------------------------------------------------------------------
+
+_UNCLAIMED_UNIT_ID = 99
+
+
+def handle_unclaimed_blink(chip_uid):
+    """Tell whichever unclaimed leaf has this chip UID to flash its
+    status LED so the operator can identify the physical board."""
+    u = fleet_manager.get_unclaimed(chip_uid)
+    if u is None:
+        return _err(f"Unknown unclaimed device {chip_uid}", 404)
+    lora_protocol.send_blink(_UNCLAIMED_UNIT_ID, target_uid=chip_uid)
+    return _ok({"blinked": chip_uid})
+
+
+def _build_blank_slate_config(new_unit_id, new_unit_name):
+    """Build a minimal "blank slate" config for a freshly-claimed leaf.
+    Reuses the coordinator's lora/hardware/timezone sections so the new
+    leaf stays on the fleet's channel/crypt and reads its IO pins the
+    same way the rest of the fleet does. Defers all user-facing config
+    (channels enabled, relays, PIR, scenes) to the Config Builder.
+
+    Why we have to send a *whole* config rather than a delta: the LoRa
+    config push path (CFG_START/CHUNK/END) replaces the leaf's
+    config.json wholesale. There's no merge-on-leaf mechanism, and the
+    unclaimed defaults the leaf is currently running are already nearly
+    identical to what we'd assemble here — the only fields that
+    actually change are system.unit_id and system.unit_name.
+    """
+    coord = config_manager.get_all()
+    return {
+        "version": coord.get("version", "1.0"),
+        "system": {
+            "role":                   "leaf",
+            "unit_id":                int(new_unit_id),
+            "unit_name":              new_unit_name or f"Unit {new_unit_id}",
+            "log_level":              "INFO",
+            "log_buffer_size":        100,
+            "heartbeat_interval_s":   coord.get("system", {}).get("heartbeat_interval_s", 30),
+            "heartbeat_timeout_s":    coord.get("system", {}).get("heartbeat_timeout_s", 120),
+            "pwm_update_interval_ms": 500,
+        },
+        "wifi":     {"ssid": "N/A", "password": ""},   # leaves don't use wifi
+        "lora":     dict(coord.get("lora", {})),
+        "timezone": dict(coord.get("timezone", {"name": "UTC", "utc_offset_hours": 0})),
+        "hardware": dict(coord.get("hardware", {})),
+        "ldr":      {"enabled": False, "smoothing_window_s": 60, "cap_rules": []},
+        "pir":      [],
+        "relays":   [],
+        "led_channels": [
+            {"id": i, "name": f"Channel {i}", "gpio_pin": pin,
+             "enabled": False, "default_duty_percent": 0, "time_windows": []}
+            for i, pin in zip(range(1, 9), (16, 17, 18, 19, 22, 15, 14, 13))
+        ],
+        "scenes":        [],
+        "notifications": {"mqtt_enabled": False},
+    }
+
+
+async def handle_unclaimed_claim(chip_uid, body):
+    """Claim a freshly-factory-reset leaf. Body: {"unit_id": 1..8, "name": "..."}.
+    Builds a blank-slate config and pushes it to unit_id=99 with the
+    target_uid set so only the matching board accepts the transfer.
+    On success, drops the unclaimed entry so the "New device" card
+    disappears from the dashboard once the leaf reboots into its new id.
+    """
+    u = fleet_manager.get_unclaimed(chip_uid)
+    if u is None:
+        return _err(f"Unknown unclaimed device {chip_uid}", 404)
+
+    try:
+        new_unit_id = int(body.get("unit_id"))
+    except Exception:
+        return _err("unit_id required (1..8)", 400)
+    if not (1 <= new_unit_id <= 8):
+        return _err("unit_id must be 1..8", 400)
+    if new_unit_id in fleet_manager.get_all() and fleet_manager.is_online(new_unit_id):
+        return _err(f"unit_id {new_unit_id} is already in use by an online leaf", 409)
+
+    new_name = (body.get("name") or "").strip() or f"Unit {new_unit_id}"
+
+    cfg = _build_blank_slate_config(new_unit_id, new_name)
+    cfg_str = json.dumps(cfg)
+
+    log.info(f"[API] Claiming chip {chip_uid} as unit {new_unit_id} ({new_name})")
+    ok = await lora_protocol.send_config(_UNCLAIMED_UNIT_ID, cfg_str, target_uid=chip_uid)
+    if not ok:
+        prog = lora_protocol.cfg_progress
+        msg = prog.get("message") if prog.get("phase") == "failed" else None
+        return _err(msg or "Claim push failed — check LoRa link", 502)
+
+    # Cache the config under the *new* unit_id and remove the unclaimed
+    # entry. The leaf will reboot and start heartbeating as new_unit_id,
+    # at which point fleet_manager.update() repopulates its claimed-leaves
+    # slot from the incoming HB.
+    try:
+        _leaf_config_cache[new_unit_id] = cfg
+        _persist_leaf_cfg(new_unit_id, cfg)
+    except Exception as e:
+        log.warn(f"[API] Could not cache claimed leaf {new_unit_id}: {e}")
+    fleet_manager.drop_unclaimed(chip_uid)
+    return _ok({"claimed": chip_uid, "unit_id": new_unit_id, "name": new_name})
+
+
+# ------------------------------------------------------------------
 # Reboot coordinator
 # ------------------------------------------------------------------
 

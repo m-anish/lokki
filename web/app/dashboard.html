@@ -333,6 +333,13 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
         <div id="connStatus" style="margin-top:12px;font-size:.85em;opacity:.8"></div>
       </div>
       <main>
+        <div id="unclaimedSection" style="display:none;margin-bottom:24px">
+          <h2 style="font-size:1.2em;margin:0 0 4px;font-weight:700">New Devices</h2>
+          <p style="margin:0 0 12px;color:var(--muted);font-size:.9em">
+            Factory-reset leaves waiting to be claimed. Pick a unit ID and give it a name.
+          </p>
+          <div id="unclaimed"></div>
+        </div>
         <h2 style="font-size:1.2em;margin:0 0 16px;font-weight:700">Fleet Status</h2>
         <div id="fleet">Loading…</div>
         <div style="margin-top:40px;padding-top:20px;border-top:1px solid var(--border);font-size:.85em;color:var(--muted);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -379,6 +386,33 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
       <span class="close" onclick="closeModal()">&times;</span>
     </div>
     <div id="modalBody">Loading...</div>
+  </div>
+</div>
+
+<div id="claimModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Claim New Device</h2>
+      <span class="close" onclick="closeClaimModal()">&times;</span>
+    </div>
+    <div id="claimBody">
+      <p style="margin:0 0 12px;color:var(--muted)">
+        Chip UID: <code id="claimChipUid"></code>
+      </p>
+      <div style="margin:12px 0">
+        <button class="btn" id="claimBlinkBtn" onclick="claimBlink()">💡 Flash to identify</button>
+        <span id="claimBlinkStatus" style="margin-left:8px;color:var(--muted);font-size:.85em"></span>
+      </div>
+      <label style="display:block;margin:12px 0 4px;font-weight:600">Unit ID</label>
+      <select id="claimUnitId" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px"></select>
+      <label style="display:block;margin:12px 0 4px;font-weight:600">Name</label>
+      <input type="text" id="claimUnitName" placeholder="e.g. Hallway Lights" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px">
+      <div style="margin-top:20px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="closeClaimModal()">Cancel</button>
+        <button class="btn" id="claimSubmitBtn" onclick="submitClaim()" style="background:var(--brand);color:#fff">Claim</button>
+      </div>
+      <div id="claimStatus" style="margin-top:12px;font-size:.9em"></div>
+    </div>
   </div>
 </div>
 
@@ -561,6 +595,134 @@ function renderFleet(units) {
   document.getElementById("fleet").innerHTML = h;
 }
 
+function renderUnclaimed(unclaimed) {
+  const section = document.getElementById("unclaimedSection");
+  const container = document.getElementById("unclaimed");
+  // Only show currently-online unclaimed leaves. Stale entries are kept
+  // in lastUnclaimed but hidden so a powered-off bench device doesn't
+  // pollute the dashboard after the operator walked away.
+  const live = Object.entries(unclaimed).filter(([_, u]) => u.online);
+  if (!live.length) {
+    section.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
+  section.style.display = "";
+  let h = "";
+  for (const [uid, u] of live) {
+    const safeUid = uid.replace(/[^A-F0-9a-f]/g, "");
+    h += `<div class="unit-card" style="border-left:4px solid #f59e0b">`;
+    h += `<div class="unit-head">`;
+    h += `<span class="unit-name">🆕 New device</span>`;
+    h += `<span class="unit-role" style="background:#fef3c7;color:#92400e">Unclaimed</span>`;
+    h += `<div style="margin-left:auto;display:flex;gap:8px">`;
+    h += `<button class="btn" onclick="openClaimModal('${safeUid}')">Claim…</button>`;
+    h += `</div></div>`;
+    h += `<div class="unit-body" style="font-size:.9em">`;
+    h += `<div>Chip UID: <code>${safeUid}</code></div>`;
+    if (u.rssi != null) {
+      h += `<div style="margin-top:4px">Signal: ${signalBarHTML(u.rssi)} <b>${fmtRssi(u.rssi)}</b></div>`;
+    }
+    h += `<div style="margin-top:4px;color:var(--muted)">Long-press the leaf's reset button (5+ s) to bring it here.</div>`;
+    h += `</div></div>`;
+  }
+  container.innerHTML = h;
+}
+
+function _claimedAndOnlineUnitIds() {
+  // Used to grey-out unit_ids in the claim picker that are already in
+  // use by an online leaf — the backend rejects collisions, this is
+  // just a friendlier UI hint.
+  const taken = new Set();
+  for (const [id, u] of Object.entries(lastFleet || {})) {
+    if (id == 0) continue;
+    if (u && u.online) taken.add(parseInt(id, 10));
+  }
+  return taken;
+}
+
+let _claimChipUid = null;
+function openClaimModal(chipUid) {
+  _claimChipUid = chipUid;
+  document.getElementById("claimChipUid").textContent = chipUid;
+  document.getElementById("claimUnitName").value = "";
+  document.getElementById("claimStatus").textContent = "";
+  document.getElementById("claimBlinkStatus").textContent = "";
+
+  // Populate the unit_id picker (1..8), marking taken ones.
+  const taken = _claimedAndOnlineUnitIds();
+  const sel = document.getElementById("claimUnitId");
+  sel.innerHTML = "";
+  let firstFree = null;
+  for (let i = 1; i <= 8; i++) {
+    const opt = document.createElement("option");
+    opt.value = i;
+    if (taken.has(i)) {
+      opt.textContent = `Unit ${i} (in use)`;
+      opt.disabled = true;
+    } else {
+      opt.textContent = `Unit ${i}`;
+      if (firstFree === null) firstFree = i;
+    }
+    sel.appendChild(opt);
+  }
+  if (firstFree !== null) sel.value = firstFree;
+
+  document.getElementById("claimModal").style.display = "block";
+}
+
+function closeClaimModal() {
+  document.getElementById("claimModal").style.display = "none";
+  _claimChipUid = null;
+}
+
+async function claimBlink() {
+  if (!_claimChipUid) return;
+  const btn = document.getElementById("claimBlinkBtn");
+  const status = document.getElementById("claimBlinkStatus");
+  btn.disabled = true;
+  status.textContent = "Sending…";
+  try {
+    const r = await fetchJSON(`/api/unclaimed/${_claimChipUid}/blink`, { method: "POST" });
+    status.textContent = r.ok ? "Flashed — check the bench." : ("Failed: " + (r.error || "unknown"));
+  } catch (e) {
+    status.textContent = "Failed: " + e.message;
+  } finally {
+    setTimeout(() => { btn.disabled = false; }, 1500);
+  }
+}
+
+async function submitClaim() {
+  if (!_claimChipUid) return;
+  const unitId = parseInt(document.getElementById("claimUnitId").value, 10);
+  const name   = document.getElementById("claimUnitName").value.trim();
+  const btn    = document.getElementById("claimSubmitBtn");
+  const status = document.getElementById("claimStatus");
+  btn.disabled = true;
+  status.style.color = "var(--muted)";
+  status.textContent = "Pushing config over LoRa… this can take ~30s.";
+  try {
+    const r = await fetchJSON(`/api/unclaimed/${_claimChipUid}/claim`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ unit_id: unitId, name: name }),
+    });
+    if (r.ok) {
+      status.style.color = "var(--green)";
+      status.textContent = `Done. Leaf is rebooting as Unit ${unitId}.`;
+      setTimeout(() => { closeClaimModal(); load(); }, 1500);
+    } else {
+      status.style.color = "#dc2626";
+      status.textContent = "Failed: " + (r.error || "unknown");
+    }
+  } catch (e) {
+    status.style.color = "#dc2626";
+    status.textContent = "Failed: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function fmtAgoS(agoS) {
   if (agoS == null || agoS < 0) return "—";
   const delta = Math.max(0, Math.floor(agoS));
@@ -598,6 +760,7 @@ async function load() {
     lastFleet     = data.fleet     || data;
     lastUnclaimed = data.unclaimed || {};
     renderFleet(lastFleet);
+    renderUnclaimed(lastUnclaimed);
   } catch (e) {
     console.error("load failed:", e);
   } finally {
@@ -1243,6 +1406,7 @@ async function pollEvents() {
 
 window.onclick = e => {
   if (e.target.id === "controlModal") closeModal();
+  if (e.target.id === "claimModal")   closeClaimModal();
   const bell = document.getElementById("bellPanel");
   if (bell && bell.classList.contains("shown")) {
     if (!e.target.closest(".bell-wrap")) bell.classList.remove("shown");

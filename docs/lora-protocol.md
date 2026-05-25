@@ -130,6 +130,7 @@ Leaf reports its current output states and basic health. Coordinator uses this t
   "s": 1, "d": 0, "t": "HB", "seq": 12,
   "p": {
     "name":   "South Wing",   // leaf's unit_name (lets coordinator label fleet without a separate config push)
+    "uid":    "A3F1C204",     // last 4 bytes of machine.unique_id() as upper-hex — stable per-chip identity
     "uptime": 3600,           // seconds since boot
     "ch":  [100,80,0,0,0,0,0,0],  // LED channels duty% — positional, sorted by channel id
     "rl":  [1, 0],            // relay states (1=on, 0=off) — positional, in config order
@@ -142,6 +143,8 @@ Leaf reports its current output states and basic health. Coordinator uses this t
 ```
 
 **Note on positional lists:** `ch`, `rl`, `pir` are fixed-length positional arrays. Index `i` always corresponds to integer id `i+1` (channels: 8-slot `ch` for ids 1..8; relays: 2-slot `rl` for ids 1..2; pirs: 4-slot `pir` for ids 1..4). Disabled or unconfigured slots stay at 0. There are no gaps — the position alone identifies the output.
+
+**Note on `uid`:** Every HB and SRP carries the leaf's chip UID so the coordinator can disambiguate **unclaimed** leaves (factory-reset boards all live at `unit_id = 99` on the air). The claim wizard uses this UID to target a specific physical board for both "flash to identify" (`BLINK`) and the claim config push (`CFG_START` with `target_uid`).
 
 ---
 
@@ -239,6 +242,24 @@ Forces all of the leaf's configured LED channels and relays to 0/off via manual 
 ```
 
 No payload. Leaf applies `priority_arbiter.set_manual(id, 0, 0, 0)` for every output and sets the status LED to `manual_override` (purple). Use a subsequent `MO` with `revert_s = -1` to clear and resume schedule.
+
+---
+
+### 3.5c `BLINK` — Flash to Identify
+**Direction:** Coordinator → Leaf (typically `d = 99`, the unclaimed unit_id)
+**Trigger:** Operator clicks "Flash to identify" in the claim wizard
+**ACK required:** No
+
+```json
+{
+  "s": 0, "d": 99, "t": "BLINK", "seq": 17,
+  "p": {
+    "target_uid": "A3F1C204"   // chip UID — only the matching leaf flashes
+  }
+}
+```
+
+Sent to `dest = 99` so every unclaimed leaf on the air receives it; only the leaf whose `_chip_uid_hex()` matches `target_uid` flashes its status LED magenta for ~3 s. Non-matching leaves silently drop the frame. Without `target_uid`, all listening leaves flash.
 
 ---
 
@@ -340,10 +361,13 @@ Config files may exceed the 200-byte packet limit. Chunked transfer breaks them 
   "p": {
     "total_chunks": 12,
     "total_bytes": 1740,
-    "transfer_id": "a3f2"     // random 4-char ID to match chunks to transfer
+    "transfer_id": "a3f2",    // random 4-char ID to match chunks to transfer
+    "target_uid":  "A3F1C204" // OPTIONAL — only the leaf whose chip UID matches accepts the transfer
   }
 }
 ```
+
+**`target_uid` behaviour (claim wizard only):** When set, leaves whose `_chip_uid_hex()` doesn't match silently drop the `CFG_START` (no transfer state created, no auto-ACK from the dispatcher because the handler returns before that point). Subsequent `CFG_CHUNK`s are dropped because they reference an unknown `transfer_id`. The `CFG_END` from non-target leaves is suppressed when `unit_id == 99` so the coord doesn't see racing ACKs from multiple unclaimed boards on the bench. Without `target_uid`, the transfer behaves exactly as before.
 
 **`CFG_CHUNK`** — Coordinator → Leaf, one chunk
 ```json
@@ -389,6 +413,7 @@ Coordinator retries full transfer on failure.
 | `SC` | On demand | Coordinator → Leaf | Yes |
 | `MO` | On demand | Coordinator → Leaf | Yes |
 | `EO` | Emergency Off button | Coordinator → Leaf | Yes |
+| `BLINK` | Claim-wizard "Flash to identify" | Coordinator → Leaf(99) | No |
 | `SR` | On demand | Coordinator → Leaf | No |
 | `SRP` | Response to SR | Leaf → Coordinator | No |
 | `ACK` | Response to SC/MO/CFG | Any | — |

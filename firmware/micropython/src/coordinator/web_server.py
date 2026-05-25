@@ -275,9 +275,33 @@ class WebServer:
         if path == "/api/emergency-off" and method == "POST":
             return self._json(api.handle_emergency_off())
 
+        # --- Unclaimed-leaf onboarding (claim wizard) ---
+        # /api/unclaimed/<chip_uid>/blink  → POST: flash the leaf's status LED
+        # /api/unclaimed/<chip_uid>/claim  → POST: push a blank-slate config so
+        #                                    the leaf reboots into a real unit_id
+        if path.startswith("/api/unclaimed/"):
+            return await self._route_unclaimed(method, path, body)
+
         # --- Per-unit endpoints  /api/units/<id>/... ---
         if path.startswith("/api/units/"):
             return await self._route_unit(method, path, body)
+
+        return "404 Not Found", "application/json", '{"ok":false,"error":"not found"}'
+
+    async def _route_unclaimed(self, method, path, body):
+        # parse /api/unclaimed/<chip_uid>/<sub>
+        parts = path.split("/")  # ['', 'api', 'unclaimed', '<uid>', '<sub>']
+        if len(parts) < 5:
+            return "400 Bad Request", "application/json", '{"ok":false,"error":"bad path"}'
+        chip_uid = parts[3]
+        sub      = parts[4]
+
+        if sub == "blink" and method == "POST":
+            return self._json(api.handle_unclaimed_blink(chip_uid))
+
+        if sub == "claim" and method == "POST":
+            parsed = self._parse_json_body(body) or {}
+            return self._json(await api.handle_unclaimed_claim(chip_uid, parsed))
 
         return "404 Not Found", "application/json", '{"ok":false,"error":"not found"}'
 

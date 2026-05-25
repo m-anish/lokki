@@ -94,7 +94,7 @@ The coordinator's web dashboard (served over WiFi) shows:
 - LDR ambient light reading
 - Uptime and error count per unit
 
-Access it at `http://<coordinator-ip>/` — check your router's DHCP table for the IP, or use `http://lokki-<unitname>.local/` if mDNS is working on your network.
+Access it at `http://<coordinator-ip>/` — check your router's DHCP table for the IP, or try `http://lokki.local/` (the hostname is set from `wifi.hostname` in `config.json`, defaulting to `lokki`). Whether `.local` resolves depends on whether the MicroPython build has the lwIP mDNS responder compiled in *and* whether your router forwards mDNS — if it doesn't resolve, fall back to the raw IP.
 
 ---
 
@@ -151,8 +151,20 @@ The full config reference is in [docs/config-schema.md](config-schema.md). Commo
 
 ---
 
-## Factory Reset
+## Factory Reset & Claiming a New Leaf
 
-Hold the reset button (GPIO pin configured in `hardware.reset_btn_pin`) for 5 seconds. This clears `config.json` from the device and reboots into safe mode. Re-upload a fresh config to restore operation.
+The reset button (GPIO `hardware.reset_btn_pin`) has two gestures:
 
-> If no reset button is wired, connect via USB and delete `config.json` manually using Thonny or `mpremote`.
+- **Short press (0.2–2 s)** — `machine.soft_reset()`. Useful for kicking a stuck unit or driving the LoRa-retry recovery loop manually. LED goes solid yellow at 0.2 s ("armed") as visual confirmation.
+- **Long press (5 s+)** — **factory reset to "unclaimed" leaf**. The LED goes from yellow → red-blink ("warning") → red-blink-then-reset at 5 s. The leaf writes a default config with `unit_id = 99` (preserving the existing `lora`, `hardware`, `timezone`, and `wifi` sections so the board can still reach the fleet) and reboots.
+
+After a long-press, the leaf comes up at `unit_id = 99` and starts heartbeating. The coordinator catches the HB (with the leaf's chip UID) and surfaces it as a **"New device"** card in the dashboard, above the Fleet Status. From there:
+
+1. Click **Flash to identify** — the matching board flashes its LED magenta for 3 s so you can spot which physical unit you're about to claim.
+2. Pick a `Unit ID` (1–8; in-use IDs are greyed out) and optional name.
+3. Click **Claim**. The coordinator pushes a blank-slate config over LoRa with `target_uid` set so only the matching board accepts it. The leaf applies the config and reboots. ~30 seconds later it shows up in the normal Fleet view at its new `unit_id`.
+4. Open the **Config Builder** to fill in channels, scenes, PIRs, etc.
+
+Coordinator units **refuse** the long-press (it would orphan the fleet). Hold time on a coord shows the same LED feedback but exits without resetting at the 5 s mark.
+
+> If no reset button is wired, connect via USB and delete `config.json` manually using Thonny or `mpremote` — the board then boots in safe mode and you re-upload a complete config.

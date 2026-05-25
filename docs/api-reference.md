@@ -74,37 +74,52 @@ Schedules a soft reset of the coordinator (executes after ~1 s to allow the resp
 ### Fleet
 
 #### `GET /api/fleet`
-Returns live status for all units — coordinator (id 0) and all leaf units that have been heard on LoRa.
+Returns live status for all units — coordinator (id 0) and all leaf units that have been heard on LoRa, plus any **unclaimed** (factory-reset) leaves waiting on the claim wizard.
 
-**Response `data`** — object keyed by unit id (integer as string)
+**Response `data`** — `{fleet: {...}, unclaimed: {...}}`
 ```json
 {
-  "0": {
-    "name": "Pagoda",
-    "online": true,
-    "last_seen": 1746521580,
-    "uptime": 3742,
-    "ch": [100, 50, 0, 0, 0, 20, 20, 20],
-    "rl": [false, false],
-    "pir": [false, false, false, false],
-    "ldr": 12,
-    "err": 0,
-    "rssi": null
+  "fleet": {
+    "0": {
+      "name": "Pagoda",
+      "online": true,
+      "last_seen": 1746521580,
+      "uptime": 3742,
+      "ch": [100, 50, 0, 0, 0, 20, 20, 20],
+      "rl": [false, false],
+      "pir": [false, false, false, false],
+      "ldr": 12,
+      "err": 0,
+      "rssi": null
+    },
+    "1": {
+      "name": "South Wing",
+      "uid":  "A3F1C204",
+      "online": true,
+      "last_seen": 1746521552,
+      "uptime": 2810,
+      "ch": [100, 0, 0, 0, 0, 0, 0, 0],
+      "rl": [false],
+      "pir": [false],
+      "ldr": 30,
+      "err": 0,
+      "rssi": -78
+    }
   },
-  "1": {
-    "name": "South Wing",
-    "online": true,
-    "last_seen": 1746521552,
-    "uptime": 2810,
-    "ch": [100, 0, 0, 0, 0, 0, 0, 0],
-    "rl": [false],
-    "pir": [false],
-    "ldr": 30,
-    "err": 0,
-    "rssi": -78
+  "unclaimed": {
+    "B2C4F1AA": {
+      "unit_id": 99,
+      "uid":     "B2C4F1AA",
+      "online":  true,
+      "last_seen_ago_s": 12,
+      "rssi":    -72,
+      "unclaimed": true
+    }
   }
 }
 ```
+
+`unclaimed` is keyed by chip UID, not by `unit_id` (every factory-reset leaf shares `unit_id = 99` on the air). The dashboard renders these as "New device" cards above the regular fleet view.
 
 - `name` — unit's `system.unit_name`. For leaves, populated from the HB payload — empty until the first HB arrives after boot.
 - `online` — heartbeat received within `heartbeat_timeout_s`.
@@ -115,6 +130,7 @@ Returns live status for all units — coordinator (id 0) and all leaf units that
 - `ldr` — ambient light level 0–100 %.
 - `err` — error counter since boot.
 - `rssi` — dBm of the last LoRa packet THIS unit received from the coordinator (leaves only). `null` for the coordinator and until the E220 RSSI-byte append is wired up (see TODO).
+- `uid` (leaves only) — last 4 bytes of `machine.unique_id()` as 8-char upper-hex. Stable per chip; useful for diagnostics ("Leaf 3 (chip ABCD1234)") and required for the claim wizard.
 
 ---
 
@@ -135,6 +151,55 @@ Sends a LoRa status-request to a leaf unit (fire-and-forget). The leaf replies a
 { "requested": 1 }
 { "requested": 1, "throttled": true }   // within cooldown
 ```
+
+---
+
+### Claim wizard (unclaimed leaves)
+
+Endpoints for onboarding factory-reset leaves. Long-pressing the reset button on a leaf (5+ seconds) writes a default "unclaimed" config and reboots — the leaf comes up at `unit_id = 99` and starts broadcasting heartbeats. The coordinator surfaces these under the `unclaimed` key in `GET /api/fleet`, and the dashboard renders them as "New device" cards with a wizard.
+
+The wizard does two things over LoRa, both addressed to `dest = 99` with a `target_uid` so only the matching chip responds:
+
+1. **Identify**: flash that specific board's status LED (magenta, 3 s).
+2. **Claim**: push a blank-slate config carrying a new `unit_id` and `unit_name`. The leaf applies it and reboots into the new identity.
+
+The coordinator's `lora` and `hardware` config sections are copied into the blank-slate so the new leaf stays on the fleet's channel/crypt out of the box. All user-facing config (channels enabled, scenes, PIR, relays) is left empty — fill it in via the Config Builder after the claim succeeds.
+
+#### `POST /api/unclaimed/{chip_uid}/blink`
+Asks the leaf with the given chip UID to flash its status LED magenta so the operator can identify the physical board.
+
+`chip_uid` is the 8-char upper-hex string returned in the `unclaimed` map.
+
+**Response `data`**
+```json
+{ "blinked": "B2C4F1AA" }
+```
+
+Returns `404` if no unclaimed leaf with that UID is known.
+
+#### `POST /api/unclaimed/{chip_uid}/claim`
+Pushes a blank-slate config to the matching leaf so it reboots as a real claimed unit.
+
+**Request body**
+```json
+{
+  "unit_id": 2,                  // 1..8; rejected if already in use by an online leaf
+  "name":    "Hallway Lights"    // optional; falls back to "Unit <id>"
+}
+```
+
+**Response `data`**
+```json
+{ "claimed": "B2C4F1AA", "unit_id": 2, "name": "Hallway Lights" }
+```
+
+On success the coordinator caches the new config under `unit_id`, removes the entry from the `unclaimed` map, and the leaf reboots. The next HB from `unit_id = 2` repopulates the regular fleet slot.
+
+Failure cases:
+- `404` — unknown chip UID
+- `400` — `unit_id` out of range (must be 1..8)
+- `409` — `unit_id` is already in use by an online leaf
+- `502` — the LoRa config push failed (`error` field has the reason from `lora_protocol.cfg_progress`)
 
 ---
 

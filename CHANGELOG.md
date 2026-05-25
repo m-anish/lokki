@@ -9,6 +9,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 Complete redesign of the system as **Lokki** — a multi-unit campus lighting platform.
 
 ### Added
+- **Claim wizard for new leaves.** Long-press the reset button (5 s) on a leaf to factory-reset it to `unit_id = 99` ("unclaimed"). The coordinator's dashboard surfaces unclaimed leaves as "New device" cards with a wizard: Flash to identify (LoRa `BLINK` with `target_uid`), pick a unit ID and name, push a blank-slate config. Multiple unclaimed leaves are disambiguated by chip UID carried in every HB.
+- **`network.hostname()` set before WLAN active.** Reachable as `lokki.local` on builds where lwIP mDNS responder is compiled in (otherwise the standard DHCP hostname still helps router-side lookups). Hostname configurable via `wifi.hostname`.
 - 8-channel LED PWM control (was 5)
 - 2-channel relay control (scheduled + event-triggered)
 - 4× PIR motion sensor support with priority override

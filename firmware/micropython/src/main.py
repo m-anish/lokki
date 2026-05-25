@@ -473,12 +473,32 @@ def _register_lora_handlers(role, fleet_manager=None):
     if role == "leaf":
         import time
         _cfg_transfers = {}
-        
+
+        # Claim wizard "flash to identify" — coord broadcasts BLINK with a
+        # target_uid; only the leaf whose chip UID matches lights up.
+        # 3 s magenta flash so the operator can spot which board on the
+        # bench is the one they're about to claim from the dashboard.
+        def on_blink(src, payload):
+            target = payload.get("target_uid")
+            if target and target != _chip_uid_hex():
+                return
+            from hardware.status_led import COLOR_MAGENTA
+            status_led.flash_event(*COLOR_MAGENTA, brightness=0.6, ms=3000)
+            log.info(f"[LORA] BLINK from {src} (target_uid={target})")
+        lora_protocol.on("BLINK", on_blink)
+
         def on_cfg_start(src, payload):
             tid = payload.get("transfer_id")
+            # If CFG_START carries a target_uid, only the matching leaf
+            # accepts the transfer — protects against multiple unclaimed
+            # leaves on unit_id=99 all swallowing the same config.
+            target = payload.get("target_uid")
+            if target and target != _chip_uid_hex():
+                return
             if tid:
                 _cfg_transfers[tid] = {"chunks": {}, "total": payload.get("total_chunks", 0), "last": time.time()}
-                log.info(f"[LORA] Started config transfer {tid} from {src}")
+                log.info(f"[LORA] Started config transfer {tid} from {src}"
+                         + (f" (target_uid={target})" if target else ""))
         lora_protocol.on("CFG_START", on_cfg_start)
 
         def on_cfg_chunk(src, payload):
@@ -567,8 +587,13 @@ def _register_lora_handlers(role, fleet_manager=None):
                 if len(chunks) == total:
                     del _cfg_transfers[tid]
             else:
-                # Unknown transfer
-                if seq is not None:
+                # Unknown transfer. If we're an unclaimed (id=99) leaf,
+                # this almost certainly means the coord was targeting a
+                # *different* board's chip UID — staying silent prevents
+                # us from racing the real target's ACK back to the
+                # coord. Claimed leaves still emit UNKNOWN_TRANSFER so
+                # genuine stale CFG_ENDs fast-fail at the coord.
+                if seq is not None and config_manager.unit_id != 99:
                     lora_protocol.send("ACK", src, {"ack_seq": seq, "ok": False, "reason": "UNKNOWN_TRANSFER"})
                     
         lora_protocol.on("CFG_END", on_cfg_end)
