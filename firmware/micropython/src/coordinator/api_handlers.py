@@ -189,7 +189,19 @@ def handle_fleet_status():
         "err": system_status.error_count,
         "rssi": None,                     # local, no link
     }
-    return _ok(fleet)
+
+    # Unclaimed leaves (factory-reset devices waiting for the claim
+    # wizard) live in a separate dict keyed by chip UID. Surface
+    # them under a separate top-level key so the dashboard can
+    # render them as "New device" cards distinct from the regular
+    # fleet view. Keys are the chip UIDs themselves.
+    unclaimed = {}
+    for chip_uid, u in fleet_manager.get_unclaimed_all().items():
+        udata = dict(u)
+        udata["last_seen_ago_s"] = int(now - u["last_seen"]) if u["last_seen"] else -1
+        unclaimed[chip_uid] = udata
+
+    return _ok({"fleet": fleet, "unclaimed": unclaimed})
 
 
 def handle_unit_status(unit_id):

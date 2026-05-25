@@ -418,6 +418,7 @@ async function init() {
 // Cache of the last fleet response so the 1s relative-time ticker can re-render
 // "last seen" labels without refetching the whole fleet from the device.
 let lastFleet = {};
+let lastUnclaimed = {};   // {chip_uid: state_dict} — factory-reset leaves waiting on the claim wizard
 
 function fmtUptime(sec) {
   if (!sec) return "0s";
@@ -591,7 +592,11 @@ async function load() {
   _loadBusy = true;
   try {
     const f = await fetchJSON("/api/fleet");
-    lastFleet = f.data || {};
+    const data = f.data || {};
+    // /api/fleet returns { fleet: {...}, unclaimed: {...} } in the new
+    // shape; older responses where data IS the fleet dict still work.
+    lastFleet     = data.fleet     || data;
+    lastUnclaimed = data.unclaimed || {};
     renderFleet(lastFleet);
   } catch (e) {
     console.error("load failed:", e);

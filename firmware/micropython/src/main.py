@@ -199,6 +199,23 @@ async def lora_deferred_retry_task():
     status_led.set_state("lora_disabled")
 
 
+# --- Stable per-device identity for HB/SRP payloads ---
+# The last 4 bytes of machine.unique_id() as 8-char hex. Included in
+# every HB and SRP so the coordinator can disambiguate multiple
+# unclaimed leaves (all at unit_id=99) — claim wizard targets a
+# specific UID, leaves with other UIDs ignore the claim. Also handy
+# for diagnostics on claimed leaves: the dashboard can show "Leaf 1
+# (chip ABCD1234)" so a physical-to-virtual mapping is always clear.
+_CHIP_UID_HEX = None
+
+def _chip_uid_hex():
+    global _CHIP_UID_HEX
+    if _CHIP_UID_HEX is None:
+        import machine
+        _CHIP_UID_HEX = "".join("{:02X}".format(b) for b in machine.unique_id()[-4:])
+    return _CHIP_UID_HEX
+
+
 def _hb_flash_rgb():
     """Pick the heartbeat-flash color from the boot-time LoRa config
     outcome. Blue when the volatile-register write succeeded; red when
@@ -215,10 +232,12 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
     await asyncio.sleep_ms(jitter_ms)
     # Cached at task entry so we don't pay config_manager attribute lookups every HB.
     name = config_manager.unit_name
+    uid = _chip_uid_hex()
     while True:
         try:
             payload = {
                 "name":    name,
+                "uid":     uid,
                 "uptime":  system_status.get_uptime(),
                 "ch":      pwm_controller.get_all(),
                 "rl":      relay_controller.get_all(),
@@ -416,6 +435,7 @@ def _register_lora_handlers(role, fleet_manager=None):
     def on_status_request(src, payload):
         response = {
             "name":    config_manager.unit_name,
+            "uid":     _chip_uid_hex(),
             "uptime":  system_status.get_uptime(),
             "ch":      pwm_controller.get_all(),
             "rl":      relay_controller.get_all(),
