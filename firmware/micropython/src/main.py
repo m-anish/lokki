@@ -1,8 +1,5 @@
 import asyncio
 import gc
-import os
-import time as _time
-import machine as _machine
 
 from core.config_manager import config_manager
 from core.schedule_engine import schedule_engine
@@ -28,50 +25,26 @@ log = Logger()
 
 
 # ------------------------------------------------------------------
-# LoRa boot retry — persistent counter across soft_reset
+# LoRa boot init: one attempt + deferred retries
 # ------------------------------------------------------------------
-# The E220 module is timing-sensitive at power-on: sometimes the first
-# register-write round-trip in apply_from_config fails ("short reply
-# None") immediately after a cold boot, but a subsequent
-# machine.soft_reset() reliably gets it right. We mimic that
-# automatically: if LoRa init fails, increment a persistent counter,
-# sleep with an exponential backoff, and soft_reset. After
-# _LORA_MAX_RETRIES failed attempts we give up and continue boot with
-# LoRa disabled (lora_disabled purple LED) — the unit's local
-# scheduler / PWM / relays / WiFi / dashboard all still work, just
-# no LoRa traffic.
+# Field-tested behavior: the E220's register-write path is unreliable
+# in the first ~30–60 seconds after power-on when the board is fed
+# from an LM2596 buck (switching ripple + cap-charge transient + LDO
+# warmup combine to corrupt the borderline-timing register exchange).
+# Manual button presses after the board has been running for a while
+# succeed on the first try, where rapid soft_reset retries do not.
 #
-# Backoff models the human-observed behavior: manual button presses
-# with a few seconds between them eventually succeed where back-to-
-# back retries don't. The module appears to need increasing settle
-# time as failures stack up. Total budget ≈ 20 s in the worst case.
-_LORA_RETRY_FILE      = "/lora_retry_count"
-_LORA_MAX_RETRIES     = 7
-_LORA_BACKOFF_BASE_MS = 200    # delays: 200, 400, 800, 1600, 3200, 6400, 8000ms
-_LORA_BACKOFF_CAP_MS  = 8000
-
-
-def _lora_retry_read():
-    try:
-        with open(_LORA_RETRY_FILE, "r") as f:
-            return int(f.read().strip() or 0)
-    except Exception:
-        return 0
-
-
-def _lora_retry_write(n):
-    try:
-        with open(_LORA_RETRY_FILE, "w") as f:
-            f.write(str(n))
-    except Exception:
-        pass
-
-
-def _lora_retry_clear():
-    try:
-        os.remove(_LORA_RETRY_FILE)
-    except Exception:
-        pass
+# So: one attempt at boot. If it fails, we continue booting (LoRa
+# tasks all start anyway — they're no-ops while the transport is
+# not ready). A background task then sleeps 100 s and retries —
+# silently, no LED noise — up to 3 times. If a deferred attempt
+# succeeds, the running listen_task / heartbeat / event_forward
+# tasks pick up real traffic automatically without re-registration.
+# After 3 deferred failures we settle into lora_disabled and stop.
+#
+# No soft_reset, no persistent counter file, fast boot.
+_LORA_DEFERRED_DELAY_S    = 100
+_LORA_DEFERRED_MAX_TRIES  = 3
 
 
 # ------------------------------------------------------------------
@@ -186,6 +159,44 @@ async def ram_telemetry_task(interval_s):
         free = gc.mem_free()
         log.debug(f"[RAM] free={free} bytes")
         await asyncio.sleep(interval_s)
+
+
+async def lora_deferred_retry_task():
+    """If the boot-time LoRa init failed, sit quiet for a while then
+    try again. Field observation: an LM2596-powered E220 needs ~60–100
+    seconds of being powered before its register-write path becomes
+    reliable. Rapid soft_reset retries never give the supply enough
+    time to settle; a single deferred attempt usually does.
+
+    Short-circuits immediately if the boot init already worked.
+    Otherwise sleeps _LORA_DEFERRED_DELAY_S between attempts, up to
+    _LORA_DEFERRED_MAX_TRIES. On success, registered LoRa handlers and
+    the already-running listen_task / heartbeat_broadcast_task / etc.
+    pick up real traffic without any re-wiring needed."""
+    if lora_transport.config_ok:
+        return                                # boot worked; nothing to do
+
+    for attempt in range(1, _LORA_DEFERRED_MAX_TRIES + 1):
+        await asyncio.sleep(_LORA_DEFERRED_DELAY_S)
+        if lora_transport.config_ok:
+            return                            # something else fixed it; bail
+        log.warn(f"[MAIN] Deferred LoRa init: attempt {attempt}/{_LORA_DEFERRED_MAX_TRIES}")
+        try:
+            lora_protocol.init()              # re-runs lora_transport.init() → apply_from_config
+        except Exception as e:
+            log.error(f"[MAIN] Deferred LoRa init exception: {e}")
+
+        if lora_transport.config_ok:
+            log.info(f"[MAIN] LoRa came up on deferred attempt {attempt}")
+            system_status.set_connection_status(lora=True)
+            status_led.flash_event(*FLASH_LORA_OK_RGB, brightness=0.9, ms=500)
+            await asyncio.sleep_ms(550)
+            status_led.set_state(_ok_led_state())
+            return
+
+    log.error(f"[MAIN] LoRa init failed after {_LORA_DEFERRED_MAX_TRIES} deferred "
+              f"attempts — accepting lora_disabled for this boot")
+    status_led.set_state("lora_disabled")
 
 
 def _hb_flash_rgb():
@@ -599,38 +610,22 @@ async def main():
     status_led.flash_event(*FLASH_BOOT_RGB, brightness=0.9, ms=500)
     await asyncio.sleep_ms(550)
 
-    # --- LoRa init — FIRST so any failure can be retried via soft-reset
-    # ---
-    # The E220 module's register-write path is borderline-flaky after a
-    # cold power-on; a Thonny soft-restart reliably gets it working.
-    # Mimic that automatically: if apply_from_config fails inside
-    # lora_transport.init(), increment a persistent counter and
-    # machine.soft_reset() to retry. After 3 failed soft-resets, give
-    # up and continue boot with LoRa disabled.
-    # Honor lora.enabled = false — explicit operator opt-out lets a
-    # board with no LoRa module wired skip the boot-time retry storm
-    # entirely. Boots straight into degraded mode (lora_disabled
-    # purple) and everything else (scheduler, PWM, relays, dashboard)
-    # works normally.
+    # --- LoRa init — one attempt at boot, deferred retry if it fails.
+    # See the comment block at the top of this file. We don't soft_reset
+    # on failure; instead, every LoRa-dependent task starts anyway and
+    # no-ops while the transport is not ready. A background task wakes
+    # 100 s later and re-attempts the register write, by which point
+    # the LM2596 buck output has settled and the module's internal
+    # state is reliable. Three deferred attempts; after that we accept
+    # lora_disabled and stop.
     lora_explicitly_disabled = not cfg.get("lora").get("enabled", True)
 
-    lora_retry = _lora_retry_read()
     if lora_explicitly_disabled:
         log.warn("[MAIN] LoRa disabled by config (lora.enabled = false) — skipping init")
         status_led.set_state("lora_disabled")
-        _lora_retry_clear()
-        lora_ok = False
-    elif lora_retry >= _LORA_MAX_RETRIES:
-        log.error(f"[MAIN] LoRa init failed {lora_retry}× — proceeding without LoRa")
-        status_led.set_state("lora_disabled")
-        _lora_retry_clear()
         lora_ok = False
     else:
-        if lora_retry > 0:
-            log.warn(f"[MAIN] LoRa recovery boot — attempt {lora_retry + 1}/{_LORA_MAX_RETRIES}")
-            status_led.set_state("lora_recovering")
-        else:
-            status_led.set_state("lora_init")
+        status_led.set_state("lora_init")
         try:
             lora_protocol.init()                    # calls lora_transport.init() → apply_from_config
             lora_ok = lora_transport.config_ok
@@ -638,30 +633,20 @@ async def main():
             log.error(f"[MAIN] LoRa init exception: {e}")
             lora_ok = False
 
-        if not lora_ok:
-            # Half-second red flash so the operator can see the failure
-            # at a glance before the soft-reset blanks the LED.
+        if lora_ok:
+            status_led.flash_event(*FLASH_LORA_OK_RGB, brightness=0.9, ms=500)
+            await asyncio.sleep_ms(550)
+            log.info("[MAIN] LoRa init OK")
+        else:
+            # Boot didn't get LoRa up. Flash red so the operator sees
+            # it, set the recovering LED, and let the deferred-retry
+            # task (started below in the task list) try again in 100 s.
+            # Boot continues normally — no soft_reset, no blocking wait.
             status_led.flash_event(*FLASH_LORA_FAIL_RGB, brightness=0.9, ms=500)
-            await asyncio.sleep_ms(550)             # let the flash actually display
-            new_count = lora_retry + 1
-            _lora_retry_write(new_count)
-            # Exponential backoff. Doubles each attempt, capped. Mimics
-            # the human-observed behaviour that manual reset-button
-            # presses with a few seconds between them eventually
-            # succeed where back-to-back automatic retries don't —
-            # the module appears to need increasing settle time.
-            backoff_ms = min(_LORA_BACKOFF_CAP_MS,
-                             _LORA_BACKOFF_BASE_MS * (2 ** (new_count - 1)))
-            log.warn(f"[MAIN] LoRa init failed — sleeping {backoff_ms} ms then "
-                     f"soft-resetting (attempt {new_count}/{_LORA_MAX_RETRIES})")
-            _time.sleep_ms(backoff_ms + 500)        # backoff + log-flush window
-            _machine.soft_reset()                   # does not return
-        # success path: half-second blue flash to confirm, then clear
-        # the retry counter and continue boot.
-        status_led.flash_event(*FLASH_LORA_OK_RGB, brightness=0.9, ms=500)
-        await asyncio.sleep_ms(550)
-        _lora_retry_clear()
-        log.info("[MAIN] LoRa init OK")
+            await asyncio.sleep_ms(550)
+            status_led.set_state("lora_recovering")
+            log.warn(f"[MAIN] LoRa init failed — will retry silently in "
+                     f"{_LORA_DEFERRED_DELAY_S} s (up to {_LORA_DEFERRED_MAX_TRIES} times)")
 
     system_status.set_connection_status(lora=lora_ok)
 
@@ -695,11 +680,12 @@ async def main():
         from coordinator.api_handlers import load_leaf_cache_from_flash
         load_leaf_cache_from_flash()
 
-    # --- Register LoRa message handlers (only if transport is healthy) ---
-    if lora_ok:
-        _register_lora_handlers(role, fleet_mgr)
-    else:
-        log.warn("[MAIN] LoRa disabled — skipping protocol handler registration")
+    # --- Register LoRa message handlers ---
+    # Always wire these, regardless of whether boot-time LoRa init
+    # succeeded. The deferred-retry task may bring LoRa up later, and
+    # we want handlers to be in place when that happens. They're
+    # harmless if no frames ever arrive (lookup misses → no-op).
+    _register_lora_handlers(role, fleet_mgr)
 
     # --- WiFi + NTP (coordinator only) ---
     wifi_ok = False
@@ -750,11 +736,18 @@ async def main():
     if reset_btn_pin is not None:
         from hardware.reset_button import run as run_reset_button_task
         tasks.append(asyncio.create_task(run_reset_button_task(reset_btn_pin)))
-    # Only start the LoRa listener if init actually succeeded. With LoRa
-    # disabled the listen loop would spin on a transport that never
-    # gets frames; cleaner to skip it entirely.
-    if lora_ok:
-        tasks.append(asyncio.create_task(lora_protocol.listen_task()))
+    # Always start the LoRa listener. If the transport isn't ready
+    # (boot init failed; deferred retry hasn't succeeded yet), recv()
+    # returns None and the loop just sleeps. Cheap. When the deferred
+    # retry brings LoRa up, this task picks up real traffic without
+    # any further wiring.
+    tasks.append(asyncio.create_task(lora_protocol.listen_task()))
+
+    # Deferred LoRa retry: silent re-attempt 100 s after boot if the
+    # initial attempt failed. Short-circuits immediately on the
+    # happy path. Skipped only when LoRa is explicitly disabled.
+    if not lora_explicitly_disabled:
+        tasks.append(asyncio.create_task(lora_deferred_retry_task()))
 
     if i2c_sensors.has_sensors:
         tasks.append(asyncio.create_task(i2c_sensors.run()))
@@ -771,8 +764,10 @@ async def main():
         # lora_ok — when LoRa is disabled it flashes red, which is
         # exactly the info the operator needs to see.
         tasks.append(asyncio.create_task(lora_status_flash_task()))
-        if lora_ok:
-            tasks.append(asyncio.create_task(time_sync_task()))
+        # Always start the periodic TS broadcast. Broadcast is a no-op
+        # while transport isn't ready; once deferred retry brings LoRa
+        # up, periodic TS resumes naturally.
+        tasks.append(asyncio.create_task(time_sync_task()))
         if wifi_ok:
             # MQTT notifications (if enabled)
             try:
@@ -791,14 +786,16 @@ async def main():
             except Exception as e:
                 log.error(f"[MAIN] Web server init failed: {e}")
     else:
-        # Leaf: broadcast heartbeats to coordinator. Skip the LoRa-
-        # dependent tasks if init failed; leaf still runs schedule/PWM/
-        # relays locally, just no fleet visibility.
-        if lora_ok:
-            tasks.append(asyncio.create_task(
-                heartbeat_broadcast_task(hb_interval, cfg.unit_id)
-            ))
-            tasks.append(asyncio.create_task(event_forward_task()))
+        # Leaf: always start HB broadcast + event forwarder. If the
+        # transport isn't ready, lora_protocol.send_heartbeat/
+        # send_error return early without touching the radio — the
+        # tasks just spin at their normal cadence with nothing to
+        # send. Once the deferred retry brings LoRa up, real HBs
+        # and forwarded events start flowing automatically.
+        tasks.append(asyncio.create_task(
+            heartbeat_broadcast_task(hb_interval, cfg.unit_id)
+        ))
+        tasks.append(asyncio.create_task(event_forward_task()))
         tasks.append(asyncio.create_task(leaf_status_task()))
 
     log.info(f"[MAIN] Running {len(tasks)} tasks")
