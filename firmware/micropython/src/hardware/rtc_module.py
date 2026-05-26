@@ -1,8 +1,16 @@
 import time
-from hardware.rtc_shared import rtc
+from hardware.rtc_shared import rtc, i2c
 from shared.simple_logger import Logger
 
 log = Logger()
+
+# DS3231 die-temperature registers. The chip uses this internally to
+# compensate its TCXO; it's a free die-temp reading off the same I2C
+# bus, ±3 °C absolute accuracy, ~5–10 °C above ambient in a sealed
+# enclosure. Updated by the chip every 64 s, so polling faster is a
+# no-op.
+_DS3231_ADDR     = 0x68
+_REG_TEMP_MSB    = 0x11
 
 # Throttle for repeated DS3231 read failures. The schedule task polls
 # this function every ~500 ms, so one bad I2C read becomes ~120 log
@@ -41,3 +49,25 @@ def get_current_time():
         # convention differences between urtc and time.localtime are
         # harmless in practice.
         return lt[:7]
+
+
+def get_rtc_temp_c():
+    """Read the DS3231's on-chip temperature sensor. Returns float
+    °C (in 0.25 °C steps) or None on I2C failure.
+
+    NOT room temperature — this is the die temp the chip uses for
+    TCXO compensation. Typically reads 5–10 °C above ambient in a
+    sealed enclosure. ±3 °C absolute accuracy, excellent stability,
+    so it's most useful for trend detection ("the unit is heating
+    up") rather than absolute readings. Free-of-charge — we already
+    have an I2C bus to this chip.
+    """
+    try:
+        raw = i2c.readfrom_mem(_DS3231_ADDR, _REG_TEMP_MSB, 2)
+    except Exception:
+        return None
+    msb = raw[0]
+    if msb & 0x80:
+        msb -= 256
+    frac = ((raw[1] >> 6) & 0x03) * 0.25
+    return msb + frac

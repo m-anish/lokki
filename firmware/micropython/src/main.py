@@ -313,8 +313,10 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
     # Cached at task entry so we don't pay config_manager attribute lookups every HB.
     name = config_manager.unit_name
     uid = _chip_uid_hex()
+    from hardware.rtc_module import get_rtc_temp_c
     while True:
         try:
+            t = get_rtc_temp_c()
             payload = {
                 "name":    name,
                 "uid":     uid,
@@ -326,6 +328,10 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
                 "err":     system_status.error_count,
                 "rssi":    lora_protocol.last_rx_rssi,
             }
+            if t is not None:
+                # Round to 0.1 °C to save bytes on the wire — the
+                # underlying sensor is 0.25 °C resolution anyway.
+                payload["rtc_t"] = round(t, 1)
             lora_protocol.send_heartbeat(payload)
             # Flash the LED on the actual send event (not on a periodic
             # timer). Blue = lora config OK at boot; red = config failed.
@@ -528,6 +534,8 @@ def _register_lora_handlers(role, fleet_manager=None):
     lora_protocol.on("MO", on_manual_override)
 
     def on_status_request(src, payload):
+        from hardware.rtc_module import get_rtc_temp_c
+        t = get_rtc_temp_c()
         response = {
             "name":    config_manager.unit_name,
             "uid":     _chip_uid_hex(),
@@ -540,6 +548,8 @@ def _register_lora_handlers(role, fleet_manager=None):
             "rssi":    lora_protocol.last_rx_rssi,
             "sc":      list(scenes.keys()),
         }
+        if t is not None:
+            response["rtc_t"] = round(t, 1)
         # Size fitting is handled by the registered SRP fitter below.
         lora_protocol.send("SRP", src, response)
     lora_protocol.on("SR", on_status_request)

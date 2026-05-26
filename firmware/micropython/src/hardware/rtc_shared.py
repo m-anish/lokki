@@ -7,6 +7,6 @@ i2c = I2C(
     0,
     scl=Pin(hw.get("i2c_scl_pin", 21)),
     sda=Pin(hw.get("i2c_sda_pin", 20)),
-    freq=hw.get("i2c_freq_hz", 100000),
+    freq=hw.get("i2c_freq_hz", 400000),
 )
 rtc = DS3231(i2c)

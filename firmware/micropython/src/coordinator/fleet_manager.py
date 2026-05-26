@@ -98,6 +98,10 @@ class FleetManager:
         u["sensors"]   = payload.get("sensors", u["sensors"])
         u["err"]       = payload.get("err", u["err"])
         u["scenes"]    = payload.get("sc", u["scenes"])
+        # DS3231 die temperature (°C). Optional in HB — leaves with a
+        # dead RTC bus simply omit the field. Useful trend signal even
+        # when no BME280 / SHT3x is wired in.
+        u["rtc_t"]     = payload.get("rtc_t", u.get("rtc_t"))
         # Coord-side RSSI from the protocol layer; fall back to the
         # remote-reported value if not present.
         from comms.lora_protocol import lora_protocol as _proto
@@ -183,6 +187,7 @@ class FleetManager:
             "err":       0,
             "rssi":      None,
             "scenes":    [],
+            "rtc_t":     None,
         }
 
     @staticmethod
@@ -202,6 +207,7 @@ class FleetManager:
             "err":       0,
             "rssi":      None,
             "scenes":    [],
+            "rtc_t":     None,
             "unclaimed": True,    # marker for dashboard rendering
         }
 

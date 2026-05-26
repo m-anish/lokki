@@ -727,7 +727,7 @@
         <div class="grid3">
           <div class="field"><label class="field-label">SDA</label><input id="h_sda" type="number" value="20" /></div>
           <div class="field"><label class="field-label">SCL</label><input id="h_scl" type="number" value="21" /></div>
-          <div class="field"><label class="field-label">Freq (Hz)</label><input id="h_i2c_freq" type="number" value="100000" /></div>
+          <div class="field"><label class="field-label">Freq (Hz)</label><input id="h_i2c_freq" type="number" value="400000" /></div>
         </div>
         <div class="divider">PWM + ADC</div>
         <div class="grid3">
@@ -1905,7 +1905,7 @@ function buildConfig() {
     hardware: {
       i2c_sda_pin:    parseInt(document.getElementById('h_sda').value)||20,
       i2c_scl_pin:    parseInt(document.getElementById('h_scl').value)||21,
-      i2c_freq_hz:    parseInt(document.getElementById('h_i2c_freq').value)||100000,
+      i2c_freq_hz:    parseInt(document.getElementById('h_i2c_freq').value)||400000,
       pwm_freq_hz:    parseInt(document.getElementById('h_pwm_freq').value)||1000,
       gamma:          parseFloat(document.getElementById('h_gamma').value)||2.2,
       ldr_adc_pin:    parseInt(document.getElementById('h_ldr_pin').value)||26,

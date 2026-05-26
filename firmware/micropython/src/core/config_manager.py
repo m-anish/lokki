@@ -371,7 +371,7 @@ class ConfigManager:
         if not isinstance(freq, int) or freq < 1 or freq > 40000000:
             errors.append("hardware.pwm_freq_hz must be 1–40000000")
 
-        i2c = hw.get("i2c_freq_hz", 100000)
+        i2c = hw.get("i2c_freq_hz", 400000)
         if not isinstance(i2c, int) or i2c not in (100000, 400000, 1000000):
             errors.append("hardware.i2c_freq_hz must be 100000, 400000, or 1000000")
 

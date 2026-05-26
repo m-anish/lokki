@@ -171,6 +171,8 @@ def handle_fleet_status():
         udata["pir_enabled"] = _positional_enabled(cached.get("pir"),          4)
         fleet[str(uid)] = udata
 
+    from hardware.rtc_module import get_rtc_temp_c
+    _rtc_t = get_rtc_temp_c()
     fleet["0"] = {
         "name": config_manager.unit_name,
         "online": True,
@@ -188,6 +190,7 @@ def handle_fleet_status():
         "ldr": ldr_monitor.ambient_percent,
         "err": system_status.error_count,
         "rssi": None,                     # local, no link
+        "rtc_t": round(_rtc_t, 1) if _rtc_t is not None else None,
     }
 
     # Unclaimed leaves (factory-reset devices waiting for the claim

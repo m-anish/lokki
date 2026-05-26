@@ -576,6 +576,14 @@ function renderFleet(units) {
       const ldrLabel = u.ldr > 70 ? "Bright" : u.ldr > 40 ? "Moderate" : u.ldr > 10 ? "Dim" : "Dark";
       h += `<div class="sensor-item">${ldrIcon} Light: <span class="sensor-value">${u.ldr}%</span> <span style="font-size:.85em;color:var(--muted)">(${ldrLabel})</span></div>`;
     }
+    // DS3231 die temperature (chip, not ambient). Useful as a "system
+    // is heating up" trend signal even when no real environmental
+    // sensor is wired in. Title attr explains the caveat.
+    if (u.rtc_t != null) {
+      const t = u.rtc_t;
+      const tIcon = t >= 55 ? "🔥" : t >= 40 ? "🌡️" : "❄️";
+      h += `<div class="sensor-item" title="DS3231 die temperature — typically 5–10°C above ambient in a sealed enclosure">${tIcon} Chip: <span class="sensor-value">${t.toFixed(1)}°C</span></div>`;
+    }
     h += `</div></div>`;
 
     h += `<div class="status-section"><div class="status-label">System</div>`;
