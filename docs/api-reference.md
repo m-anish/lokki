@@ -61,6 +61,25 @@ Useful for the Config Builder's "Load from Coordinator" flow and as a config bac
 
 ---
 
+#### `POST /api/time-sync`
+Operator override for the coordinator's wall-clock. Use when NTP is unreachable and the DS3231 backup battery is dead, so the coord has no automatic way to learn the time. The dashboard's `time_waiting` banner exposes a "Set time from this browser" button that posts here with the browser's current epoch.
+
+**Request body**
+```json
+{ "epoch": 1748400000 }
+```
+
+`epoch` is Unix seconds (UTC). Values before `1700000000` (Nov 2023) are rejected with `400` to prevent a stale browser tab from pushing the coord back into the "synced but wrong year" hole.
+
+The coord applies the epoch to the MCU's internal clock, mirrors it to the DS3231 (best-effort — failure here is non-fatal, MCU clock is still set), flips `system_status.time_synced = true` with source `"manual"`, and broadcasts `TS` to leaves so the whole fleet catches up in one round-trip.
+
+**Response `data`**
+```json
+{ "epoch": 1748400000, "source": "manual" }
+```
+
+---
+
 #### `POST /api/reboot`
 Schedules a soft reset of the coordinator (executes after ~1 s to allow the response to be sent).
 

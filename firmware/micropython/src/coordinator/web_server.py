@@ -252,6 +252,10 @@ class WebServer:
         if path == "/api/reboot" and method == "POST":
             return self._json(api.handle_reboot())
 
+        if path == "/api/time-sync" and method == "POST":
+            parsed = self._parse_json_body(body) or {}
+            return self._json(api.handle_time_sync(parsed))
+
         # --- Fleet ---
         if path == "/api/fleet" and method == "GET":
             return self._json(api.handle_fleet_status())

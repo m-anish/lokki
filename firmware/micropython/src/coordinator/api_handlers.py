@@ -661,6 +661,67 @@ async def handle_unclaimed_claim(chip_uid, body):
 
 
 # ------------------------------------------------------------------
+# Manual time-set (operator override)
+# ------------------------------------------------------------------
+# Use case: NTP is unreachable AND the DS3231 battery is dead, so the
+# coord has no way to learn the wall-clock on its own. The dashboard's
+# "Set time now" button in the time-waiting banner posts here with the
+# browser's current epoch — we apply it to the MCU clock + DS3231 +
+# broadcast it to leaves, and flip system_status.time_synced so the
+# schedule resumes.
+
+def handle_time_sync(body):
+    import time as _time
+    from shared.system_status import system_status, time_is_sane
+
+    try:
+        epoch = int(body.get("epoch"))
+    except Exception:
+        return _err("epoch (Unix seconds, integer) required", 400)
+    # Sanity: refuse anything before Nov 2023 (Lokki's earliest plausible
+    # deployment date) so a mis-clicked stale browser tab can't push us
+    # back into the "time_synced but wrong year" hole.
+    if epoch < 1_700_000_000:
+        return _err("epoch must be >= 1700000000 (Nov 2023)", 400)
+    tz_offset = config_manager.get("timezone").get("utc_offset_hours", 0)
+    local_sec = epoch + int(tz_offset * 3600)
+
+    # Set the MCU's internal RTC. (Year, Month, Day, weekday, Hour, Min,
+    # Sec, Subsec) — note machine.RTC().datetime() takes weekday in the
+    # 4th slot, distinct from time.localtime() and from DS3231's tuple.
+    try:
+        import machine
+        lt = _time.localtime(local_sec)
+        machine.RTC().datetime((lt[0], lt[1], lt[2], (lt[6] % 7) + 1,
+                                lt[3], lt[4], lt[5], 0))
+    except Exception as e:
+        return _err(f"MCU RTC set failed: {e}", 500)
+
+    # Best-effort DS3231 mirror so the time survives a power cycle.
+    try:
+        from hardware.rtc_shared import rtc as _rtc
+        from hardware import urtc
+        dt = urtc.seconds2tuple(local_sec)
+        _rtc.datetime(dt)
+        log.info("[API] DS3231 updated from manual time-sync")
+    except Exception as e:
+        log.warn(f"[API] DS3231 write failed (MCU clock still set): {e}")
+
+    if time_is_sane():
+        system_status.mark_time_synced("manual")
+
+    # Broadcast TS so leaves catch up immediately instead of waiting for
+    # the next periodic broadcast. Best-effort — a leaf without LoRa
+    # picks up at the next regular cadence anyway.
+    try:
+        lora_protocol.broadcast_time_sync(epoch, tz_offset)
+    except Exception as e:
+        log.warn(f"[API] TS broadcast after manual sync failed: {e}")
+
+    return _ok({"epoch": epoch, "source": "manual"})
+
+
+# ------------------------------------------------------------------
 # Reboot coordinator
 # ------------------------------------------------------------------
 
