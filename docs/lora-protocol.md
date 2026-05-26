@@ -129,22 +129,28 @@ Leaf reports its current output states and basic health. Coordinator uses this t
 {
   "s": 1, "d": 0, "t": "HB", "seq": 12,
   "p": {
-    "name":   "South Wing",   // leaf's unit_name (lets coordinator label fleet without a separate config push)
-    "uid":    "A3F1C204",     // last 4 bytes of machine.unique_id() as upper-hex — stable per-chip identity
-    "uptime": 3600,           // seconds since boot
+    "n":   "South Wing",          // unit_name (was "name")
+    "up":  3600,                  // uptime seconds (was "uptime")
     "ch":  [100,80,0,0,0,0,0,0],  // LED channels duty% — positional, sorted by channel id
-    "rl":  [1, 0],            // relay states (1=on, 0=off) — positional, in config order
-    "pir": [0, 0, 0, 0],      // PIR states (1=motion, 0=vacant) — positional, in config order
-    "ldr": 42,                // LDR ambient reading 0–100%
-    "err": 0,                 // error count since last heartbeat
-    "rssi": -78               // dBm of the last LoRa packet THIS leaf received (or null until E220 RSSI append is enabled)
+    "rl":  [1, 0],                // relay states (1=on, 0=off) — positional, in config order
+    "pir": [0, 0, 0, 0],          // PIR states (1=motion, 0=vacant) — positional, in config order
+    "ldr": 42,                    // LDR ambient reading 0–100% (optional; first to be dropped by HB fitter)
+    "r":   -78,                   // dBm of the last LoRa packet THIS leaf received (was "rssi"; optional)
+    "tc":  31.5                   // DS3231 die temperature in °C (was "rtc_t"; optional, omitted if RTC absent)
   }
 }
 ```
 
+Two fields are sent **only when meaningful** so HB stays small under the 200 B packet limit:
+
+  * `uid` — included only when `s == 99` (i.e. an unclaimed leaf). Claimed leaves are already disambiguated by the envelope's `s` (unit_id), so sending the chip UID every HB is wasted bytes. Operators who want the chip UID for a claimed leaf can request it via SRP.
+  * `err` — included only when the leaf's local error count is non-zero. Absence ⇒ zero. Lets a freshly-rebooted leaf signal "no errors" without burning ~11 bytes per HB on the healthy-steady-state case.
+
 **Note on positional lists:** `ch`, `rl`, `pir` are fixed-length positional arrays. Index `i` always corresponds to integer id `i+1` (channels: 8-slot `ch` for ids 1..8; relays: 2-slot `rl` for ids 1..2; pirs: 4-slot `pir` for ids 1..4). Disabled or unconfigured slots stay at 0. There are no gaps — the position alone identifies the output.
 
-**Note on `uid`:** Every HB and SRP carries the leaf's chip UID so the coordinator can disambiguate **unclaimed** leaves (factory-reset boards all live at `unit_id = 99` on the air). The claim wizard uses this UID to target a specific physical board for both "flash to identify" (`BLINK`) and the claim config push (`CFG_START` with `target_uid`).
+**HB fitter** (see `main._fit_hb`): when a long `n` plus all optional fields would exceed the budget, the fitter drops in this order — `tc` → `r` → `ldr` → truncate `n` (keeping ≥4 chars). Losing a diagnostic byte beats dropping the whole packet at the sender.
+
+**Internal/API naming.** `fleet_manager._fill` maps the wire keys above onto longer, human-readable keys (`name`, `uptime`, `rssi`, `rtc_t`, etc.) for storage and the `/api/fleet` response. The dashboard reads those long names — only the LoRa wire format is short.
 
 ---
 
@@ -281,20 +287,20 @@ Sent to `dest = 99` so every unclaimed leaf on the air receives it; only the lea
 **Trigger:** In response to `SR`  
 **ACK required:** No
 
-Same payload structure as `HB` plus a `sc` field listing the leaf's configured scene names. The coordinator caches `sc` in fleet state so the dashboard's per-unit Control modal can show scene buttons without round-tripping LoRa each time.
+Same payload structure as `HB` (same short wire keys, same conditional-`uid`/`err` rules) plus a `sc` field listing the leaf's configured scene names. The coordinator caches `sc` in fleet state so the dashboard's per-unit Control modal can show scene buttons without round-tripping LoRa each time.
 
 ```json
 {
   "s": 3, "d": 0, "t": "SRP", "seq": 44,
   "p": {
-    "name":   "South Wing",
-    "uptime": 7200,
+    "n":   "South Wing",
+    "up":  7200,
     "ch":  [0,0,0,0,0,0,0,0],
     "rl":  [0, 0],
     "pir": [0, 0, 0, 0],
     "ldr": 88,
-    "err": 0,
-    "rssi": -78,
+    "r":   -78,
+    "tc":  31.5,
     "sc":  ["evening", "security", "demo"]
   }
 }

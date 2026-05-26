@@ -86,31 +86,55 @@ class FleetManager:
     # ------------------------------------------------------------------
 
     def _fill(self, u, payload):
+        """Apply an HB/SRP payload to the per-unit state dict.
+
+        Wire keys are short (see main.heartbeat_broadcast_task for the
+        full table); internal/API keys here are long and stable so the
+        dashboard and /api/fleet shape don't change.
+
+        Wire → internal mapping:
+          n   → name         (last-known unit_name)
+          up  → uptime
+          ch/rl/pir/ldr      → same (already short)
+          r   → rssi_remote  (leaf's view of coord)
+          tc  → rtc_t        (DS3231 die temp °C, optional)
+          uid → uid          (only present on unclaimed-leaf HBs)
+          err → err          (only present when non-zero; absent → 0)
+          sc  → scenes       (SRP only)
+        """
         u["online"]    = True
         u["last_seen"] = time.time()
-        u["uptime"]    = payload.get("uptime", 0)
-        u["name"]      = payload.get("name", u.get("name") or "")
-        u["uid"]       = payload.get("uid",  u.get("uid")  or "")
+        u["uptime"]    = payload.get("up", u["uptime"] or 0)
+        u["name"]      = payload.get("n", u.get("name") or "")
+        # uid only carried by unclaimed leaves. Don't overwrite a
+        # cached UID on a claimed leaf just because the new HB omits
+        # the field.
+        if "uid" in payload:
+            u["uid"]   = payload["uid"]
         u["ch"]        = payload.get("ch", u["ch"])
         u["rl"]        = payload.get("rl", u["rl"])
         u["pir"]       = payload.get("pir", u["pir"])
         u["ldr"]       = payload.get("ldr", u["ldr"])
         u["sensors"]   = payload.get("sensors", u["sensors"])
-        u["err"]       = payload.get("err", u["err"])
+        # Error count: leaves omit this field when zero. An absent
+        # field thus means "current count is 0", NOT "no update". This
+        # also lets the count correctly reset to 0 after a leaf reboot.
+        u["err"]       = payload.get("err", 0)
         u["scenes"]    = payload.get("sc", u["scenes"])
         # DS3231 die temperature (°C). Optional in HB — leaves with a
         # dead RTC bus simply omit the field. Useful trend signal even
         # when no BME280 / SHT3x is wired in.
-        u["rtc_t"]     = payload.get("rtc_t", u.get("rtc_t"))
+        u["rtc_t"]     = payload.get("tc", u.get("rtc_t"))
         # Coord-side RSSI from the protocol layer; fall back to the
-        # remote-reported value if not present.
+        # remote-reported value if not present. "r" (short) is the
+        # leaf's reported RSSI of the *coord*'s last frame it heard.
         from comms.lora_protocol import lora_protocol as _proto
         local_rssi = _proto.last_rx_rssi
         if local_rssi is not None:
             u["rssi"] = local_rssi
-        elif "rssi" in payload:
-            u["rssi"] = payload.get("rssi")
-        u["rssi_remote"] = payload.get("rssi", u.get("rssi_remote"))
+        elif "r" in payload:
+            u["rssi"] = payload.get("r")
+        u["rssi_remote"] = payload.get("r", u.get("rssi_remote"))
 
     # ------------------------------------------------------------------
     # Queries

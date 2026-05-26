@@ -307,31 +307,58 @@ def _hb_flash_rgb():
 
 
 async def heartbeat_broadcast_task(interval_s, unit_id):
-    """Leaf task: send HB to coordinator at regular intervals with jitter."""
+    """Leaf task: send HB to coordinator at regular intervals with jitter.
+
+    Wire format note — keys here are *short* to keep HB under the 200 B
+    LoRa packet limit even with a long unit_name. They are deliberately
+    NOT the same as the internal/API keys that fleet_manager stores and
+    the dashboard reads; fleet_manager._fill maps wire→internal. Short
+    key inventory:
+      n    unit_name            (was "name")
+      up   uptime seconds       (was "uptime")
+      ch   channel duty array
+      rl   relay state array
+      pir  PIR state array
+      ldr  ambient %            (optional, dropped by fitter if needed)
+      r    last-RX RSSI         (was "rssi", optional)
+      tc   chip temperature °C  (was "rtc_t", optional)
+      uid  chip UID             (ONLY when unit_id==99 / unclaimed)
+      err  error count          (ONLY when non-zero)
+    """
     jitter_ms = unit_id * 500
     await asyncio.sleep_ms(jitter_ms)
     # Cached at task entry so we don't pay config_manager attribute lookups every HB.
     name = config_manager.unit_name
     uid = _chip_uid_hex()
+    is_unclaimed = (unit_id == 99)
     from hardware.rtc_module import get_rtc_temp_c
     while True:
         try:
             t = get_rtc_temp_c()
+            err = system_status.error_count
             payload = {
-                "name":    name,
-                "uid":     uid,
-                "uptime":  system_status.get_uptime(),
+                "n":       name,
+                "up":      system_status.get_uptime(),
                 "ch":      pwm_controller.get_all(),
                 "rl":      relay_controller.get_all(),
                 "pir":     pir_manager.get_all_states(),
                 "ldr":     ldr_monitor.ambient_percent,
-                "err":     system_status.error_count,
-                "rssi":    lora_protocol.last_rx_rssi,
+                "r":       lora_protocol.last_rx_rssi,
             }
+            # uid is only meaningful on the wire for unclaimed leaves
+            # (claim-wizard target_uid disambiguation). On a claimed
+            # leaf, the unit_id in the envelope already identifies the
+            # device — sending uid every HB just wastes ~18 B.
+            if is_unclaimed:
+                payload["uid"] = uid
+            # Only carry err when there's actually been an error.
+            # fleet_manager._fill treats absence as 0.
+            if err:
+                payload["err"] = err
             if t is not None:
                 # Round to 0.1 °C to save bytes on the wire — the
                 # underlying sensor is 0.25 °C resolution anyway.
-                payload["rtc_t"] = round(t, 1)
+                payload["tc"] = round(t, 1)
             lora_protocol.send_heartbeat(payload)
             # Flash the LED on the actual send event (not on a periodic
             # timer). Blue = lora config OK at boot; red = config failed.
@@ -534,22 +561,28 @@ def _register_lora_handlers(role, fleet_manager=None):
     lora_protocol.on("MO", on_manual_override)
 
     def on_status_request(src, payload):
+        # SRP shares the HB wire-key scheme (short keys, optional uid/
+        # err) plus its own `sc` (scene names list). See the comment
+        # in heartbeat_broadcast_task for the wire→internal mapping.
         from hardware.rtc_module import get_rtc_temp_c
         t = get_rtc_temp_c()
+        err = system_status.error_count
         response = {
-            "name":    config_manager.unit_name,
-            "uid":     _chip_uid_hex(),
-            "uptime":  system_status.get_uptime(),
+            "n":       config_manager.unit_name,
+            "up":      system_status.get_uptime(),
             "ch":      pwm_controller.get_all(),
             "rl":      relay_controller.get_all(),
             "pir":     pir_manager.get_all_states(),
             "ldr":     ldr_monitor.ambient_percent,
-            "err":     system_status.error_count,
-            "rssi":    lora_protocol.last_rx_rssi,
+            "r":       lora_protocol.last_rx_rssi,
             "sc":      list(scenes.keys()),
         }
+        if config_manager.unit_id == 99:
+            response["uid"] = _chip_uid_hex()
+        if err:
+            response["err"] = err
         if t is not None:
-            response["rtc_t"] = round(t, 1)
+            response["tc"] = round(t, 1)
         # Size fitting is handled by the registered SRP fitter below.
         lora_protocol.send("SRP", src, response)
     lora_protocol.on("SR", on_status_request)
@@ -566,26 +599,26 @@ def _register_lora_handlers(role, fleet_manager=None):
         return payload
     lora_protocol.fitter("SRP", _fit_srp)
 
-    # Fitter: HB baseline is ~140 B; adding rtc_t / rssi / a long name
-    # can push it past the 200 B limit (seen in the field when name
-    # was ~30 chars). Drop optional diagnostic fields first, then
-    # truncate the name as a last resort — losing a few chars of
+    # Fitter: HB baseline is ~110 B after the short-key rename; a long
+    # unit_name plus all diagnostic fields can still push it past 200 B.
+    # Drop optional diagnostic fields first (short-key names: tc, r, ldr),
+    # then truncate the name as a last resort. Losing a few chars of
     # display name is better than dropping the whole heartbeat at the
     # protocol layer and never reaching the coordinator.
     def _fit_hb(payload, budget):
         import json as _json
         # Order matters: shed cheapest losses first.
-        for key in ("rtc_t", "rssi", "ldr"):
+        for key in ("tc", "r", "ldr"):
             if len(_json.dumps(payload).encode()) <= budget:
                 break
             payload.pop(key, None)
         # Truncate name last. Keep at least 4 chars so the coord can
         # still display something recognisable.
         while len(_json.dumps(payload).encode()) > budget:
-            name = payload.get("name", "")
-            if len(name) <= 4:
+            n = payload.get("n", "")
+            if len(n) <= 4:
                 break
-            payload["name"] = name[:-1]
+            payload["n"] = n[:-1]
         return payload
     lora_protocol.fitter("HB", _fit_hb)
 
