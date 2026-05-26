@@ -581,7 +581,7 @@ function renderFleet(units) {
     // sensor is wired in. Title attr explains the caveat.
     if (u.rtc_t != null) {
       const t = u.rtc_t;
-      const tIcon = t >= 55 ? "🔥" : t >= 40 ? "🌡️" : "❄️";
+      const tIcon = t >= 55 ? "🔥" : "🌡️";
       h += `<div class="sensor-item" title="DS3231 die temperature — typically 5–10°C above ambient in a sealed enclosure">${tIcon} Chip: <span class="sensor-value">${t.toFixed(1)}°C</span></div>`;
     }
     h += `</div></div>`;
