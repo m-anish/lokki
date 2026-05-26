@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lokki — lights that don't need the cloud</title>
+  <meta name="description" content="A campus-scale lighting system for wellness venues. Each unit runs its own schedule. Up to eight of them coordinate over LoRa, with no internet, no broker, and no recurring fee. A starstucklab project." />
+  <meta property="og:title" content="Lokki" />
+  <meta property="og:description" content="Quiet, coordinated lighting for places that try to be quiet. A starstucklab project." />
+  <meta property="og:image" content="https://lokki.starstucklab.com/assets/hero.webp" />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#0d0e10" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="assets/mark.svg" />
+</head>
+<body>
+
+<!-- ============ TOP BAR ============ -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <a href="#" class="brand">
+      <img src="assets/mark.svg" alt="" aria-hidden="true" />
+      lokki
+    </a>
+    <span class="status">
+      <span class="dot"></span>
+      <span class="status-text">Campus 01 · Resting</span>
+    </span>
+  </div>
+</header>
+
+<!-- .page wraps everything that should warm and shift on scroll. The
+     topbar stays outside so it remains truly viewport-fixed and avoids
+     the position:fixed-in-transformed-ancestor mobile trap. -->
+<div class="page">
+
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-eyebrow">
+      <span>Campus 01</span>
+      <span class="sep">/</span>
+      <span>Eight units, one weave</span>
+    </div>
+    <h1>lokki<span class="tail">.</span></h1>
+    <p class="hero-tag">Quiet, coordinated light for places that try to be quiet.</p>
+  </div>
+  <div class="hero-scroll">scroll ↓</div>
+</section>
+
+
+<!-- ============ THE ACT ============ -->
+<section class="text" id="act">
+  <div class="wrap">
+    <div class="cols-two">
+      <div>
+        <span class="kicker">The act</span>
+        <h2 class="headline">The sun sets. The garden begins to glow.</h2>
+      </div>
+      <div class="prose">
+        <p>
+          On a hillside in northern India, a meditation retreat has eight small
+          black boxes screwed into eight stone walls. Nobody walks the property
+          at sundown to switch anything on.
+        </p>
+        <p>
+          One by one, at the right minute for the right latitude, the paths
+          warm. The pond lights breathe up. The shrine takes its cue from the
+          shrine next door, not from a server in Frankfurt.
+        </p>
+        <p>
+          When a guest walks the corridor at three in the morning, the lights
+          notice, brighten the way, and then, with the politeness of a host
+          who would rather not be seen, dim back down.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ MOOD BAND ============ -->
+<section class="band mood">
+  <div class="band-inner">
+    <p class="band-quote">
+      A campus is a small kingdom. It should not need a foreign embassy to
+      turn on its own lights.
+    </p>
+    <span class="band-attribution">— the premise</span>
+  </div>
+</section>
+
+
+<!-- ============ TIMELINE / HOW IT WORKS ============ -->
+<section class="timeline-section">
+  <div class="wrap">
+    <span class="kicker">How it works</span>
+    <h2 class="headline">Four moves, in order.</h2>
+
+    <div class="timeline" aria-label="How lokki works, in four steps">
+      <div class="timeline-track" aria-hidden="true"></div>
+      <ol class="timeline-steps">
+        <li class="timeline-step">
+          <span class="num">01</span>
+          <span class="dot" aria-hidden="true"></span>
+          <svg class="step-icon icon-sense" viewBox="0 0 24 24" aria-hidden="true">
+            <circle class="ring" cx="12" cy="12" r="3"/>
+            <circle class="ring" cx="12" cy="12" r="7"/>
+            <circle class="ring" cx="12" cy="12" r="11"/>
+          </svg>
+          <h3>Sense</h3>
+          <p>Time of day, sunrise and sunset for the actual latitude, motion in the corridor, the ambient light outside.</p>
+        </li>
+        <li class="timeline-step">
+          <span class="num">02</span>
+          <span class="dot" aria-hidden="true"></span>
+          <svg class="step-icon icon-decide" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 12 L10 6 L10 9 L20 9 L20 15 L10 15 L10 18 Z"/>
+          </svg>
+          <h3>Decide</h3>
+          <p>Manual override beats motion beats schedule beats the default state. The arbiter doesn&rsquo;t consult anyone else.</p>
+        </li>
+        <li class="timeline-step">
+          <span class="num">03</span>
+          <span class="dot" aria-hidden="true"></span>
+          <svg class="step-icon icon-dim" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/>
+            <line x1="12" y1="2"  x2="12" y2="5"/>
+            <line x1="12" y1="19" x2="12" y2="22"/>
+            <line x1="2"  y1="12" x2="5"  y2="12"/>
+            <line x1="19" y1="12" x2="22" y2="12"/>
+            <line x1="4.9"  y1="4.9"  x2="7"    y2="7"/>
+            <line x1="17"   y1="17"   x2="19.1" y2="19.1"/>
+            <line x1="4.9"  y1="19.1" x2="7"    y2="17"/>
+            <line x1="17"   y1="7"    x2="19.1" y2="4.9"/>
+          </svg>
+          <h3>Drive</h3>
+          <p>Eight constant-current LED channels, dimmed smoothly from zero to one hundred. Two relays for the loads that don&rsquo;t dim.</p>
+        </li>
+        <li class="timeline-step">
+          <span class="num">04</span>
+          <span class="dot" aria-hidden="true"></span>
+          <svg class="step-icon icon-weave" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 6 Q9 12 3 18"/>
+            <path d="M9 6 Q15 12 9 18"/>
+            <path d="M15 6 Q21 12 15 18"/>
+          </svg>
+          <h3>Weave</h3>
+          <p>The unit murmurs its state to its neighbours over LoRa, picks up theirs, and they stay in step without a single packet leaving the property.</p>
+        </li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ THE UNIT ============ -->
+<section class="feature">
+  <div class="wrap">
+    <div class="feature-grid">
+      <div class="feature-image">
+        <img src="assets/unit.webp" alt="The lokki unit: a slim matte enclosure with a faint emerald status indicator and a thin radio antenna." />
+      </div>
+      <div class="feature-text">
+        <span class="kicker">The unit</span>
+        <h2 class="headline">One PCB. One firmware. A role chosen at boot.</h2>
+        <div class="prose">
+          <p>
+            Every box on the wall is the same. Up to eight per campus, each
+            wired to its own set of fixtures. One of them is told, at the time
+            of configuration, that it is the coordinator; the rest are leaves.
+          </p>
+          <p>
+            The coordinator hosts a small web dashboard for the venue manager
+            to tune schedules and push updated configs out to the leaves. If
+            the coordinator&rsquo;s WiFi falls over, the leaves keep their
+            schedules and keep going. Nobody&rsquo;s evening is ruined by an
+            ISP outage.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ THE NUMBERS ============ -->
+<section class="numbers">
+  <div class="wrap">
+    <span class="kicker">The numbers</span>
+    <h2 class="headline" style="margin-bottom:64px;">Six figures, with their units.</h2>
+    <div class="numbers-grid">
+      <div>
+        <div class="label">LED channels</div>
+        <div class="big">8<span class="u">× PWM</span></div>
+        <div class="sub">Constant-current PT4115 drivers. 0 – 100% per channel.</div>
+      </div>
+      <div>
+        <div class="label">Relay outputs</div>
+        <div class="big">2<span class="u">× SPDT</span></div>
+        <div class="sub">For the loads that won&rsquo;t dim. Schedule or motion.</div>
+      </div>
+      <div>
+        <div class="label">PIR inputs</div>
+        <div class="big">4<span class="u">/ unit</span></div>
+        <div class="sub">Wired in over RJ45. Motion overrides the schedule.</div>
+      </div>
+      <div>
+        <div class="label">Coordination</div>
+        <div class="big">868<span class="u">MHz</span></div>
+        <div class="sub">LoRa, point-to-multipoint. No WiFi between units.</div>
+      </div>
+      <div>
+        <div class="label">Campus size</div>
+        <div class="big">8<span class="u">units</span></div>
+        <div class="sub">One coordinator, up to seven leaves. One key fleet-wide.</div>
+      </div>
+      <div>
+        <div class="label">Cloud fees</div>
+        <div class="big">0<span class="u">/mo</span></div>
+        <div class="sub">On-premises by design. Nothing to subscribe to.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ WHAT IT ISN'T ============ -->
+<section class="honesty">
+  <div class="wrap">
+    <span class="kicker">A small honesty</span>
+    <div class="prose">
+      <p>
+        Lokki is not a smart-home platform. It will not greet you by name,
+        play music, or learn your habits. It will not, ever, ask you to
+        download an app.
+      </p>
+      <p>
+        It runs the lights, listens for motion, watches the sky, and stays
+        out of the way. That is the <em>entire</em> promise.
+      </p>
+      <p class="aside">
+        The name is <em>aloka</em> — Pali for radiance — folded through a
+        Norse vowel and a Finnish accent.
+      </p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ PROVENANCE ============ -->
+<section class="provenance">
+  <div class="wrap">
+    <div class="cols-two">
+      <div>
+        <span class="kicker">Limits</span>
+        <h2>What lokki can&rsquo;t do.</h2>
+        <ul class="cant-list">
+          <li>
+            <strong>Replace an electrician.</strong>
+            It speaks at low voltage. The mains side is still someone&rsquo;s
+            licensed problem.
+          </li>
+          <li>
+            <strong>Cover a city.</strong>
+            One coordinator, up to seven leaves. Beyond a campus, you want a
+            different kind of system.
+          </li>
+          <li>
+            <strong>Survive without a roof.</strong>
+            The enclosure is indoor-rated. Outdoor fixtures yes, outdoor
+            electronics no.
+          </li>
+        </ul>
+      </div>
+      <div>
+        <span class="kicker">Family</span>
+        <h2>Part of <a href="https://starstucklab.com">starstucklab</a>.</h2>
+        <p>
+          A small ecosystem of personal engineering instruments, each built to
+          solve one specific problem and then, ideally, stop demanding
+          attention.
+        </p>
+        <p>
+          Where science met poetry, had a brief fling with engineering, and now
+          raises mildly disillusioned but talented offspring.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <h4>The build</h4>
+        <p>
+          Firmware, schematics, schemas, dashboard:<br>
+          <a href="https://github.com/m-anish/lokki">github.com/m-anish/lokki&nbsp;↗</a>
+        </p>
+      </div>
+      <div>
+        <h4>The family</h4>
+        <p>
+          <a href="https://github.com/m-anish/starstucklab">starstucklab&nbsp;↗</a><br>
+          Other small machines.
+        </p>
+      </div>
+    </div>
+    <div class="signoff">
+      <span>✦ Lokki / Campus 01 / Quiet by design</span>
+      <span>Building small machines for an indifferent universe.</span>
+    </div>
+  </div>
+</footer>
+
+</div><!-- /.page -->
+
+
+<!-- ============ DUSK → LIT TRANSITION OVERLAY ============ -->
+<!-- Mirrors the act of the product: at the threshold of the "how it works"
+     section the page warms from cool standby into evening gold. -->
+<div class="lk-warm" aria-hidden="true"></div>
+
+<script>
+(function() {
+  'use strict';
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---------- timeline: light up sequentially when in view ----------
+  const tlObs = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) {
+      if (e.isIntersecting) {
+        e.target.classList.add('in-view');
+        tlObs.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.5 });
+  document.querySelectorAll('.timeline').forEach(function(el) { tlObs.observe(el); });
+
+  if (reduced) return;
+
+  // ---------- dusk → lit: page warms once the user reaches the timeline ----------
+  // Cool standby colour while the visitor reads the opening. When they cross
+  // the "how it works" threshold the campus is "live" — gold accent comes in,
+  // the topbar status flips from Resting to Aglow.
+  const trigger = document.querySelector('.timeline-section');
+  const warm    = document.querySelector('.lk-warm');
+  const status  = document.querySelector('.status-text');
+  if (!trigger || !warm || !status) return;
+
+  const RESTING = 'Campus 01 · Resting';
+  const AGLOW   = 'Campus 01 · Aglow';
+
+  let lit = false;
+  const litObs = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) {
+      if (e.isIntersecting && !lit) {
+        lit = true;
+        runLight();
+        litObs.disconnect();
+      }
+    });
+  }, { threshold: 0.25 });
+  litObs.observe(trigger);
+
+  function runLight() {
+    // a brief warming flash, then a sustained warm overlay
+    warm.classList.add('flash');
+    document.body.classList.add('lit');
+    status.textContent = AGLOW;
+    setTimeout(function() { warm.classList.remove('flash'); }, 900);
+  }
+})();
+</script>
+
+</body>
+</html>

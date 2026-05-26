@@ -1,0 +1,2 @@
+# Cloudflare Pages redirects for the lokki marketing site.
+# Cloudflare serves index.html for / automatically; no rules needed yet.

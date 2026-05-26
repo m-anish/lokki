@@ -1,0 +1,76 @@
+{
+  "_notes": [
+    "Primary audience for v1 is Vipassana centres in the Goenka tradition,",
+    "with Dhamma Laddha in Saboo (near Leh, Ladakh) as the visual anchor.",
+    "Vernacular: whitewashed lime-plaster walls, traditional red-ochre or",
+    "deep-brown wooden window/door frames, flat roofs, set against the",
+    "stark brown ridges of the Ladakhi Himalaya at high altitude.",
+    "",
+    "LIGHTING ETHOS — central to lokki:",
+    "  Most lighting on a campus is quiet and placed only where it's",
+    "  needed: low bollards along walkways, recessed downlights at",
+    "  footing level washing the base of walls. NO high doorway",
+    "  lanterns. NO floodlights. Path light points downward, illuminating",
+    "  ground and wall texture, never the sky.",
+    "",
+    "  THE EXPRESSIVE EXCEPTION: the central pagoda hall is the one",
+    "  structure lit dramatically. Warm gold uplighting on its white",
+    "  walls, warm gold glow showing through its small windows, a gold",
+    "  finial-spire at the apex catching the most light. The pagoda is",
+    "  the campus's only piece of visible visual celebration; everything",
+    "  else recedes.",
+    "",
+    "PAGODA ARCHITECTURE (be specific):",
+    "  A modest Goenka-tradition Vipassana Dhamma hall, not a Tibetan",
+    "  gompa, not a generic temple. Circular or octagonal floor plan",
+    "  with a wide stepped scalloped roof of overlapping cream-white",
+    "  petal-shaped tiles. A multi-tiered slender gold finial-spire",
+    "  rises from the apex, with smaller gold pinnacles around its base.",
+    "  Small clerestory windows along the lower hall glow warm from",
+    "  within. No paint, no decoration on the walls beyond the white",
+    "  plaster. The structure is small and human-scaled, not monumental.",
+    "",
+    "SKY:",
+    "  High-altitude Ladakh has astonishing dark skies. Deep blue-black,",
+    "  open, cloudless, the band of the Milky Way clearly arcing across",
+    "  the frame, sharp pin-prick stars everywhere. Cold mountain night.",
+    "",
+    "Vipassana centres in the Goenka tradition are deliberately non-",
+    "sectarian — NO prayer flags, NO Buddha statues, NO Tibetan",
+    "iconography, no decoration of any kind on the buildings.",
+    "",
+    "PALETTE — three notes, no more:",
+    "  - Warm gold on the pagoda (the expressive exception)",
+    "  - Cool copper-red on the path bollards (echoes the product)",
+    "  - Cold white-on-blue-black for the starry sky",
+    "  Whitewashed plaster and charcoal shadow do the rest.",
+    "",
+    "No people in frame. No text or logos in the image. Cinematic,",
+    "painterly, hand-built atmosphere. Subtle film grain. Never glossy,",
+    "neon, or sci-fi."
+  ],
+  "slots": {
+    "hero": {
+      "size": "1536x1024",
+      "prompt": "Photographic, cinematic, deep night at a small Vipassana meditation centre in the high-altitude desert near Leh, Ladakh. Wide landscape composition. The centrepiece of the frame is a single modest Goenka-tradition Vipassana Dhamma hall — circular or octagonal floor plan, with a wide stepped scalloped roof of overlapping cream-white petal-shaped tiles, and a slender multi-tiered gold finial-spire rising from its apex with smaller gold pinnacles around the base. The pagoda is warmly uplit in gold: gold light washes its white plastered walls from below, a warm interior glow leaks through small clerestory windows around its base, and the gold spire at the top catches the most light, glittering against the sky. In the foreground, on either side of a gravel path leading toward the pagoda, low whitewashed buildings with flat roofs sit in shadow; small low bollards along the path cast quiet copper-red pools of light at ground level — the path is lit but the buildings are not. Behind the pagoda, the stark brown rocky ridges of the Ladakhi Himalaya are silhouetted. Above all of it, an enormous deep blue-black night sky fills the upper two-thirds of the frame, with the Milky Way arcing visibly across and countless sharp pin-prick stars. No people. No prayer flags. No Buddha statues. No Tibetan iconography. No text. No logos. Quiet negative space in the upper left for overlay text. Limited palette: gold on the pagoda, copper-red in the bollard pools, whitewashed cream where the gold touches it, charcoal in shadow, blue-black sky with sharp white stars. Painterly, slightly hand-built, very atmospheric. Subtle film grain. Avoid futuristic, neon, glossy, or sci-fi looks."
+    },
+    "hero-mobile": {
+      "size": "1024x1536",
+      "prompt": "Photographic, cinematic, deep night at a small Vipassana meditation centre in Ladakh, portrait composition, looking up a gravel path toward a softly gold-lit pagoda. The path runs away from the camera, lit at its edges by small low bollards casting quiet copper-red pools of light at ground level. Either side of the path: low whitewashed buildings with flat roofs, almost entirely in shadow, their bases just touched by spill light. At the end of the path, slightly above the camera, stands a modest Goenka-tradition Vipassana Dhamma hall — circular or octagonal floor plan, with a wide stepped scalloped roof of overlapping cream-white petal-shaped tiles, and a slender multi-tiered gold finial-spire rising from its apex. The pagoda is warmly uplit in gold; the spire glitters; a soft warm glow leaks from small clerestory windows around its base. Behind and above the pagoda, the stark brown ridges of the Ladakhi Himalaya are silhouetted. Above all of it, an enormous deep blue-black night sky filling the upper half, with the Milky Way arcing visibly and a generous scatter of sharp stars. No people. No prayer flags. No statues. No Tibetan iconography. No text. No logos. Painterly, very atmospheric. The lower portion quieter for overlay text. Palette: gold pagoda, copper-red bollard light, charcoal shadow, blue-black sky with white stars. Subtle film grain. Avoid futuristic, neon, glossy, or sci-fi looks."
+    },
+    "mood": {
+      "size": "1536x1024",
+      "prompt": "Photographic, atmospheric closeup at ground level of a single small bollard pathlight at night in a Ladakhi meditation centre. The bollard is short, cylindrical, made of matte copper-red metal, mounted at the edge of a gravel walkway; its light is cast downward in a small warm pool that picks out a few rough pebbles and a strip of whitewashed lime-plaster wall behind. Off in the far background, badly out of focus, the corner of a gold-uplit pagoda hall glows softly. Above and behind the bollard, the deep blue-black night sky is visible with sharp pin-prick stars and a faint suggestion of the Milky Way. Very moody, painterly, contemplative, almost still-life. Dominant palette: copper-red bollard and its warm copper pool of light, whitewashed plaster, charcoal shadow, blue-black sky with white stars, a small gold smear in the deep background. No people, no prayer flags, no Tibetan iconography, no text, no logos. Subtle film grain. Avoid neon, glossy, or sci-fi treatments."
+    },
+    "unit": {
+      "size": "1024x1024",
+      "prompt": "Editorial product photograph of a small indoor electronics enclosure mounted on a whitewashed lime-plaster wall at night in a meditation centre, photographed at rest. The enclosure is rectangular and slim, landscape-oriented — wider than it is tall, distinctly horizontal in form, about the size of a small paperback laid on its long side. The entire face of the enclosure is a SINGLE matte charcoal colour — one clean, uniform dark surface, no two-tone, no lid contrast, no panels. In the LOWER-LEFT corner of that face, the wordmark 'Lokki' is EMBOSSED — raised, extruded outward from the surface — in a warm copper-orange colour (a saturated terracotta-red, like the lid of an old electronics case). The text is the only colour highlight on the entire device; it reads in lowercase modern sans-serif type with a capital L, the letters small but clearly legible. The raised letters catch a faint highlight along their top edges from the ambient room light, with a tiny shadow underneath each letter — clearly three-dimensional, not painted on. On the right side of the device's face, well away from the wordmark, a single tiny emerald-green status LED glows softly. NO downlight wash on the wall. NO lamp pooling. NO warm artificial light source anywhere in the room. The device is illuminated only by quiet cool ambient light — faint moonlight or starlight spilling in from a window out of frame — and by its own emerald LED. The whitewashed wall is dim and cool cream-white, the device's form reading as a soft dark rectangle against it. Through a small high window in the upper right of the frame, a sliver of deep blue-black night sky is visible with two or three sharp stars. Square composition, painterly, calm, restrained — the device at rest in a sleeping space. Limited palette: charcoal device body, an embossed copper-orange wordmark, dim cool-cream wall, a single point of emerald LED, sharp white stars in a small slice of cold sky. Subtle film grain. Avoid futuristic, neon, glossy, or sci-fi looks; this should feel like a hand-built instrument quietly waiting in a darkened room, not a consumer gadget on display."
+    }
+  },
+  "_render_targets": {
+    "hero":        { "webp_width": 1920, "webp_quality": 82 },
+    "hero-mobile": { "webp_width": 1080, "webp_quality": 82 },
+    "mood":        { "webp_width": 1800, "webp_quality": 80 },
+    "unit":        { "webp_width": 1200, "webp_quality": 85 }
+  }
+}
