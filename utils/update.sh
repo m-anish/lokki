@@ -23,6 +23,7 @@ I2C_HELPER="$REPO_ROOT/firmware/micropython/tools/i2c_helper.py"
 FRESH=0
 ROLE=""
 LEAF_ID=""
+LEAVES_COUNT=""
 SETUP_WIFI=0
 DEBUG=0
 # 16-bit fleet-wide LoRa encryption key (CRYPT_H, CRYPT_L registers).
@@ -36,8 +37,8 @@ CRYPT_L="0x93"
 
 usage() {
     cat <<EOF
-Usage: $0 [--fresh --role=coordinator|leaf [--id=N] [--wifi] [--debug]
-          [--crypt-h=NN] [--crypt-l=NN]]
+Usage: $0 [--fresh --role=coordinator|leaf [--id=N] [--leaves=N]
+          [--wifi] [--debug] [--crypt-h=NN] [--crypt-l=NN]]
 
 Without flags:
     Push code + web assets only. Preserves /config.json on the device.
@@ -49,6 +50,15 @@ With --fresh:
     --role=leaf --id=N         Push a minimal leaf config with unit_id=N (1-8).
                                 The coordinator will overwrite it via LoRa once
                                 you push a real config from the Config Builder.
+    --leaves=N                 (coordinator only) Pre-cache N blank-slate leaf
+                                configs to :/leaf-configs/{1..N}.json on the
+                                coord, with lora/hardware/timezone copied from
+                                the coord's just-pushed config. Prompts
+                                interactively for each leaf's display name. When
+                                each leaf later joins the fleet, the coord's
+                                /api/units/N/config already returns a valid
+                                cached config — Config Builder works without an
+                                initial blank-slate push step.
     --debug                    Force system.log_level = "DEBUG" in the pushed
                                 config (overrides the sample/stub default of INFO).
     --crypt-h=NN --crypt-l=NN  Override the fleet-wide LoRa encryption key bytes.
@@ -67,6 +77,8 @@ while [ $# -gt 0 ]; do
         --role) shift; ROLE="${1:-}" ;;
         --id=*) LEAF_ID="${1#--id=}" ;;
         --id) shift; LEAF_ID="${1:-}" ;;
+        --leaves=*) LEAVES_COUNT="${1#--leaves=}" ;;
+        --leaves) shift; LEAVES_COUNT="${1:-}" ;;
         --wifi) SETUP_WIFI=1 ;;
         --debug) DEBUG=1 ;;
         --crypt-h=*) CRYPT_H="${1#--crypt-h=}" ;;
@@ -116,6 +128,25 @@ if [ "$FRESH" = "1" ]; then
             usage; exit 2
             ;;
     esac
+fi
+
+# Validate --leaves separately because it's only valid in combination with
+# --fresh --role=coordinator. Doing it here instead of inline in the
+# coordinator branch lets the operator catch a typo before any flashing
+# happens.
+if [ -n "$LEAVES_COUNT" ]; then
+    if [ "$FRESH" != "1" ] || [ "$ROLE" != "coordinator" ]; then
+        echo "[update] ERROR: --leaves=N requires --fresh --role=coordinator" >&2
+        exit 2
+    fi
+    if ! [[ "$LEAVES_COUNT" =~ ^[1-8]$ ]]; then
+        echo "[update] ERROR: --leaves must be 1..8 (got '$LEAVES_COUNT')" >&2
+        exit 2
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "[update] ERROR: jq is required for --leaves= pre-caching but not found on PATH" >&2
+        exit 1
+    fi
 fi
 
 if ! command -v mpremote >/dev/null 2>&1; then
@@ -313,6 +344,88 @@ if [ "$FRESH" = "1" ]; then
             echo "[update] !! Edit them via the Config Builder (USB) or with mpremote"
             echo "[update] !! before the coordinator can reach the network:"
             echo "[update] !!   mpremote connect auto edit :config.json"
+            echo
+        fi
+
+        # --- Optional: pre-cache blank-slate leaf configs (--leaves=N) ---
+        # Mirrors what api_handlers._build_blank_slate_config() does at
+        # claim-wizard time: copies lora/timezone/hardware from the coord
+        # we just pushed, fills in role/unit_id/unit_name + standard
+        # blank-slate everything else. The result lands at
+        # /leaf-configs/N.json on the coord — exactly where
+        # api_handlers._persist_leaf_cfg() writes after a real config
+        # push, so /api/units/N/config will serve it as `source: cached`
+        # the moment a leaf comes online at that unit_id.
+        if [ -n "$LEAVES_COUNT" ]; then
+            echo "[update] Pre-caching $LEAVES_COUNT blank-slate leaf config(s) on coord..."
+            echo "[update] When each leaf later joins the fleet, the coord will already"
+            echo "[update] have a usable config for it — Config Builder → Load from"
+            echo "[update] device → 'Leaf N' will work without a first-time blank push."
+            echo
+
+            mk_remote_dir "leaf-configs"
+
+            for i in $(seq 1 "$LEAVES_COUNT"); do
+                DEFAULT_NAME="Leaf-$i"
+                # `-r` keeps shell history off the prompt; `</dev/tty` so
+                # the read works even if the script is piped or stdin is
+                # otherwise redirected (some CI / wrapper scripts do this).
+                read -r -p "  Leaf $i name [$DEFAULT_NAME]: " LEAF_NAME </dev/tty || LEAF_NAME=""
+                LEAF_NAME="${LEAF_NAME:-$DEFAULT_NAME}"
+
+                LEAF_TMP="$(mktemp -t "lokki-leaf-${i}.XXXXXX")"
+                # jq -n with an explicit object template — single source of
+                # truth for the blank-slate shape. Keep this in sync with
+                # api_handlers._build_blank_slate_config(); the validator
+                # in config_manager.py is what catches drift if either
+                # one falls behind.
+                jq --arg uid "$i" --arg uname "$LEAF_NAME" \
+                   '{
+                      version: (.version // "1.0"),
+                      system: {
+                        role: "leaf",
+                        unit_id: ($uid | tonumber),
+                        unit_name: $uname,
+                        log_level: "INFO",
+                        log_buffer_size: 100,
+                        heartbeat_interval_s: (.system.heartbeat_interval_s // 30),
+                        heartbeat_timeout_s:  (.system.heartbeat_timeout_s  // 120),
+                        pwm_update_interval_ms: 500
+                      },
+                      wifi:     { ssid: "N/A", password: "" },
+                      lora:     .lora,
+                      timezone: .timezone,
+                      hardware: .hardware,
+                      ldr:      { enabled: false, smoothing_window_s: 60, cap_rules: [] },
+                      pir:      [],
+                      relays:   [],
+                      led_channels: [
+                        { id: 1, name: "Channel 1", gpio_pin: 16, enabled: false, default_duty_percent: 0, time_windows: [] },
+                        { id: 2, name: "Channel 2", gpio_pin: 17, enabled: false, default_duty_percent: 0, time_windows: [] },
+                        { id: 3, name: "Channel 3", gpio_pin: 18, enabled: false, default_duty_percent: 0, time_windows: [] },
+                        { id: 4, name: "Channel 4", gpio_pin: 19, enabled: false, default_duty_percent: 0, time_windows: [] },
+                        { id: 5, name: "Channel 5", gpio_pin: 22, enabled: false, default_duty_percent: 0, time_windows: [] },
+                        { id: 6, name: "Channel 6", gpio_pin: 15, enabled: false, default_duty_percent: 0, time_windows: [] },
+                        { id: 7, name: "Channel 7", gpio_pin: 14, enabled: false, default_duty_percent: 0, time_windows: [] },
+                        { id: 8, name: "Channel 8", gpio_pin: 13, enabled: false, default_duty_percent: 0, time_windows: [] }
+                      ],
+                      scenes: [],
+                      notifications: { mqtt_enabled: false }
+                    }' "$TMP_CFG" > "$LEAF_TMP"
+
+                echo "[update]   → :leaf-configs/$i.json   (unit_id=$i, name=\"$LEAF_NAME\")"
+                mpremote connect auto fs cp "$LEAF_TMP" ":leaf-configs/$i.json"
+                rm -f "$LEAF_TMP"
+            done
+
+            echo
+            echo "[update] All $LEAVES_COUNT leaf config(s) cached."
+            echo "[update] Next steps:"
+            echo "[update]   1. Flash each leaf one at a time:"
+            echo "[update]        $0 --fresh --role=leaf --id=1   # then 2, 3, ..."
+            echo "[update]   2. Power on the leaf; the coord shows it within ~30 s."
+            echo "[update]   3. Open the dashboard → Config Builder → Load from"
+            echo "[update]      device → 'Leaf N' to see the cached starter config."
             echo
         fi
 
