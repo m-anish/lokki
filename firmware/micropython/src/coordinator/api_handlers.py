@@ -688,6 +688,39 @@ async def handle_unclaimed_claim(chip_uid, body):
 
 
 # ------------------------------------------------------------------
+# Config validation (dry-run)
+# ------------------------------------------------------------------
+# `POST /api/config/validate` runs the same schema + semantic checks
+# the firmware applies on every config replace, but WITHOUT persisting
+# the result. The dashboard's inline-edit flow calls this on every
+# Save click so errors can render at the field they came from before
+# committing to the actual save (and to the LoRa round-trip for a
+# leaf). Coord-only — the coord owns validation for every unit's
+# config (its own + the per-leaf cached copies in /leaf-configs/).
+
+def handle_config_validate(body):
+    """Validate a candidate config without applying. Body shape:
+
+        { "config": { ...full config dict... } }
+
+    Returns:
+
+        { "ok": true,  "data": { "errors": [] } }     # valid
+        { "ok": false, "error": "...first error...",
+          "data": { "errors": [ "...", "..." ] } }    # one or more
+    """
+    if not isinstance(body, dict) or not isinstance(body.get("config"), dict):
+        return _err("body must be {\"config\": {...}}", 400)
+    ok, errors = config_manager.validate_candidate(body["config"])
+    if ok:
+        return _ok({"errors": []})
+    # Surface the first error in the top-level `error` field so basic
+    # clients see something useful without parsing `data`; the full
+    # list stays in `data.errors` for richer renders.
+    return {"ok": False, "error": errors[0], "data": {"errors": errors}, "_status": 422}
+
+
+# ------------------------------------------------------------------
 # Manual time-set (operator override)
 # ------------------------------------------------------------------
 # Use case: NTP is unreachable AND the DS3231 battery is dead, so the

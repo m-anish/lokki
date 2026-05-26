@@ -228,6 +228,12 @@ mpremote connect auto fs cp "$WEB_DIR/index.html" :www/
 mpremote connect auto fs cp "$WEB_DIR/dashboard.html" :www/
 mpremote connect auto fs cp "$WEB_DIR/config-builder.html" :www/
 mpremote connect auto fs cp "$WEB_DIR/config.schema.json" :www/
+# Also flash the schema to /config.schema.json (filesystem root, not
+# under /www/) so the firmware's config_manager._load_schema() can
+# open it at runtime. Single source of truth: web/app/config.schema.json
+# is the authoritative file; this copy and the /www/ copy must stay in
+# sync — flashing always overwrites both with the repo version.
+mpremote connect auto fs cp "$WEB_DIR/config.schema.json" :config.schema.json
 # `fs cp -r` on mpremote creates the destination dir if needed.
 mpremote connect auto fs cp -r "$WEB_DIR/vendor" :www/
 

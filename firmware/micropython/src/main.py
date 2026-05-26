@@ -994,7 +994,12 @@ async def main():
     if sys.get("log_level") == "DEBUG":
         tasks.append(asyncio.create_task(ram_telemetry_task(60)))
 
-    hb_interval = cfg.get("lora").get("heartbeat_interval_s", 30)
+    # Pre-existing bug: this used to read from `lora` but the field
+    # has always lived under `system` in every shipped config, sample,
+    # and validator. The default `30` therefore always won, silently
+    # ignoring any operator override. Now reads from `system` as it
+    # should have all along.
+    hb_interval = sys.get("heartbeat_interval_s", 30)
 
     if role == "coordinator":
         tasks.append(asyncio.create_task(fleet_timeout_task(fleet_mgr)))

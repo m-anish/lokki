@@ -81,6 +81,39 @@ Useful for the Config Builder's "Load from Coordinator" flow and as a config bac
 
 ---
 
+#### `POST /api/config/validate`
+Dry-run validation. Runs the same schema + semantic checks the firmware applies on every config replace, but without persisting anything. The dashboard's Save flow calls this before every actual save so errors render at the field they came from, before committing to the LoRa round-trip (for a leaf) or the atomic-write flow (for the coord).
+
+**Request body**
+```json
+{ "config": { "version": "1.0", "system": { ... }, ... } }
+```
+
+**Response — valid config**
+```json
+{ "ok": true, "data": { "errors": [] } }
+```
+
+**Response — invalid config** (HTTP 422)
+```json
+{
+  "ok": false,
+  "error": "led_channels[2].id must be 3 (position-bound id, got 5)",
+  "data": {
+    "errors": [
+      "led_channels[2].id must be 3 (position-bound id, got 5)",
+      "system.heartbeat_timeout_s (50) must be >= heartbeat_interval_s (100)"
+    ]
+  }
+}
+```
+
+The full list of errors lives in `data.errors`; the top-level `error` field is the first one (so a basic client doesn't have to parse the array).
+
+The schema lives at [web/app/config.schema.json](../web/app/config.schema.json) and is mirrored to `/config.schema.json` on the coord at flash time. Cross-field rules the schema can't express (positional IDs, pin uniqueness, scene-name uniqueness, etc.) live in [firmware/.../core/semantic_checks.py](../firmware/micropython/src/core/semantic_checks.py).
+
+---
+
 #### `POST /api/time-sync`
 Operator override for the coordinator's wall-clock. Use when NTP is unreachable and the DS3231 backup battery is dead, so the coord has no automatic way to learn the time. The dashboard's `time_waiting` banner exposes a "Set time from this browser" button that posts here with the browser's current epoch.
 

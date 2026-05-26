@@ -80,25 +80,58 @@ firmware/micropython/src/
 
 ## `core/config_manager.py` [EXTEND]
 
-**Responsibility:** Load, validate, and hot-reload `config.json`. Provide typed access to all config sections.
-
-**Changes from existing:**
-- Schema validation updated for new config structure (relays, pir, ldr, scenes, lora)
-- Version enforcement: major mismatch → safe mode
-- New accessor methods for new config sections
-- `save(section, data)` — write updated config back to flash (used by CFG push handler)
+**Responsibility:** Load, validate, and hot-reload `config.json`. Provide typed access to all config sections. Validation is now JSON-Schema-driven (`core/schema_validator`) plus a cross-field invariant layer (`core/semantic_checks`); the schema itself lives in `web/app/config.schema.json` and is mirrored to `/config.schema.json` on the device at flash time by `update.sh`.
 
 **Public interface:**
 ```python
-config_manager.load()                    # load and validate config.json
-config_manager.get(section)              # returns dict for named section
-config_manager.update(section, data)     # validate + save + apply
-config_manager.version                   # "major.minor" string
-config_manager.role                      # "coordinator" | "leaf"
-config_manager.unit_id                   # int 0–8
+config_manager.load()                              # load and validate config.json
+config_manager.get(section)                        # returns dict for named section
+config_manager.replace(new_config_str)             # validate + save + apply (rolls back on error)
+ConfigManager.validate_candidate(cfg) -> (ok, errs) # dry-run validation for /api/config/validate
+config_manager.version                             # "major.minor" string
+config_manager.role                                # "coordinator" | "leaf"
+config_manager.unit_id                             # int 0–8 or 99 (unclaimed)
 ```
 
-**Dependencies:** `shared/simple_logger`
+**Dependencies:** `core/schema_validator`, `core/semantic_checks`, `shared/simple_logger`
+
+---
+
+## `core/schema_validator.py` [NEW]
+
+**Responsibility:** Pure-Python JSON-Schema-subset validator, MicroPython-friendly (~250 LOC). Supports the constraints we actually use: `type`, `required`, `properties`, `additionalProperties: false`, `items`, `minItems`/`maxItems`, `minimum`/`maximum`, `minLength`/`maxLength`, `enum`, `pattern`, `if`/`then`/`else`. Deliberately small — every extension to the supported set is opt-in and visible in this one file. Returns a list of operator-readable error strings with dotted/bracketed paths (`led_channels[3].gpio_pin must be one of [13, 14, ...]`).
+
+**Public interface:**
+```python
+errors = schema_validator.validate(value, schema)
+# errors == [] when value is valid; otherwise list of "path: message" strings
+```
+
+**Dependencies:** stdlib only (`re`).
+
+---
+
+## `core/semantic_checks.py` [NEW]
+
+**Responsibility:** Cross-field and positional invariants the JSON-Schema subset can't express:
+
+- Positional IDs: `led_channels[i].id == i+1`, `relays[i].id == i+1`, `pir[i].id == i+1`
+- Pin uniqueness within each section (no two LED channels share a GPIO; no two relays; no two PIRs)
+- Pin enums per section (`led_channels.gpio_pin` ∈ {13–19, 22}; `relays` ∈ {10, 11}; `pir` ∈ {6–9})
+- `system.heartbeat_timeout_s >= heartbeat_interval_s`
+- `system.role == "coordinator"` ⇒ `unit_id == 0`; `role == "leaf"` ⇒ `unit_id ∈ 1..8` or `99`
+- PIR `on_motion`/`on_vacancy` action-specific required fields (`action=set_led_channels` requires `channels` + `duty_percent`; `set_relay` requires `relay_id` + `state`; etc.)
+- `time_windows` start/end format (`HH:MM` or `sunrise`/`sunset`)
+- Scene name uniqueness
+
+Runs AFTER `schema_validator.validate()` so basic types are already known good. Returns a list of error strings.
+
+**Public interface:**
+```python
+errors = semantic_checks.check(cfg)
+```
+
+**Dependencies:** stdlib only.
 
 ---
 

@@ -303,6 +303,10 @@ class WebServer:
         if path == "/api/config-progress" and method == "GET":
             return self._json(api.handle_config_progress())
 
+        if path == "/api/config/validate" and method == "POST":
+            parsed = self._parse_json_body(body) or {}
+            return self._json(api.handle_config_validate(parsed))
+
         if path == "/api/events" and method == "GET":
             return self._json(api.handle_events(query))
 

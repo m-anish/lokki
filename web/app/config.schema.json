@@ -18,11 +18,11 @@
         "unit_id":                { "type": "integer", "enum": [0, 1, 2, 3, 4, 5, 6, 7, 8, 99] },
         "unit_name":              { "type": "string", "minLength": 1 },
         "peers":                  { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 8 } },
-        "log_level":              { "type": "string", "enum": ["DEBUG", "INFO", "WARN", "WARNING", "ERROR"] },
+        "log_level":              { "type": "string", "enum": ["FATAL", "ERROR", "WARN", "INFO", "DEBUG"] },
         "log_buffer_size":        { "type": "integer", "minimum": 20, "maximum": 500 },
-        "heartbeat_interval_s":   { "type": "integer", "minimum": 5, "maximum": 300 },
-        "heartbeat_timeout_s":    { "type": "integer", "minimum": 30, "maximum": 600 },
-        "pwm_update_interval_ms": { "type": "integer", "minimum": 100, "maximum": 5000 }
+        "heartbeat_interval_s":   { "type": "integer", "minimum": 5, "maximum": 3600 },
+        "heartbeat_timeout_s":    { "type": "integer", "minimum": 5, "maximum": 7200 },
+        "pwm_update_interval_ms": { "type": "integer", "minimum": 100, "maximum": 60000 }
       }
     },
 
@@ -51,7 +51,7 @@
       "additionalProperties": false,
       "properties": {
         "enabled":               { "type": "boolean" },
-        "frequency_mhz":         { "type": "number", "minimum": 862, "maximum": 920 },
+        "frequency_mhz":         { "type": "number", "minimum": 800, "maximum": 930 },
         "air_data_rate":         { "type": "integer", "enum": [300, 1200, 2400, 4800, 9600, 19200, 38400, 62500] },
         "tx_power_dbm":          { "type": "integer", "enum": [10, 13, 17, 22] },
         "channel":               { "type": "integer", "minimum": 0, "maximum": 80 },
@@ -59,9 +59,7 @@
         "lbt_enable":            { "type": "boolean" },
         "ambient_rssi_enable":   { "type": "boolean" },
         "crypt_h":               { "type": "integer", "minimum": 0, "maximum": 255 },
-        "crypt_l":               { "type": "integer", "minimum": 0, "maximum": 255 },
-        "heartbeat_interval_s":  { "type": "integer" },
-        "heartbeat_timeout_s":   { "type": "integer" }
+        "crypt_l":               { "type": "integer", "minimum": 0, "maximum": 255 }
       }
     },
 
@@ -71,7 +69,8 @@
       "additionalProperties": false,
       "properties": {
         "name":             { "type": "string", "minLength": 1 },
-        "utc_offset_hours": { "type": "number", "minimum": -12, "maximum": 14 }
+        "utc_offset_hours": { "type": "number", "minimum": -12, "maximum": 14 },
+        "ntp_enabled":      { "type": "boolean" }
       }
     },
 
@@ -79,20 +78,21 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "i2c_sda_pin":    { "type": "integer", "minimum": 0, "maximum": 28 },
-        "i2c_scl_pin":    { "type": "integer", "minimum": 0, "maximum": 28 },
-        "i2c_freq_hz":    { "type": "integer" },
-        "pwm_freq_hz":    { "type": "integer", "minimum": 1, "maximum": 40000000 },
-        "ldr_adc_pin":    { "type": "integer", "minimum": 26, "maximum": 28 },
-        "gamma":          { "type": "number",  "minimum": 1.0, "maximum": 4.0 },
-        "status_led_pin": { "type": "integer", "minimum": 0, "maximum": 28 },
-        "reset_btn_pin":  { "type": "integer", "minimum": 0, "maximum": 28 },
-        "lora_uart_id":   { "type": "integer", "minimum": 0, "maximum": 1 },
-        "lora_tx_pin":    { "type": "integer", "minimum": 0, "maximum": 28 },
-        "lora_rx_pin":    { "type": "integer", "minimum": 0, "maximum": 28 },
-        "lora_m0_pin":    { "type": "integer", "minimum": 0, "maximum": 28 },
-        "lora_m1_pin":    { "type": "integer", "minimum": 0, "maximum": 28 },
-        "lora_aux_pin":   { "type": "integer", "minimum": 0, "maximum": 28 }
+        "i2c_sda_pin":     { "type": "integer", "minimum": 0, "maximum": 28 },
+        "i2c_scl_pin":     { "type": "integer", "minimum": 0, "maximum": 28 },
+        "i2c_freq_hz":     { "type": "integer", "enum": [100000, 400000, 1000000] },
+        "pwm_freq_hz":     { "type": "integer", "minimum": 1, "maximum": 40000000 },
+        "ldr_adc_pin":     { "type": "integer", "minimum": 26, "maximum": 28 },
+        "gamma":           { "type": "number",  "minimum": 1.0, "maximum": 4.0 },
+        "status_led_pin":  { "type": "integer", "minimum": 0, "maximum": 28 },
+        "led_color_order": { "type": "string",  "enum": ["GRB", "RGB"] },
+        "reset_btn_pin":   { "type": "integer", "minimum": 0, "maximum": 28 },
+        "lora_uart_id":    { "type": "integer", "minimum": 0, "maximum": 1 },
+        "lora_tx_pin":     { "type": "integer", "minimum": 0, "maximum": 28 },
+        "lora_rx_pin":     { "type": "integer", "minimum": 0, "maximum": 28 },
+        "lora_m0_pin":     { "type": "integer", "minimum": 0, "maximum": 28 },
+        "lora_m1_pin":     { "type": "integer", "minimum": 0, "maximum": 28 },
+        "lora_aux_pin":    { "type": "integer", "minimum": 0, "maximum": 28 }
       }
     },
 
@@ -101,7 +101,7 @@
       "additionalProperties": false,
       "properties": {
         "enabled":            { "type": "boolean" },
-        "smoothing_window_s": { "type": "integer", "minimum": 1 },
+        "smoothing_window_s": { "type": "integer", "minimum": 1, "maximum": 3600 },
         "cap_rules": {
           "type": "array",
           "items": {
@@ -184,6 +184,7 @@
 
     "led_channels": {
       "type": "array",
+      "minItems": 1,
       "maxItems": 8,
       "items": {
         "type": "object",
