@@ -39,19 +39,35 @@ class Logger:
         return f"{sign}{total // 60}:{total % 60:02d}"
 
     def _timestamp(self):
-        if _rtc is None:
-            return "<no-rtc>"
+        # Prefer the DS3231 when it's healthy (it survives power cycles
+        # via its battery), but fall back to the MCU's internal clock
+        # when the I2C read fails. NTP on the coord and the LoRa TS
+        # broadcast on leaves keep `time.localtime()` accurate, so log
+        # timestamps stay readable through a flaky RTC.
+        if _rtc is not None:
+            try:
+                dt = _rtc.datetime()
+                wd = self.WEEKDAYS[(dt.weekday - 1) % 7]
+                mo = self.MONTHS[dt.month - 1]
+                return "<{} {:02d} {} {:04d} - {:02d}:{:02d}:{:02d} {}(UTC{})>".format(
+                    wd, dt.day, mo, dt.year,
+                    dt.hour, dt.minute, dt.second,
+                    _TIMEZONE_NAME, self._offset_str()
+                )
+            except Exception:
+                pass
         try:
-            dt = _rtc.datetime()
-            wd = self.WEEKDAYS[(dt.weekday - 1) % 7]
-            mo = self.MONTHS[dt.month - 1]
+            import time
+            lt = time.localtime()
+            wd = self.WEEKDAYS[lt[6] % 7]
+            mo = self.MONTHS[lt[1] - 1]
             return "<{} {:02d} {} {:04d} - {:02d}:{:02d}:{:02d} {}(UTC{})>".format(
-                wd, dt.day, mo, dt.year,
-                dt.hour, dt.minute, dt.second,
+                wd, lt[2], mo, lt[0],
+                lt[3], lt[4], lt[5],
                 _TIMEZONE_NAME, self._offset_str()
             )
         except Exception:
-            return "<ts-err>"
+            return "<no-rtc>"
 
     def _log(self, level, msg):
         if self.LEVELS.get(level, 3) <= self.level:
