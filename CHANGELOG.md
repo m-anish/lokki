@@ -92,7 +92,7 @@ Complete redesign of the system as **Lokki** — a multi-unit campus lighting pl
 - Reverted previous inline SVG sprite approach to avoid memory pressure on Pico W during page generation.
 
 ### Notes
-- Medium-term improvement tracked in `TODO.md`: implement streamed response writer for "/" to further reduce RAM usage during page generation.
+- Medium-term improvement: implement streamed response writer for "/" to further reduce RAM usage during page generation. _(Subsequently addressed — `web_server` now streams static files in 1 KB chunks. See [ROADMAP.md](ROADMAP.md) for current items.)_
 
 ## [0.2.0] - 2025-08-21
 
