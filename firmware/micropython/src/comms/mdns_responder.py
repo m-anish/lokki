@@ -121,8 +121,15 @@ class MDNSResponder:
     def init(self, hostname, ip):
         """Bind UDP/5353, join the mDNS multicast group, stash the
         announce data. Returns True iff the socket is live and we're
-        ready to respond. Logs and returns False on any setup error
-        so the caller can decide whether to retry."""
+        ready to respond.
+
+        EADDRINUSE on 5353 means lwIP's own mDNS responder is already
+        listening on the port (network.hostname() activates it on
+        builds that compiled LWIP_MDNS_RESPONDER). We try SO_REUSEPORT
+        first to coexist (duplicate mDNS answers are harmless; the OS
+        resolver dedupes); if that's not supported either, log it as a
+        non-error and let lwIP do the work.
+        """
         self.hostname = (hostname or "lokki").lower().rstrip(".")
         self.fqdn     = self.hostname + ".local"
         self._ip      = ip
@@ -136,8 +143,31 @@ class MDNSResponder:
         except Exception:
             # Not all MicroPython builds expose REUSEADDR. Non-fatal.
             pass
+        # SO_REUSEPORT lets us share UDP/5353 with lwIP's built-in
+        # responder when present. MicroPython exposes the symbol on
+        # some builds; on the others we fall through to the numeric
+        # value (15 on Linux, which is what lwIP-on-MicroPython
+        # follows). If both are unsupported the bind below will
+        # EADDRINUSE and we handle it gracefully there.
+        try:
+            so_reuseport = getattr(socket, "SO_REUSEPORT", 15)
+            sock.setsockopt(socket.SOL_SOCKET, so_reuseport, 1)
+        except Exception:
+            pass
         try:
             sock.bind(("", _MDNS_PORT))
+        except OSError as e:
+            errno = e.args[0] if e.args else None
+            if errno == 98 or "EADDRINUSE" in str(e):
+                log.info(
+                    "[MDNS] UDP/5353 already bound — lwIP's built-in "
+                    "responder is handling mDNS; Python responder standing down"
+                )
+            else:
+                log.error(f"[MDNS] Bind UDP/5353 failed: {e}")
+            try: sock.close()
+            except Exception: pass
+            return False
         except Exception as e:
             log.error(f"[MDNS] Bind UDP/5353 failed: {e}")
             try: sock.close()
