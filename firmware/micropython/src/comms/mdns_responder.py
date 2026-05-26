@@ -33,6 +33,15 @@ _TTL_S     = 120
 _QTYPE_A   = 0x0001
 _QTYPE_ANY = 0x00FF
 
+# socket.IPPROTO_IP isn't exposed on every MicroPython build (the RP2
+# Pico W port omits it in some firmwares — same family of constants
+# that's missing IPPROTO_UDP). Fall back to the numeric value (0)
+# which is the IP-level options selector regardless.
+try:
+    _IPPROTO_IP = socket.IPPROTO_IP
+except AttributeError:
+    _IPPROTO_IP = 0
+
 
 def _parse_question(packet, offset):
     """Parse one DNS question starting at `offset` in `packet`.
@@ -118,7 +127,10 @@ class MDNSResponder:
         self.fqdn     = self.hostname + ".local"
         self._ip      = ip
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        # AF_INET + SOCK_DGRAM defaults to UDP on every MicroPython
+        # build; passing IPPROTO_UDP explicitly fails on RP2 because
+        # that constant isn't exposed.
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         except Exception:
@@ -133,7 +145,7 @@ class MDNSResponder:
             return False
         try:
             mreq = socket.inet_aton(_MDNS_ADDR) + socket.inet_aton("0.0.0.0")
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            sock.setsockopt(_IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
         except Exception as e:
             log.error(f"[MDNS] Multicast group join failed (lwIP w/o IGMP?): {e}")
             try: sock.close()
