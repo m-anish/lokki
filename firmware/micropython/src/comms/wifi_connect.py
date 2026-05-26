@@ -66,62 +66,68 @@ def connect_wifi(timeout=10, max_attempts=3):
 
 
 def sync_time_ntp():
-    """
-    Attempt NTP sync with aggressive timeout.
-    Returns True on success, False on failure (non-fatal).
+    """Attempt NTP sync. Returns True iff the MCU's wall-clock is now
+    set, False otherwise. Non-fatal.
+
+    Important separation: `ntptime.settime()` *itself* is what writes
+    the MCU's RTC. The DS3231 write and the LoRa TS broadcast that
+    follow are best-effort side actions. We deliberately do NOT let a
+    failure in those (commonly an I2C EIO on a flaky DS3231 bus, or a
+    LoRa transport that isn't up yet) tank the return value, because
+    the clock is already correct at that point — the rest of the
+    system (schedule gate, log timestamps) needs to learn that.
     """
     tz_offset = config_manager.get("timezone").get("utc_offset_hours", 0)
-    
-    # Use a faster, more reliable NTP server
     servers = ["pool.ntp.org", "time.google.com"]
-    
+
     for server in servers:
         start_time = time.time()
         try:
             ntptime.host = server
-            ntptime.timeout = 3  # Socket timeout
+            ntptime.timeout = 3
             log.info(f"[NTP] Attempting sync with {server}...")
-            
-            # ntptime.settime() can block - try it with a manual timeout check
-            # We'll attempt the sync but bail if it takes too long
             try:
-                ntptime.settime()
+                ntptime.settime()        # ← THE write to the MCU RTC
             except OSError as e:
-                # Network error - try next server immediately
                 log.warn(f"[NTP] {server} network error: {e}")
                 continue
-            
+        except Exception as e:
+            # Failure BEFORE settime() — host/timeout config or similar.
             elapsed = time.time() - start_time
-            log.info(f"[NTP] Synced with {server} in {elapsed:.1f}s")
-            
-            # Success! Update RTC and broadcast
-            utc_sec   = time.time()
+            log.warn(f"[NTP] {server} setup error after {elapsed:.1f}s: {e}")
+            continue
+
+        # If we got here, ntptime.settime() returned without raising —
+        # time.time() now reflects real UTC seconds-since-epoch. The
+        # commit is durable from this line on, irrespective of what
+        # happens in the secondary writes below.
+        elapsed = time.time() - start_time
+        log.info(f"[NTP] Synced with {server} in {elapsed:.1f}s")
+        utc_sec = time.time()
+
+        # Secondary: mirror to the DS3231 so the time survives a power
+        # cycle. Tolerated to fail — a flaky I2C bus shouldn't lose us
+        # the freshly-synced MCU clock.
+        try:
             local_sec = utc_sec + int(tz_offset * 3600)
             dt_tuple  = urtc.seconds2tuple(local_sec)
             rtc.datetime(dt_tuple)
             log.info("[NTP] DS3231 updated with local time")
-            
-            try:
-                from comms.lora_protocol import lora_protocol
-                lora_protocol.broadcast_time_sync(utc_sec, tz_offset)
-                log.info("[NTP] TIME_SYNC broadcast sent")
-            except Exception as e:
-                log.warn(f"[NTP] TIME_SYNC broadcast failed: {e}")
-            
-            return True
-            
-        except OSError as e:
-            elapsed = time.time() - start_time
-            log.warn(f"[NTP] {server} network error after {elapsed:.1f}s: {e}")
-            # Quick network errors, try next server
-            if elapsed > 3:
-                break  # Taking too long, give up
         except Exception as e:
-            elapsed = time.time() - start_time
-            log.warn(f"[NTP] {server} failed after {elapsed:.1f}s: {e}")
-            if elapsed > 3:
-                break
-    
+            log.warn(f"[NTP] DS3231 write failed (MCU clock still set): {e}")
+
+        # Secondary: broadcast TS to the leaves. Same tolerance — if
+        # the LoRa transport is down, leaves catch up on the next
+        # periodic broadcast. Doesn't affect coord-side time sync.
+        try:
+            from comms.lora_protocol import lora_protocol
+            lora_protocol.broadcast_time_sync(utc_sec, tz_offset)
+            log.info("[NTP] TIME_SYNC broadcast sent")
+        except Exception as e:
+            log.warn(f"[NTP] TIME_SYNC broadcast failed: {e}")
+
+        return True
+
     log.error("[NTP] All sync attempts failed - continuing without NTP")
     return False
 

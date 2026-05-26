@@ -192,6 +192,15 @@ async def time_sync_task():
                     log.warn("[MAIN] Periodic NTP sync failed")
             except Exception as e:
                 log.warn(f"[MAIN] NTP sync exception: {e}")
+        # Belt-and-suspenders: if some upstream side effect (DS3231
+        # write, TS broadcast) had previously raised AFTER NTP set the
+        # MCU clock — masking a real sync as a failure — observing a
+        # sane wall-clock here is enough to flip the gate. The
+        # explicit mark above is the happy path; this is the safety
+        # net for partial-failure paths we haven't anticipated.
+        if not system_status.time_synced and time_is_sane():
+            system_status.mark_time_synced("ntp")
+            log.info("[MAIN] Wall-clock looks sane; unblocking schedule")
         if system_status.time_synced:
             try:
                 tz_offset = tz_config.get("utc_offset_hours", 0)
