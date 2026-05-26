@@ -566,6 +566,29 @@ def _register_lora_handlers(role, fleet_manager=None):
         return payload
     lora_protocol.fitter("SRP", _fit_srp)
 
+    # Fitter: HB baseline is ~140 B; adding rtc_t / rssi / a long name
+    # can push it past the 200 B limit (seen in the field when name
+    # was ~30 chars). Drop optional diagnostic fields first, then
+    # truncate the name as a last resort — losing a few chars of
+    # display name is better than dropping the whole heartbeat at the
+    # protocol layer and never reaching the coordinator.
+    def _fit_hb(payload, budget):
+        import json as _json
+        # Order matters: shed cheapest losses first.
+        for key in ("rtc_t", "rssi", "ldr"):
+            if len(_json.dumps(payload).encode()) <= budget:
+                break
+            payload.pop(key, None)
+        # Truncate name last. Keep at least 4 chars so the coord can
+        # still display something recognisable.
+        while len(_json.dumps(payload).encode()) > budget:
+            name = payload.get("name", "")
+            if len(name) <= 4:
+                break
+            payload["name"] = name[:-1]
+        return payload
+    lora_protocol.fitter("HB", _fit_hb)
+
     def on_emergency_off(src, _payload):
         for ch in config_manager.get("led_channels"):
             priority_arbiter.set_manual_channel(ch["id"], 0, 0, 0)
