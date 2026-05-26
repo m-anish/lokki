@@ -36,6 +36,7 @@ Concrete next-up engineering items. Some are issue-track-grade, others are polis
 
 ### Known gaps
 
+- **Leaf reboot from the dashboard** — `POST /api/units/{id}/reboot` doesn't exist yet; only the coord can be rebooted (`POST /api/reboot`). The ROADMAP previously implied both; clearing the discrepancy. Small: ~30 LOC for the endpoint + LoRa `RB` message handler + dashboard button.
 - **DST handling for `timezone.utc_offset_hours`** — currently manual; needs either an in-config DST rule table or seasonal-flip documentation in the user guide.
 - **AUX-disciplined transmit deadlock stress test** — no observed issue but never specifically driven hard (e.g. coordinator broadcasting TS while a leaf is mid-SRP under high LDR change rate).
 
@@ -121,6 +122,7 @@ Less certain but worth tracking:
 - **Physical scene cycling** — repurpose a spare GPIO button to step through scenes locally without any dashboard.
 - **Config backup and restore** — export full fleet configuration (all units) as a single archive from the dashboard; restore to a replacement unit. (Per-unit backup via `GET /api/config` already works.)
 - **Secure remote access via a self-hosted relay** — each coordinator gets a stable public URL (e.g. `abc1234.lokki.app`) by opening an outbound WebSocket to a Lokki-operated relay. Public traffic is proxied over that tunnel; auth and TLS are handled at the relay so the Pico stays simple, and the dashboard renders a QR code of its own public URL. No companion hardware, no port forwarding. **Design:** [docs/relay-design.md](docs/relay-design.md).
+- **I²C provisioning between coord and leaf** — coord ↔ leaf wired through the PCB expansion port; a leaf gesture (hold reset 10 s, or held-from-boot) puts the leaf into I²C-slave mode at a fixed address, and the coord pushes a full config over the wire — no LoRa, no USB to the leaf. Useful for bench provisioning at scale, recovery on a leaf whose LoRa is broken inside a sealed enclosure, and RF-free provisioning at security-sensitive sites. **Effort blocker:** MicroPython's `machine.I2C` is master-only; would need a custom firmware build with a C wrapper around the RP2040/RP2350 I²C peripheral, or a PIO state machine implementing slave mode. ~3–7 days for the slave-mode plumbing; everything else is small. Parked — claim wizard + USB-flash cover the common cases today.
 
 ---
 
