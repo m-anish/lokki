@@ -56,6 +56,7 @@ _STATES = {
     "lora_disabled":     COLOR_PURPLE  + (0.25, "solid"), # purple solid — LoRa init failed 3×
     "reset_armed":       COLOR_YELLOW  + (0.3,  "solid"), # yellow solid — button is held; release for soft_reset
     "reset_warning":     COLOR_RED     + (0.9,  "blink"), # red fast blink — keep holding to commit factory reset
+    "time_waiting":      COLOR_CYAN    + (0.2,  "pulse"), # cyan pulse — no sane wall-clock yet (no NTP / no TS / dead RTC); schedule is paused
     "off":               (0, 0, 0)     + (0.0,  "solid"), # off
 }
 

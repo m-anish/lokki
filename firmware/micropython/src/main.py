@@ -18,7 +18,7 @@ from hardware.rtc_shared import rtc
 from comms.lora_protocol import lora_protocol
 from comms.lora_transport import lora_transport
 from shared.simple_logger import Logger
-from shared.system_status import system_status
+from shared.system_status import system_status, time_is_sane
 from shared.event_bus import event_bus
 
 log = Logger()
@@ -105,8 +105,53 @@ def _setup_pir_handlers(pir_cfg, scenes):
 # Async tasks
 # ------------------------------------------------------------------
 
+def _try_seed_time_from_rtc():
+    """Boot-time helper: if the DS3231 has retained a sane wall-clock
+    across power-off (battery still good), copy it into the MCU's
+    internal RTC so time.time()/time.localtime() return real values
+    immediately. Marks system_status.time_synced on success.
+
+    Returns True iff we successfully seeded a sane time.
+    """
+    try:
+        from hardware.rtc_shared import rtc as _rtc
+        dt = _rtc.datetime()
+    except Exception as e:
+        log.warn(f"[TIME] DS3231 read at boot failed: {e}")
+        return False
+    if dt.year < 2024:
+        # DS3231 lost its time (flat battery / first power-on of a new
+        # board). Don't seed; let NTP or the LoRa TS broadcast handle
+        # this boot.
+        log.warn(f"[TIME] DS3231 year={dt.year} — backup battery flat or first boot; awaiting NTP/TS")
+        return False
+    try:
+        import machine
+        # MicroPython's machine.RTC().datetime() takes
+        # (year, month, day, weekday, hour, minute, second, subsec).
+        # Note the weekday slot is in a different position than the
+        # tuple urtc returns from DS3231.datetime().
+        machine.RTC().datetime((dt.year, dt.month, dt.day, dt.weekday,
+                                dt.hour, dt.minute, dt.second, 0))
+        if time_is_sane():
+            system_status.mark_time_synced("rtc")
+            log.info(f"[TIME] Seeded MCU clock from DS3231: {dt.year}-{dt.month:02d}-{dt.day:02d} {dt.hour:02d}:{dt.minute:02d}:{dt.second:02d}")
+            return True
+    except Exception as e:
+        log.warn(f"[TIME] Could not seed MCU clock from DS3231: {e}")
+    return False
+
+
 def _ok_led_state():
-    """Return the appropriate steady LED state depending on LoRa connectivity."""
+    """Return the appropriate steady LED state depending on LoRa connectivity.
+
+    Time sync takes precedence: if we haven't confirmed a real wall-clock
+    yet, the LED stays on `time_waiting` (slow cyan pulse) so the operator
+    sees that the schedule is paused. Otherwise fall back to the normal
+    green-solid running state.
+    """
+    if not system_status.time_synced:
+        return "time_waiting"
     return "running_lora_ok" if system_status.lora_connected else "running_ok"
 
 
@@ -121,7 +166,18 @@ async def leaf_status_task():
 
 
 async def time_sync_task():
-    """Coordinator task: Sync NTP and broadcast time to leaves periodically."""
+    """Coordinator task: Sync NTP and broadcast time to leaves periodically.
+
+    Cadence depends on whether we currently have time:
+      * unsynced → retry NTP every 60 s. Schedule + TS broadcast are
+        gated on having a real clock, so we want to recover quickly.
+      * synced   → daily resync (24 h) is plenty for keeping drift
+        below the schedule engine's minute-level resolution.
+
+    TS broadcast (coord → leaves) is suppressed while we have no time
+    ourselves — broadcasting a bogus epoch would only spread the
+    problem to every leaf.
+    """
     import time
     while True:
         tz_config = config_manager.get("timezone") or {}
@@ -130,26 +186,41 @@ async def time_sync_task():
                 from comms.wifi_connect import sync_time_ntp
                 if sync_time_ntp():
                     log.info("[MAIN] Periodic NTP sync successful")
+                    if time_is_sane():
+                        system_status.mark_time_synced("ntp")
                 else:
                     log.warn("[MAIN] Periodic NTP sync failed")
             except Exception as e:
                 log.warn(f"[MAIN] NTP sync exception: {e}")
-        try:
-            tz_offset = tz_config.get("utc_offset_hours", 0)
-            lora_protocol.broadcast_time_sync(time.time(), tz_offset)
-        except Exception as e:
-            log.warn(f"[MAIN] TS broadcast failed: {e}")
-        await asyncio.sleep(86400)
+        if system_status.time_synced:
+            try:
+                tz_offset = tz_config.get("utc_offset_hours", 0)
+                lora_protocol.broadcast_time_sync(time.time(), tz_offset)
+            except Exception as e:
+                log.warn(f"[MAIN] TS broadcast failed: {e}")
+        await asyncio.sleep(60 if not system_status.time_synced else 86400)
 
 
 async def schedule_task(interval_ms):
+    """Drive scheduled output state.
+
+    Gated behind system_status.time_synced — until we've confirmed a
+    real wall-clock time (from NTP on coord, DS3231 sane on either
+    role, LoRa TS on leaf, or operator override), this skips its tick
+    entirely. Otherwise the schedule engine would happily decide that
+    11:42 on Jan 1 2000 means "all night windows active" and drive
+    outputs incorrectly until time arrives. The arbiter falls back to
+    each channel's default_state when nothing populates the schedule
+    layer, which is the right safe behaviour.
+    """
     while True:
-        try:
-            channel_desired, relay_desired = schedule_engine.get_desired_state()
-            priority_arbiter.set_schedule(channel_desired, relay_desired)
-        except Exception as e:
-            log.error(f"[SCHEDULE] {e}")
-            system_status.record_error(f"schedule: {e}")
+        if system_status.time_synced:
+            try:
+                channel_desired, relay_desired = schedule_engine.get_desired_state()
+                priority_arbiter.set_schedule(channel_desired, relay_desired)
+            except Exception as e:
+                log.error(f"[SCHEDULE] {e}")
+                system_status.record_error(f"schedule: {e}")
         await asyncio.sleep_ms(interval_ms)
 
 
@@ -390,7 +461,13 @@ def _register_lora_handlers(role, fleet_manager=None):
     lora_protocol.fitter("ERR", _fit_err)
 
     def on_time_sync(src, payload):
-        # Leaf only — set local RTC from coordinator TS broadcast
+        # Leaf only — apply the coordinator's TS broadcast to both the
+        # DS3231 (battery-backed, survives power loss) AND the MCU's
+        # internal clock (what time.time()/time.localtime() actually
+        # read). Previously we only wrote the DS3231, so a leaf with a
+        # dead RTC battery would never get a sane time.time() until
+        # the rtc_module fallback path ran — and the schedule was
+        # already paused waiting for that.
         epoch = payload.get("epoch")
         if epoch and role == "leaf":
             try:
@@ -399,6 +476,15 @@ def _register_lora_handlers(role, fleet_manager=None):
                 local_sec = int(epoch) + int(tz * 3600)
                 dt = urtc.seconds2tuple(local_sec)
                 rtc.datetime(dt)
+                try:
+                    import machine
+                    machine.RTC().datetime((dt.year, dt.month, dt.day,
+                                            dt.weekday, dt.hour,
+                                            dt.minute, dt.second, 0))
+                except Exception as me:
+                    log.warn(f"[LORA] Could not set MCU clock from TS: {me}")
+                if time_is_sane():
+                    system_status.mark_time_synced("ts")
                 log.info(f"[LORA] Time synced from coordinator: {dt}")
             except Exception as e:
                 log.warn(f"[LORA] Time sync apply failed: {e}")
@@ -641,6 +727,13 @@ async def main():
 
     log.info(f"[MAIN] Lokki booting — role={role} unit_id={cfg.unit_id} name={cfg.unit_name}")
 
+    # Try to load wall-clock time from the DS3231 immediately. If the
+    # backup battery is still good, we'll mark time_synced here and
+    # unblock the schedule before WiFi/NTP even starts. If the battery
+    # is flat, this is a no-op — NTP (coord) or the LoRa TS broadcast
+    # (leaf) brings time online later, and the schedule waits.
+    _try_seed_time_from_rtc()
+
     # Re-bind status LED to configured pin + color order BEFORE the boot
     # flash, otherwise we'd flash with the default GRB ordering even on
     # boards configured as RGB. White is r=g=b so this doesn't matter
@@ -750,12 +843,18 @@ async def main():
                     try:
                         if sync_time_ntp():
                             log.info("[MAIN] NTP synced successfully")
+                            if time_is_sane():
+                                system_status.mark_time_synced("ntp")
                         else:
                             log.warn("[MAIN] NTP sync failed — continuing with RTC time")
                     except Exception as ntp_e:
                         log.warn(f"[MAIN] NTP sync exception: {ntp_e}")
                 else:
                     log.info("[MAIN] NTP disabled in config — using RTC time")
+                    # If the operator turned NTP off, the DS3231 is the
+                    # only source for the coord. If _try_seed_time_from_rtc
+                    # didn't already mark synced (battery flat etc.), we
+                    # stay paused — same as any other coord with no time.
             else:
                 log.warn("[MAIN] WiFi failed — running on RTC")
                 system_status.record_error("wifi_connect failed")
