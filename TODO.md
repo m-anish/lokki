@@ -21,6 +21,7 @@ Phases 1–3 are largely implemented and pass on the bench (single-unit). LoRa h
 - [ ] Optional auth on web API (HTTP Basic + reverse-proxy TLS as the deployment story)
 - [ ] Auto-discovery of leaf units (any HB → fleet, optionally pending coordinator approval)
 - [ ] Periodic NTP+TS broadcast (currently boot-only)
+- [ ] **LoRa frame authentication** — HMAC-SHA256(truncated to 8 B) signing + per-source replay window on every LoRa frame, key in `/secrets.json` (separate from `config.json`). Already implemented on branch [`feature/lora-shared-secret`](https://github.com/m-anish/lokki/tree/feature/lora-shared-secret) (commit `47f6d88`); +312 lines across 8 files. Not urgent for lab / friends-and-family use because the E220's `crypt_h`/`crypt_l` radio-level encryption already keeps the casually curious out — revisit before any deployment where a motivated attacker could plausibly be in radio range. **Merge effort ~2–3 h:** conflict-prone files are `lora_protocol.py`, `main.py`, `update.sh`, `docs/lora-protocol.md` (all touched heavily since the branch was cut); re-validate HB/SRP size budgets (HMAC adds 22 B per frame, but our recent short-key + conditional-field work freed ~40 B so the math works out better than the branch author saw); confirm the claim-wizard flow still works under signing.
 
 ## Polish
 
