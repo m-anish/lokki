@@ -16,7 +16,7 @@ Have an idea or a use case not covered here? [Open an issue](https://github.com/
 - Named scenes, priority arbiter (manual > PIR > schedule)
 - LoRa mesh — coordinator + up to 8 leaf units, star topology, FIXED-mode addressing, per-packet RSSI byte
 - Coordinator: WiFi, NTP time sync, time broadcast to leaves
-- Web-based config builder (offline-capable, browser-only) with starter profiles for common deployment shapes
+- Web-based config builder (browser-only) with starter profiles for common deployment shapes
 - Live web dashboard: real-time channel/relay/PIR state, manual override sliders, scene buttons, remote reboot, config push, claim wizard, "Set time now" override
 - Optional HTTP Basic auth on the dashboard (LAN-only; relay-based public auth designed in `docs/relay-design.md`)
 - Integrated sun times generator
@@ -36,14 +36,12 @@ Concrete next-up engineering items. Some are issue-track-grade, others are polis
 
 ### Known gaps
 
-- **Leaf reboot from the dashboard** — `POST /api/units/{id}/reboot` doesn't exist yet; only the coord can be rebooted (`POST /api/reboot`). The ROADMAP previously implied both; clearing the discrepancy. Small: ~30 LOC for the endpoint + LoRa `RB` message handler + dashboard button.
 - **DST handling for `timezone.utc_offset_hours`** — currently manual; needs either an in-config DST rule table or seasonal-flip documentation in the user guide.
 - **AUX-disciplined transmit deadlock stress test** — no observed issue but never specifically driven hard (e.g. coordinator broadcasting TS while a leaf is mid-SRP under high LDR change rate).
 
 ### Deferred features (Phase-4-shaped)
 
 - **Persistent error log to flash** — ring buffer for the event bus so post-mortem on a field unit doesn't depend on a serial console. Needs careful wear-levelling design.
-- **LoRa frame authentication** — HMAC-SHA256 (truncated to 8 B) signing + per-source replay window on every frame, key in `/secrets.json` separate from `config.json`. Already implemented on branch [`feature/lora-shared-secret`](https://github.com/m-anish/lokki/tree/feature/lora-shared-secret) (commit `47f6d88`); +312 lines across 8 files. Not urgent for lab / friends-and-family use because the E220's `crypt_h`/`crypt_l` radio-level encryption already keeps the casually curious out — revisit before any deployment where a motivated attacker could plausibly be in radio range. **Merge effort ~2–3 h:** conflict-prone files are `lora_protocol.py`, `main.py`, `update.sh`, `docs/lora-protocol.md` (all touched heavily since the branch was cut); re-validate HB/SRP size budgets (HMAC adds 22 B per frame, but recent short-key + conditional-field work freed ~40 B so the math works out better than the branch author saw); confirm the claim-wizard flow still works under signing.
 - **`docs/auth-design.md`** — sibling of `relay-design.md` covering a reusable auth library design once Lokki has more company. Defer until there's a second project that would consume it.
 
 ### Polish
@@ -56,6 +54,67 @@ Concrete next-up engineering items. Some are issue-track-grade, others are polis
 - **LM2596 brownout** theory for the simultaneous-EIO pattern across I²C / UART / WiFi — add 100 µF + 100 nF decoupling at VSYS / E220 V+ on the next board rev.
 - **DS3231 backup battery** health audit across deployed units (the recent EIO turned out to be a cold solder joint, but battery state across the fleet is unaudited).
 - Next PCB rev: MOSFET-on-GPIO for forced E220 power-cycle as a hardware recovery path.
+
+---
+
+## Phase 2.5 — Engineering & UX Modernisation
+
+The current dashboard and Config Builder are two separate apps stitched together by a footer link, with very different mental models (cards-and-buttons vs forms-and-sections). The protocol is at the same time over-eager (full ~5 KB config push for any 1-field change → ~6 s wait) and under-formalised (validator lives in Python, schema doc is separate JSON, client mirrors rules informally). This phase tackles both as one coordinated overhaul. Roughly 10–12 weeks of focused work end-to-end; shippable in independent sub-phases.
+
+### Engineering protocol upgrades (prerequisites for UX overhaul)
+
+Order: provisioning → schema → patch protocol. Each is independently useful even if subsequent items slip.
+
+- **Batch-provisioning interactive CLI** (~half a day). `./update.sh --fresh --role=coordinator --leaves=N` prompts interactively for each leaf's name (`Leaf 1 name: …`), generates the coord's config AND pre-caches blank-slate leaf configs (`/leaf-configs/N.json`) on the coord's flash. When each leaf later joins via claim wizard or USB stub, `/api/units/N/config` already returns a cached config — first-time-push step disappears.
+- **JSON Schema as config validation source of truth** (~1 week). `web/app/config.schema.json` becomes the authoritative spec, copied to `firmware/.../src/config/config.schema.json` at flash time. A small purpose-built Lokki validator (~300 LOC, MicroPython-friendly subset: `type`, `required`, `enum`, `minimum/maximum`, `properties`, `items`, `additionalProperties`, `pattern`, `if/then/else`) replaces `core/config_manager._validate()`'s body. A thin Python wrapper preserves the SafeModeError special case for major-version mismatch. New `POST /api/config/validate` endpoint accepts `{config: {...}}` (full) or `{patch: [...], base_unit_id: N}` (incremental — coord applies patch to its cached config then validates the merged result). **Coord-only** — leaves stay slim; coord is now the single source of truth for any leaf config validation.
+- **Incremental config protocol** (~3–4 days). Two new LoRa messages alongside existing CFG_START/CHUNK/END:
+  - `CFG_PATCH` for single-value updates (`{"path": "led_channels/2/default_duty_percent", "value": 80}`) — ~80 B, one packet, ~300 ms total.
+  - `CFG_SECTION` for replacing a top-level section (`{"section": "led_channels", "value": [...]}`) — chunked but still ~1/5 of full config.
+  - Smart dispatch on the coord: one field changed → `CFG_PATCH`; 2-N fields in one section → `CFG_SECTION`; cross-section or >50% of fields → fall back to full transfer.
+  - Leaf-side path walker (~80 LOC) supports `set` on `led_channels[N]/foo`, `scenes/$name`, etc. Validates merged result against the schema (now JSON-Schema-driven) before atomic flash write. Leaf reboots after a patch that affects boot-time wiring (hardware pins, system role) — same trigger logic as current CFG_END.
+  - **Drops "save a channel default" round-trip from ~6 s to ~300 ms** — prerequisite for the inline-edit UX feel.
+
+### UX overhaul
+
+Five sub-phases. Each leaves the app *better-shaped* than before — never a "redesign halfway done and everything is worse" state.
+
+- **UX-1 — Unification foundation** (~1 week).
+  - Merge `config-builder.html` into `dashboard.html` as a hidden view, route the sidebar to it. Old `/config-builder.html` URL kept as a redirect for backward compat with bookmarks.
+  - Sidebar gains Coordinator + Leaf N entries (one per claimed leaf, generated from `/api/fleet`).
+  - Dark mode pass — honor `prefers-color-scheme` throughout.
+  - **Drop offline-only Config Builder mode** — keep "Load from file" (lightweight, useful for review/backup); drop everything else that pretended the page worked without a coord. ~150 LOC of conditional logic gone.
+  - Nothing functional changes for end users yet — pure organizational restructure so subsequent phases have a place to live.
+
+- **UX-2 — Per-unit detail pages** (~2 weeks).
+  - Build tabbed per-leaf and per-coord detail pages: live status header + tabbed config sections inline (Overview / Channels / Relays / PIRs / Schedule / Scenes / Advanced). Tabbed layout chosen specifically to support a wizard-style flow in later phases.
+  - Inline manual override sliders (replace the Control modal entirely).
+  - **Per-leaf reboot button** (`POST /api/units/{id}/reboot` + new LoRa `RB` message handler) — this folds in the standalone "Leaf reboot" gap.
+  - "Configure" buttons on the fleet overview cards link directly to the relevant detail page.
+
+- **UX-3 — Schedule visualizer + scene editor** (~2–3 weeks).
+  - 24h timeline as static SVG, showing schedule windows across channels for the currently-selected unit. Click-to-edit (a window opens an inline editor); no drag. Phase 4/5/6 can add drag later if it becomes worth the work.
+  - Timeline data model uses a typed event enum (`regular | override | sequence | …`) from day one — Phase 5 calendar overrides + scene sequencing layer on top without rewriting the visualizer.
+  - **Pluggable data source** — visualization layer separated from data so Phase 7's energy/usage heatmap can reuse the same chart component with a different feed.
+  - Scene editor v2: "snapshot current state of these channels/relays into a scene" replaces the manual form. Hover-preview shows what each scene would look like without applying.
+
+- **UX-4 — Multi-unit operations + activity history + config backup** (~1–2 weeks).
+  - Checkbox-select N units on the fleet view, toolbar with bulk operations (Apply scene to selected / Push config to selected / Reboot selected).
+  - **Config backup & restore** (folded in from Longer-Term Ideas): export full fleet configuration (all units) as a single archive; restore to a replacement unit.
+  - Activity history view: recent manual overrides, config pushes, reboots, claim events. Answers "what changed since yesterday?"
+  - Cross-linking from logs to leaves / scenes / config fields (clicking a log line about Leaf 2 navigates to Leaf 2's detail page with the relevant tab open).
+
+- **UX-5 — Mobile-first polish + PWA** (~1–2 weeks).
+  - Mobile-first redesign of the unified app (the unmodified Config Builder is currently unusable on a phone).
+  - Inline help: hover popovers replacing `.field-hint` text where it's longer than one line.
+  - Global search across leaves, channels, scenes — useful at 8-leaf scale with 64 channels worth of names.
+  - **PWA basics — manifest.json + minimal service worker for offline-loading the dashboard shell** (folds in Phase 6's "PWA" item; cheap if done now alongside the mobile pass, expensive to retrofit). Once installed on a phone's home screen, the dashboard is a click away.
+
+### Coordinated edits to existing entries
+
+- Phase 6's "Progressive Web App" line moved into UX-5 (already done above; note left as a pointer).
+- Phase 7's "Usage dashboard — heatmap or timeline" item should reuse UX-3's chart layer when it gets built — flagged here so future-us doesn't write a parallel one.
+- Phase 5's calendar overrides + scene sequencing + circadian mode layer onto UX-3's typed timeline model — no rewrites required.
+- Phase 4's firmware version tracking adds a new HB field (`v` or `fw`) when it lands — the HB fitter's drop-order list already has room near the bottom.
 
 ---
 
@@ -100,8 +159,9 @@ Once a venue has 8 units deployed across a building, updating firmware over USB 
 
 - **Home Assistant integration** — MQTT discovery so Lokki channels and scenes appear automatically as HA entities; full control from HA dashboards and automations.
 - **Voice assistant** — Alexa or Google Home skill via MQTT, for hands-free scene activation in venues.
-- **Progressive Web App (PWA)** — installable mobile app wrapping the web dashboard; works on-site without an internet connection once the coordinator is reachable on the local network.
 - **Multi-coordinator mesh** — allow two or more coordinators to share fleet state for larger campuses; one becomes primary for NTP/time sync, others relay.
+
+> PWA support (manifest + service worker for installable on-device dashboard) moved into Phase 2.5 / UX-5 — see below.
 
 ---
 
@@ -120,7 +180,6 @@ Less certain but worth tracking:
 
 - **I²C sensor expansion** — temperature, humidity, CO₂, and occupancy count sensors feeding into schedule decisions and MQTT events. (BME280 / BH1750 / SCD40 already supported in `hardware/i2c_sensors.py`; just needs more drivers + UI surface.)
 - **Physical scene cycling** — repurpose a spare GPIO button to step through scenes locally without any dashboard.
-- **Config backup and restore** — export full fleet configuration (all units) as a single archive from the dashboard; restore to a replacement unit. (Per-unit backup via `GET /api/config` already works.)
 - **Secure remote access via a self-hosted relay** — each coordinator gets a stable public URL (e.g. `abc1234.lokki.app`) by opening an outbound WebSocket to a Lokki-operated relay. Public traffic is proxied over that tunnel; auth and TLS are handled at the relay so the Pico stays simple, and the dashboard renders a QR code of its own public URL. No companion hardware, no port forwarding. **Design:** [docs/relay-design.md](docs/relay-design.md).
 - **I²C provisioning between coord and leaf** — coord ↔ leaf wired through the PCB expansion port; a leaf gesture (hold reset 10 s, or held-from-boot) puts the leaf into I²C-slave mode at a fixed address, and the coord pushes a full config over the wire — no LoRa, no USB to the leaf. Useful for bench provisioning at scale, recovery on a leaf whose LoRa is broken inside a sealed enclosure, and RF-free provisioning at security-sensitive sites. **Effort blocker:** MicroPython's `machine.I2C` is master-only; would need a custom firmware build with a C wrapper around the RP2040/RP2350 I²C peripheral, or a PIO state machine implementing slave mode. ~3–7 days for the slave-mode plumbing; everything else is small. Parked — claim wizard + USB-flash cover the common cases today.
 
