@@ -9,6 +9,7 @@ SAMPLE_CFG="$SRC_DIR/config/samples/config.json.sample"
 SAMPLE_SUN="$REPO_ROOT/firmware/micropython/config/samples/sun_times.json.sample"
 INBAND_TEST="$REPO_ROOT/tests/lora_e220_inband_test.py"
 COLOR_TEST="$REPO_ROOT/firmware/micropython/tools/color_test.py"
+I2C_HELPER="$REPO_ROOT/firmware/micropython/tools/i2c_helper.py"
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -228,6 +229,20 @@ if [ -f "$COLOR_TEST" ]; then
     mk_remote_dir "tools"
     echo "[update] Flashing status-LED color tool -> :/tools/color_test.py"
     mpremote connect auto fs cp "$COLOR_TEST" ":tools/color_test.py"
+fi
+
+# Interactive I2C / DS3231 helper. Standalone — doesn't import any
+# Lokki module, so it works even on a half-bricked device. Run on
+# the device with:
+#   mpremote run firmware/micropython/tools/i2c_helper.py
+# or:
+#   mpremote exec "exec(open('/tools/i2c_helper.py').read())"
+# Menu-driven: scan the bus, read/write DS3231 time, read DS3231
+# temperature, run a soak loop to diagnose intermittent EIO.
+if [ -f "$I2C_HELPER" ]; then
+    mk_remote_dir "tools"
+    echo "[update] Flashing I2C/RTC helper -> :/tools/i2c_helper.py"
+    mpremote connect auto fs cp "$I2C_HELPER" ":tools/i2c_helper.py"
 fi
 
 # ---------------------------------------------------------------------------
