@@ -283,10 +283,22 @@ class ConfigManager:
         self._validate_relays(errors)
         self._validate_led_channels(errors)
         self._validate_scenes(errors)
+        self._validate_dashboard(errors)
         # wifi is coordinator-only and optional — no hard validation
 
         if errors:
             raise ValueError("Config invalid: " + "; ".join(errors))
+
+    def _validate_dashboard(self, errors):
+        d = self._config.get("dashboard")
+        if d is None:
+            return            # entire section optional — no auth = no section
+        if not isinstance(d, dict):
+            errors.append("dashboard must be an object if present")
+            return
+        for key in ("auth_username", "auth_password"):
+            if key in d and not isinstance(d[key], str):
+                errors.append(f"dashboard.{key} must be a string")
 
     def _validate_version(self, errors):
         v = self._config.get("version", "")

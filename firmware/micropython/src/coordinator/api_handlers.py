@@ -243,18 +243,28 @@ async def handle_config_push(unit_id, config_str):
     if unit_id == 0:
         # Coordinator: apply locally
         try:
-            # If the incoming config has the masked wifi password, restore the
-            # real one from the live config — otherwise we'd silently break wifi.
+            # Restore any "********" placeholders from the live config
+            # before applying, so round-tripping through the (now
+            # masked) /api/config response doesn't break wifi or the
+            # dashboard auth gate.
             try:
                 incoming = json.loads(config_str)
             except Exception:
                 incoming = None
-            if (isinstance(incoming, dict)
-                    and isinstance(incoming.get("wifi"), dict)
-                    and incoming["wifi"].get("password") == "********"):
-                live_pw = config_manager.get("wifi").get("password", "")
-                incoming["wifi"]["password"] = live_pw
-                config_str = json.dumps(incoming)
+            if isinstance(incoming, dict):
+                changed = False
+                if (isinstance(incoming.get("wifi"), dict)
+                        and incoming["wifi"].get("password") == "********"):
+                    live_pw = config_manager.get("wifi").get("password", "")
+                    incoming["wifi"]["password"] = live_pw
+                    changed = True
+                if (isinstance(incoming.get("dashboard"), dict)
+                        and incoming["dashboard"].get("auth_password") == "********"):
+                    live_pw = (config_manager.get("dashboard") or {}).get("auth_password", "")
+                    incoming["dashboard"]["auth_password"] = live_pw
+                    changed = True
+                if changed:
+                    config_str = json.dumps(incoming)
             config_manager.replace(config_str)
             log.info("[API] Local config replaced")
             return _ok({"applied": "local"})
@@ -291,20 +301,45 @@ async def handle_config_push(unit_id, config_str):
 
 
 def handle_full_config():
-    """Return full config but mask the wifi password.
+    """Return full config but mask the secret fields.
 
-    Why: dashboard is unauthenticated; raw config exposes wifi.password to
-    anyone on the LAN. The Config Builder doesn't need the real value to
-    edit other fields — if the user wants to change the password they re-enter it.
+    Why: dashboard auth is optional and LAN-only, so even when it's
+    enabled the response shouldn't expose stored credentials to anyone
+    who's logged in. Currently masked: `wifi.password` and
+    `dashboard.auth_password`. The Config Builder doesn't need the
+    real values to edit other fields — if the user wants to change
+    them they re-enter the new value, and the round-trip through
+    handle_config_push restores any "********" placeholder that came
+    back unchanged.
     """
-    cfg = config_manager.get_all()
-    # Shallow-copy + replace the wifi sub-dict so we don't mutate the live config.
+    return _ok(_mask_secrets(config_manager.get_all()))
+
+
+def _mask_secrets(cfg):
+    """Return a shallow-copy of cfg with sensitive fields replaced by
+    `********`. Two fields today: `wifi.password` and
+    `dashboard.auth_password`. Round-trips through the Config Builder
+    work because handle_config_push restores the live values when it
+    sees a `********` placeholder coming back."""
+    if not isinstance(cfg, dict):
+        return cfg
+    out = cfg
+    copied = False
+    def _copy_on_write():
+        nonlocal out, copied
+        if not copied:
+            out = dict(cfg)
+            copied = True
+        return out
     if isinstance(cfg.get("wifi"), dict) and cfg["wifi"].get("password"):
-        masked = dict(cfg)
-        masked["wifi"] = dict(cfg["wifi"])
-        masked["wifi"]["password"] = "********"
-        return _ok(masked)
-    return _ok(cfg)
+        c = _copy_on_write()
+        c["wifi"] = dict(c["wifi"])
+        c["wifi"]["password"] = "********"
+    if isinstance(cfg.get("dashboard"), dict) and cfg["dashboard"].get("auth_password"):
+        c = _copy_on_write()
+        c["dashboard"] = dict(c["dashboard"])
+        c["dashboard"]["auth_password"] = "********"
+    return out
 
 
 def handle_unit_config(unit_id):
@@ -313,15 +348,7 @@ def handle_unit_config(unit_id):
     Control modal (which reads led_channels/relays) AND the Config Builder
     (which reads every section to populate its form)."""
     if unit_id == 0:
-        cfg = config_manager.get_all()
-        # Reuse the same wifi-password masking as /api/config so the Builder
-        # round-trip works identically whether the user picks "Coordinator"
-        # or unit 0 from the unit selector.
-        if isinstance(cfg.get("wifi"), dict) and cfg["wifi"].get("password"):
-            masked = dict(cfg)
-            masked["wifi"] = dict(cfg["wifi"])
-            masked["wifi"]["password"] = "********"
-            cfg = masked
+        cfg = _mask_secrets(config_manager.get_all())
         out = dict(cfg)
         out["source"] = "live"
         return _ok(out)

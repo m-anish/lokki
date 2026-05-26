@@ -11,6 +11,26 @@ HTTP status codes mirror the outcome: 200 for success, 400/404/502 for errors.
 
 ---
 
+## Authentication
+
+The dashboard is unauthenticated by default — every endpoint is open to anyone on the LAN. To gate it behind HTTP Basic auth, set in `config.json`:
+
+```jsonc
+"dashboard": {
+  "auth_username": "admin",       // optional, defaults to "admin" if omitted
+  "auth_password": "your-password" // empty / absent disables auth (current default)
+}
+```
+
+Once configured, **every** request (static files + every `/api/*` route, except CORS-preflight `OPTIONS`) must carry an `Authorization: Basic <base64(user:pass)>` header. Browsers handle this automatically once you've entered credentials at the prompt.
+
+**Important caveats** (same as your typical home automation tool):
+
+- Password is stored in cleartext in `config.json` on flash and travels in cleartext over plain HTTP on the LAN. This is appropriate for "keep casual users out", not for "protect against a network attacker." See [docs/relay-design.md](relay-design.md) for the public-internet auth story.
+- `GET /api/config` returns the password masked as `********`. Round-tripping a masked value through `POST /api/units/0/config` is safe — the coordinator restores the live value before applying.
+
+---
+
 ## Base URL
 
 ```

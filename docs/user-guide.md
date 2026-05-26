@@ -97,6 +97,8 @@ The coordinator's web dashboard (served over WiFi) shows:
 
 Access it at `http://<coordinator-ip>/` — check your router's DHCP table for the IP, or try `http://lokki.local/` (the hostname is set from `wifi.hostname` in `config.json`, defaulting to `lokki`). Whether `.local` resolves depends on whether the MicroPython build has the lwIP mDNS responder compiled in *and* whether your router forwards mDNS — if it doesn't resolve, fall back to the raw IP.
 
+To gate the dashboard behind a password, set `dashboard.auth_password` (and optionally `dashboard.auth_username`, default `admin`) in `config.json`. The browser will prompt on first visit. Caveats: it's HTTP Basic over plain HTTP, so anyone with WiFi access can observe the credentials — appropriate for "keep casual users out", not for protecting against a network attacker. For public-internet exposure, see the deferred relay design.
+
 ---
 
 ## Troubleshooting

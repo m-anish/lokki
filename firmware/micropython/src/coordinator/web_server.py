@@ -3,8 +3,10 @@ import socket
 import json
 import os
 import gc
+import binascii
 from shared.system_status import system_status
 from shared.simple_logger import Logger
+from core.config_manager import config_manager
 import coordinator.api_handlers as api
 
 log = Logger()
@@ -126,6 +128,23 @@ class WebServer:
             
             log.debug(f"[WEB] {method} {path} from {addr[0]}, body_len={len(body)}")
 
+            # HTTP Basic auth gate. When `dashboard.auth_password` is
+            # set in config.json, every request — static + API — must
+            # carry a matching Authorization header. CORS preflights
+            # (OPTIONS) are exempt so browsers can do the auth dance
+            # without being challenged twice. When auth_password is
+            # absent / empty, this is a no-op (current behaviour).
+            if method != "OPTIONS" and not self._check_auth(headers):
+                await self._send_all(
+                    conn,
+                    b"HTTP/1.1 401 Unauthorized\r\n"
+                    b"WWW-Authenticate: Basic realm=\"Lokki\"\r\n"
+                    b"Content-Type: text/plain\r\n"
+                    b"Connection: close\r\n\r\n"
+                    b"Authentication required",
+                )
+                return
+
             # Static file serving (GET only)
             if method == "GET" and self._is_static(path):
                 await self._serve_static(conn, path)
@@ -175,6 +194,44 @@ class WebServer:
                     await asyncio.sleep_ms(10)
                     continue
                 raise
+
+    # ------------------------------------------------------------------
+    # HTTP Basic auth
+    # ------------------------------------------------------------------
+    # Threat model: LAN-only. Password is configured in cleartext in
+    # config.json (mirrored to `dashboard.auth_password`), and travels
+    # in cleartext over plain HTTP, because the Pico isn't a good
+    # place to terminate TLS. Anyone with WiFi access to the LAN can
+    # observe it. The relay design (docs/relay-design.md) is what
+    # provides real TLS+auth for public exposure; this is the
+    # "protect the dashboard from casual LAN users" knob.
+
+    def _check_auth(self, headers):
+        """Returns True when auth is OK (no password configured, or
+        the request's Authorization header matches). False when a
+        password is configured and the header is missing/wrong."""
+        try:
+            cfg = config_manager.get("dashboard") or {}
+        except Exception:
+            cfg = {}
+        password = (cfg.get("auth_password") or "").strip()
+        if not password:
+            return True   # auth disabled — current shipping behaviour
+        expected_user = (cfg.get("auth_username") or "admin").strip()
+        auth = headers.get("authorization") or ""
+        if not auth.lower().startswith("basic "):
+            return False
+        try:
+            decoded = binascii.a2b_base64(auth[6:].strip()).decode("utf-8")
+        except Exception:
+            return False
+        # Colon-split; password may itself contain colons (split only on
+        # the first one). `partition` is the safe MicroPython-compatible
+        # way to do that.
+        user, sep, pwd = decoded.partition(":")
+        if not sep:
+            return False
+        return user == expected_user and pwd == password
 
     # ------------------------------------------------------------------
     # Static file serving

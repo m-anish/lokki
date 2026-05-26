@@ -37,6 +37,15 @@
       }
     },
 
+    "dashboard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "auth_username": { "type": "string" },
+        "auth_password": { "type": "string" }
+      }
+    },
+
     "lora": {
       "type": "object",
       "additionalProperties": false,

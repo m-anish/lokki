@@ -516,6 +516,34 @@
       </div>
     </div>
 
+    <!-- ── DASHBOARD AUTH ── -->
+    <div class="section coordinator-only" data-section="dashboard">
+      <div class="section-head" onclick="toggleSection(this)">
+        <span class="section-icon">🔐</span>
+        <span class="section-title">Dashboard Auth <span class="card-sub">(coordinator only, optional)</span></span>
+        <span class="chevron">›</span>
+      </div>
+      <div class="section-body">
+        <div class="field-hint" style="margin-bottom:8px">
+          Optional HTTP Basic auth on the dashboard. Leave password blank to disable. Travels in cleartext over plain HTTP on the LAN — fine for keeping casual users out, not a substitute for proper TLS+auth (see <code>docs/relay-design.md</code> for the public-internet story).
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label class="field-label">Username</label>
+            <input id="d_username" type="text" placeholder="admin" autocomplete="off" />
+            <div class="field-hint">Defaults to <code>admin</code> when left blank.</div>
+          </div>
+          <div class="field">
+            <label class="field-label">Password</label>
+            <span class="pw-wrap">
+              <input id="d_password" type="password" placeholder="(blank = no auth)" autocomplete="off" />
+              <button type="button" class="pw-btn" onclick="toggleDashPw()" title="Show/hide password">🙈</button>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ── TIMEZONE ── -->
     <div class="section open" data-section="tz">
       <div class="section-head" onclick="toggleSection(this)">
@@ -1216,6 +1244,14 @@ function togglePw() {
   btn.textContent = show ? '👁️' : '🙈';
 }
 
+function toggleDashPw() {
+  const inp = document.getElementById('d_password');
+  const btn = inp.parentElement.querySelector('.pw-btn');
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.textContent = show ? '👁️' : '🙈';
+}
+
 // ============================================================
 // State
 // ============================================================
@@ -1887,6 +1923,18 @@ function buildConfig() {
       password: document.getElementById('w_password').value,
       hostname: document.getElementById('w_hostname').value.trim()||'lokki',
     },
+    // Dashboard auth — emitted only for coordinator role (leaves
+    // don't have a dashboard). Both fields optional; blank password
+    // means "no auth".
+    ...(isLeaf ? {} : (() => {
+      const u = document.getElementById('d_username').value.trim();
+      const p = document.getElementById('d_password').value;
+      if (!u && !p) return {};        // skip section entirely
+      return { dashboard: {
+        auth_username: u || 'admin',
+        auth_password: p,
+      }};
+    })()),
     lora: (() => {
       const cstr = (document.getElementById('l_crypt').value||'').trim().padStart(4, '0').slice(-4);
       const cnum = parseInt(cstr, 16);
@@ -2236,6 +2284,15 @@ function applyConfigToForm(cfg) {
 
   const w=cfg.wifi||{};
   set('w_ssid', w.ssid); set('w_password', w.password); set('w_hostname', w.hostname);
+
+  // Dashboard auth — server returns auth_password as "********" when
+  // one is set (and the masked value round-trips through Save to
+  // device unchanged because handle_config_push restores it). Leave
+  // both inputs blank when the section is missing — that disables
+  // auth on save.
+  const d = cfg.dashboard || {};
+  set('d_username', d.auth_username || '');
+  set('d_password', d.auth_password || '');
 
   const l=cfg.lora||{};
   set('l_freq', l.frequency_mhz); set('l_power', l.tx_power_dbm);
