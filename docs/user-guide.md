@@ -53,12 +53,13 @@ The new config takes effect after reboot.
 
 ### Provisioning a brand-new leaf
 
-Leaf units don't have WiFi, so the very first config has to land on them via USB. After that, every subsequent edit flows through the coordinator over LoRa.
+Leaf units don't have WiFi, so the very first config has to land on them via USB. After that, every subsequent edit flows through the coordinator over LoRa. Alternatively, skip USB entirely by USB-flashing the leaf-stub via `utils/update.sh --fresh --role=leaf --id=N` and then completing setup over LoRa using the **claim wizard** in the dashboard (see Factory Reset & Claiming a New Leaf below).
 
 1. Connect the leaf via USB. Use Thonny or `mpremote` to push a *minimal* `config.json` containing at least:
    - `system.role = "leaf"`
    - `system.unit_id = N` (matching one of the coordinator's `system.peers`)
-   - `lora.frequency_mhz` and `lora.channel` matching the coordinator
+   - `lora.channel` matching the coordinator (project default: **73**)
+   - `lora.crypt_h` / `lora.crypt_l` matching the coordinator (project default: **0x07 / 0x93**)
    - `wifi` may be omitted (leaves don't use it)
 2. Reboot the leaf. It'll come up, initialise LoRa, and start sending heartbeats.
 3. On the coordinator, open **Config Builder**.
@@ -110,7 +111,7 @@ Access it at `http://<coordinator-ip>/` — check your router's DHCP table for t
 
 - Check the leaf's status LED — green means it's running; red blinking means it crashed
 - Confirm the leaf's `unit_id` in its `config.json` matches what the coordinator lists in its `peers` list
-- Check LoRa settings — both units must have the same `frequency_mhz` and `channel` in their configs
+- Check LoRa settings — both units must share the same `channel` **and** the same `crypt_h` / `crypt_l` pair. A mismatch in either silently drops every frame at the radio with no error indication on the dashboard. Project defaults: channel **73**, key **0x07 / 0x93**.
 - Distance / obstruction — the E220 LoRa module has a long range in open air but reinforced concrete walls significantly reduce it
 
 ### All lights stuck on or stuck off after reboot
@@ -147,7 +148,8 @@ The full config reference is in [docs/config-schema.md](config-schema.md). Commo
 | `led_channels[].time_windows` | per channel | Schedule windows with brightness and fade |
 | `hardware.gamma` | `hardware` | Gamma correction factor (default 2.2) |
 | `ldr.enabled` | `ldr` | Enable/disable daylight capping |
-| `lora.frequency_mhz` | `lora` | Must match across all units on the network |
+| `lora.channel` | `lora` | E220 channel (0–80, frequency = 850 + channel MHz). Must match across all units. Project default: **73**. |
+| `lora.crypt_h` / `lora.crypt_l` | `lora` | 16-bit symmetric key — must match across all units. Project default: **0x07 / 0x93**. Set both to 0 to disable encryption. |
 
 ---
 
