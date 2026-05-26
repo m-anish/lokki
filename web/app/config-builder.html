@@ -403,11 +403,18 @@
         <select id="loadTargetUnit" style="display:none;padding:.4em .6em;border-radius:6px;border:1px solid var(--border)">
           <option value="0">Coordinator (this device)</option>
         </select>
+        <select id="starterProfile" onchange="applyStarterProfile(this.value); this.value='';" style="padding:.4em .6em;border-radius:6px;border:1px solid var(--border)">
+          <option value="">🎁 Load starter profile…</option>
+          <option value="indoor-8ch">Indoor 8-channel LED strip</option>
+          <option value="outdoor-pir-flood">Outdoor PIR-triggered floodlight</option>
+          <option value="garden-evening-scene">Garden — evening + late scenes</option>
+        </select>
         <input id="uploadInput" type="file" accept=".json,application/json"
                style="position:absolute;width:1px;height:1px;clip:rect(0,0,0,0)" />
       </div>
       <div id="uploadMsg" style="font-size:.78em;color:var(--muted);margin-top:6px"></div>
       <div id="loadHint" style="font-size:.78em;color:var(--muted);margin-top:4px"></div>
+      <div id="starterMsg" style="font-size:.78em;color:var(--muted);margin-top:4px"></div>
     </div>
 
     <!-- ── SYSTEM ── -->
@@ -2279,6 +2286,132 @@ function applyConfigToForm(cfg) {
 
   scheduleRender();
   document.getElementById('uploadMsg').textContent = 'Prefilled from uploaded config.json ✓';
+}
+
+// =====================================================================
+// Starter profiles — common deployment shapes the operator can load as
+// a starting point, then customise. Profiles ONLY touch the user-facing
+// sections (led_channels / relays / pir / scenes); they intentionally
+// leave system / wifi / lora / hardware / timezone alone so loading a
+// profile mid-edit doesn't blow away install-specific identity/network
+// settings. Designed to pair with the dashboard claim wizard, which
+// produces a blank-slate leaf — the operator opens the Config Builder
+// for that leaf and picks a starter profile to skip the from-scratch
+// keystrokes.
+// =====================================================================
+
+const STARTER_PROFILES = {
+  // 8 LED channels, all enabled at modest default, no relays/PIR/scenes.
+  // For a leaf driving a single addressable strip or 8 isolated channels
+  // where the operator wants every channel on the schedule from day 1.
+  "indoor-8ch": {
+    led_channels: Array.from({length: 8}, (_, i) => ({
+      id: i + 1,
+      name: `Channel ${i+1}`,
+      gpio_pin: [16, 17, 18, 19, 22, 15, 14, 13][i],
+      enabled: true,
+      default_duty_percent: 30,
+      time_windows: [
+        { start: "sunset", end: "23:00", duty_percent: 80, fade_ms: 2000 },
+        { start: "23:00",  end: "sunrise", duty_percent: 10, fade_ms: 2000 }
+      ]
+    })),
+    relays: [],
+    pir:    [],
+    scenes: []
+  },
+
+  // Single bright channel + one relay, fired by PIR on motion, off on
+  // vacancy. Classic motion-sensor floodlight shape — drop one PIR on
+  // your porch / driveway, get the right behaviour out of the box.
+  "outdoor-pir-flood": {
+    led_channels: [{
+      id: 1,
+      name: "Flood",
+      gpio_pin: 16,
+      enabled: true,
+      default_duty_percent: 0,
+      time_windows: []
+    }],
+    relays: [{
+      id: 1,
+      name: "Flood Power",
+      gpio_pin: 2,
+      enabled: true,
+      default_state: "off",
+      time_windows: []
+    }],
+    pir: [{
+      id: 1,
+      name: "Motion Sensor",
+      gpio_pin: 9,
+      enabled: true,
+      vacancy_timeout_s: 120,
+      on_motion:  { action: "set_led_channels", channels: [1], duty_percent: 100, fade_ms: 500 },
+      on_vacancy: { action: "set_led_channels", channels: [1], duty_percent: 0,   fade_ms: 2000 }
+    }],
+    scenes: []
+  },
+
+  // 4 channels with two named scenes for an evening/late split. No PIR;
+  // the schedule and the dashboard do all the driving. Useful starting
+  // point for decorative garden lighting where the operator wants to
+  // tweak the look from their phone.
+  "garden-evening-scene": {
+    led_channels: [1, 2, 3, 4].map(id => ({
+      id,
+      name: `Path ${id}`,
+      gpio_pin: [16, 17, 18, 19][id-1],
+      enabled: true,
+      default_duty_percent: 0,
+      time_windows: [
+        { start: "sunset", end: "sunrise", duty_percent: 60, fade_ms: 3000 }
+      ]
+    })),
+    relays: [],
+    pir:    [],
+    scenes: [
+      {
+        name: "evening",
+        led_channels: [1,2,3,4].map(id => ({ id, duty_percent: 80, fade_ms: 1500 })),
+        relays: []
+      },
+      {
+        name: "late",
+        led_channels: [1,2,3,4].map(id => ({ id, duty_percent: 20, fade_ms: 2500 })),
+        relays: []
+      },
+      {
+        name: "all-off",
+        led_channels: [1,2,3,4].map(id => ({ id, duty_percent: 0, fade_ms: 1000 })),
+        relays: []
+      }
+    ]
+  }
+};
+
+function applyStarterProfile(profileName) {
+  if (!profileName) return;
+  const profile = STARTER_PROFILES[profileName];
+  if (!profile) return;
+  const msg = document.getElementById('starterMsg');
+  // Pull current form state so we don't steamroll system/wifi/lora/etc.
+  let current = {};
+  try { current = buildConfig(); }
+  catch (e) {
+    if (msg) msg.textContent = "Couldn't read current form — using defaults: " + e.message;
+  }
+  const merged = Object.assign({}, current, {
+    led_channels: profile.led_channels || [],
+    relays:       profile.relays       || [],
+    pir:          profile.pir          || [],
+    scenes:       profile.scenes       || []
+  });
+  applyConfigToForm(merged);
+  if (msg) {
+    msg.style.color = "var(--green)";
+    msg.textContent = `Starter profile loaded: "${profileName}". Identity / WiFi / LoRa / hardware sections were preserved.`;
+  }
 }
 
 document.getElementById('uploadBtn').addEventListener('click', () =>
