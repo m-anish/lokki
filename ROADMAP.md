@@ -19,18 +19,24 @@ Have an idea or a use case not covered here? [Open an issue](https://github.com/
 - Web-based config builder (offline-capable, browser-only)
 - Integrated sun times generator
 - MQTT notification scaffolding (broker config, topic prefix)
+- **Claim wizard** — factory-reset leaves announce themselves; operator claims and names each one from the dashboard, no USB-flashing per unit
+- **Time-sync gate** — schedule is paused until the coord has a confirmed wall-clock (NTP, DS3231, or operator override); LED shows `time_waiting` cyan pulse and a yellow banner appears on the dashboard
+- **RTC fault tolerance** — DS3231 read failures fall back to the MCU's internal clock with throttled warnings; logger timestamps stay readable through transient I²C glitches
+- **DS3231 chip-temp sensor** — surfaced in dashboard Sensors row + sent over LoRa as a per-unit "is anything overheating" trend signal
+- **mDNS hostname** — `lokki.local` via either lwIP's built-in responder or a Python-side fallback, depending on the firmware build's IGMP/mDNS compilation
 
 ---
 
-## Phase 2 — Remote Control & Live Dashboard
+## Phase 2 — Remote Control & Live Dashboard ✅ (substantially complete)
 
-The coordinator already serves a web app. The next step is making it genuinely useful for daily operation without SSH or a USB cable.
+The coordinator serves a web app at `http://<coord-ip>/` (or `http://lokki.local/` where mDNS works) with real-time control, live fleet status, and config-push flows. What was the original plan, and where it stands today:
 
-- **Authenticated web dashboard** — token or password auth so the dashboard isn't open to anyone on the LAN
-- **Real-time LED control** — brightness sliders and scene buttons that send live manual overrides to units without touching the config file
-- **Live fleet status** — per-unit channel state, PIR state, LDR reading, uptime, error count, last-seen — auto-refreshing without a page reload
-- **Remote reboot** — trigger a coordinator or leaf reboot from the dashboard
-- **Config push from dashboard** — edit config in the browser, push directly to the running coordinator (already partially implemented via Save to device), with confirmation and reboot prompt
+- ✅ **Authenticated web dashboard** — HTTP Basic auth on the Pico for LAN-only deployments; relay-based public auth lives in [docs/relay-design.md](docs/relay-design.md)
+- ✅ **Real-time LED control** — brightness sliders, scene buttons, manual overrides with revert timers
+- ✅ **Live fleet status** — per-unit channel/relay/PIR state, LDR, uptime, error count, last-seen, RSSI; auto-refreshes every 15 s with a 1 s relative-time ticker
+- ✅ **Remote reboot** — `POST /api/reboot` + dashboard button
+- ✅ **Config push from dashboard** — Config Builder's "Save to device" pushes over LoRa for leaves, applies directly on the coordinator
+- ✅ **Claim wizard** (bonus) — factory-reset leaves auto-surface as "New device" cards; operator picks unit_id and name from the browser instead of USB-flashing each one
 
 ---
 
