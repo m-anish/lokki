@@ -11,6 +11,15 @@
   --brand:#4f46e5; --brand-d:#3730a3; --bg:#f8fafc; --card:#ffffff;
   --border:#e2e8f0; --text:#0f172a; --muted:#64748b; --radius:10px; --green:#059669;
 }
+/* Dark-mode palette — only the tokens that need to invert. Status
+   colours (red errors, green OK, etc.) intentionally stay the same in
+   both modes; they're affordances, not theme. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --brand:#818cf8; --brand-d:#6366f1; --bg:#0f172a; --card:#1e293b;
+    --border:#334155; --text:#f1f5f9; --muted:#94a3b8; --green:#34d399;
+  }
+}
 body {
   margin:0; background:var(--bg); color:var(--text);
   font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
@@ -170,13 +179,15 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
   display:flex; flex-direction:column; align-items:center; padding:8px 0; gap:4px;
   position:sticky; top:56px; height:calc(100vh - 56px);
 }
-.rail button {
+.rail button, .rail a.rail-link {
   width:40px; height:40px; border:0; background:transparent; cursor:pointer;
   border-radius:8px; display:flex; align-items:center; justify-content:center;
   font-size:1.2em; color:var(--muted); transition:all .15s;
+  text-decoration:none;
 }
-.rail button:hover { background:rgba(79,70,229,.10); color:var(--brand); }
-.rail button.active { background:var(--brand); color:#fff; }
+.rail button:hover, .rail a.rail-link:hover { background:rgba(79,70,229,.10); color:var(--brand); }
+.rail button.active, .rail a.rail-link.active { background:var(--brand); color:#fff; }
+.rail .rail-spacer { flex:1; }                    /* push Settings to the bottom */
 .content { flex:1; min-width:0; }
 .view { display:none; }
 .view.active { display:block; }
@@ -323,6 +334,8 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
   <aside class="rail">
     <button id="rail-fleet" class="active" title="Fleet" onclick="switchView('fleet')">🌿</button>
     <button id="rail-logs"  title="Logs"  onclick="switchView('logs')">📜</button>
+    <div class="rail-spacer"></div>
+    <a id="rail-settings" class="rail-link" title="Settings — Config Builder" href="/config-builder.html">⚙️</a>
   </aside>
   <div class="content">
 
@@ -1471,6 +1484,9 @@ window.onclick = e => {
 
 init().then(() => {
   updateClock(); setInterval(updateClock, 1000);
+  // Honour `#logs` (or any future #view) in the URL so the rail in
+  // config-builder.html can hand off to a specific dashboard view.
+  if (window.location.hash === "#logs") switchView("logs");
   load(); setInterval(load, 15000);
   updateStatus(); setInterval(updateStatus, 30000);
   // Tick "last seen" labels every second — the underlying data only refreshes

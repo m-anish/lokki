@@ -20,6 +20,21 @@
       --red:     #dc2626;
       --amber:   #d97706;
     }
+    /* Dark-mode palette — same tokens that dashboard.html overrides.
+       Status colours (--red, --amber, --green) are affordances and
+       stay constant across both modes. */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --brand:  #818cf8;
+        --brand-d:#6366f1;
+        --bg:     #0f172a;
+        --card:   #1e293b;
+        --border: #334155;
+        --text:   #f1f5f9;
+        --muted:  #94a3b8;
+        --green:  #34d399;
+      }
+    }
     body { margin: 0; background: var(--bg); color: var(--text);
            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
            font-size: 14px; line-height: 1.5; }
@@ -56,6 +71,34 @@
                   padding: 4px 14px; font-size: .8em; letter-spacing: .04em;
                   text-transform: uppercase; margin-bottom: 14px; }
 
+    /* APP SHELL — wraps the rail (left) and the existing .layout (right)
+       so the two pages (dashboard + this) share the same left rail
+       chrome. The rail itself mirrors dashboard.html's; entries
+       navigate via plain links since this isn't a SPA. */
+    .app-shell { display: flex; min-height: calc(100vh - 56px); }
+    .app-shell > .layout { flex: 1; min-width: 0; }
+    .rail {
+      width: 56px; flex-shrink: 0; background: var(--card);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; align-items: center;
+      padding: 8px 0; gap: 4px;
+      position: sticky; top: 56px; height: calc(100vh - 56px);
+    }
+    .rail button, .rail a.rail-link {
+      width: 40px; height: 40px; border: 0; background: transparent;
+      cursor: pointer; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2em; color: var(--muted); transition: all .15s;
+      text-decoration: none;
+    }
+    .rail button:hover, .rail a.rail-link:hover {
+      background: rgba(79,70,229,.10); color: var(--brand);
+    }
+    .rail button.active, .rail a.rail-link.active {
+      background: var(--brand); color: #fff;
+    }
+    .rail .rail-spacer { flex: 1; }
+
     /* LAYOUT */
     .layout { display: grid; grid-template-columns: 1fr 340px; gap: 0; min-height: calc(100vh - 56px); }
     .form-col { padding: 24px 20px; overflow-y: auto; }
@@ -65,6 +108,7 @@
     @media (max-width: 768px) {
       .layout { grid-template-columns: 1fr; }
       .preview-col { position: static; height: auto; min-height: 320px; }
+      .rail { display: none; }   /* save horizontal space on mobile */
     }
 
     /* SECTIONS */
@@ -111,10 +155,10 @@
 
     /* LEAF MODE — hide config sections that only apply when role=coordinator
        (e.g. wifi credentials, peers list). NOTE: this CSS class is for FORM
-       SECTIONS only. Action buttons that need the page to be served from a
-       coordinator are gated separately by the ON_DEVICE JS block — those
-       must NOT have this class or they'd vanish whenever the user edits a
-       leaf config, which is the most common reason to use this builder. */
+       SECTIONS only. Action buttons are always shown (UX-1 dropped the
+       ON_DEVICE conditional) — they must NOT have this class or they'd
+       vanish whenever the user edits a leaf config, which is the most
+       common reason to use this builder. */
     body.leaf .coordinator-only { display: none !important; }
     .leaf-note { display: none; background: #fffbeb; border: 1px solid #fde68a;
                   border-radius: 8px; padding: 10px 14px; font-size: .82em; color: #92400e;
@@ -381,7 +425,14 @@
   </div>
 </div>
 
-<div class="layout">
+<div class="app-shell">
+  <aside class="rail">
+    <a class="rail-link" title="Fleet" href="/">🌿</a>
+    <a class="rail-link" title="Logs"  href="/#logs">📜</a>
+    <div class="rail-spacer"></div>
+    <a class="rail-link active" title="Settings — Config Builder" href="/config-builder.html">⚙️</a>
+  </aside>
+  <div class="layout">
   <div class="form-col">
 
     <!-- LEAF MODE NOTE -->
@@ -899,30 +950,29 @@
     </div>
     <pre id="preview"></pre>
   </div>
-</div><!-- /layout -->
+  </div><!-- /layout -->
+</div><!-- /app-shell -->
 
 <script>
 // ============================================================
 // Device detection — show "Save to device" when served from Pico
 // ============================================================
-const ON_DEVICE = (() => {
-  const h = window.location.hostname;
-  // Only show device buttons when running on local network (Pico coordinator)
-  // Not on public domains like Cloudflare Pages
-  if (!h || window.location.protocol === 'file:') return false;
-  // Check if it's a local IP address (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
-  return /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(h) || 
-         /^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/.test(h);
-})();
-if (ON_DEVICE) {
-  document.getElementById('saveDeviceBtn').style.display = '';
-  document.getElementById('saveDeviceBtn2').style.display = '';
-  document.getElementById('loadFromDeviceBtn').style.display = '';
-  document.getElementById('loadTargetUnit').style.display = '';
-  document.getElementById('dashboardLink').style.display = '';
-  // Populate the unit selector from the coordinator's own config peers.
-  populateUnitSelector();
-}
+// UX-1 simplification: Config Builder is now ALWAYS treated as
+// device-connected. The previous ON_DEVICE LAN-IP heuristic supported
+// running the page from a public marketing site as an offline-only
+// editor — that mode was dropped because nobody uses it that way
+// and the conditional logic cost more in confusion than it saved.
+// If a device call fails, the relevant button surfaces a network
+// error toast at the call site; that's adequate fallback.
+document.getElementById('saveDeviceBtn').style.display = '';
+document.getElementById('saveDeviceBtn2').style.display = '';
+document.getElementById('loadFromDeviceBtn').style.display = '';
+document.getElementById('loadTargetUnit').style.display = '';
+// dashboardLink in the top nav is now redundant — the left rail's
+// 🌿 Fleet icon (added in UX-1) handles "back to dashboard". Keeping
+// the element in the markup as a hidden no-op so any old bookmarks
+// referencing #dashboardLink don't break.
+populateUnitSelector();
 
 // ============================================================
 // Populate "Load from device" unit selector
