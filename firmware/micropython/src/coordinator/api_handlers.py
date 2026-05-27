@@ -688,6 +688,135 @@ async def handle_unclaimed_claim(chip_uid, body):
 
 
 # ------------------------------------------------------------------
+# Incremental config patch (smart dispatch)
+# ------------------------------------------------------------------
+# Single-field tweaks (operator changes a channel's default_duty_percent,
+# renames a relay, edits a time_window) used to require pushing the
+# entire ~3-5 KB config over LoRa via CFG_START/CHUNK/END (~6 s on the
+# wire). With the incremental protocol, the same edit goes out as a
+# single CFG_PATCH packet (~300 ms) when the encoded value fits, or
+# falls back to a CFG_START with `target_path` set when it doesn't
+# (which still saves bytes by only chunking ONE section rather than
+# the whole config).
+#
+# Validation happens on the coord BEFORE sending: build the would-be
+# merged config, run it through the same schema + semantic checks
+# that the leaf would apply, refuse the patch if it'd produce an
+# invalid result. This means the leaf never sees an invalid patch
+# over the wire and never wastes a reboot on a config that won't pass
+# its own validator.
+#
+# The leaf STILL reboots after applying a patch (v1 — hot-apply
+# without reboot is a UX-2 follow-up). The wire-time win is the
+# immediate benefit; reboot-elision is a separate optimisation.
+
+_CFG_PATCH_PAYLOAD_BUDGET = 140  # ~150 B payload limit, with margin for envelope
+
+
+async def handle_config_patch(unit_id, body):
+    """Apply an incremental config patch to a unit.
+
+    Body shape: `{"path": "led_channels/2/default_duty_percent", "value": 80}`.
+
+    Coord-side flow:
+      1. Look up the current config (live for coord, cached for leaf).
+      2. Build a candidate by walking `path` and setting `value`.
+      3. Validate the candidate with the schema + semantic layers.
+      4. If valid + unit_id == 0 → apply locally (no LoRa).
+         If valid + unit_id 1..8 → encode payload, pick CFG_PATCH
+            (if it fits a single packet) or fall back to a chunked
+            CFG_START with target_path. Wait for ACK.
+      5. On success, update the coord's cached leaf config so
+         /api/units/N/config returns the new state immediately.
+    """
+    if not isinstance(body, dict):
+        return _err("body must be JSON object {path, value}", 400)
+    path = body.get("path")
+    if not isinstance(path, str) or not path:
+        return _err("path required (slash-separated, e.g. 'led_channels/2/default_duty_percent')", 400)
+    if "value" not in body:
+        return _err("value key required (may be null for delete-like)", 400)
+    value = body["value"]
+
+    # Resolve the current config for this unit. Coord uses live;
+    # leaves use the coord's cached copy. If a leaf has no cache,
+    # incremental patching isn't possible (we have no base to merge
+    # against) — caller should use full POST instead.
+    from core import json_path
+    if unit_id == 0:
+        base = json.loads(json.dumps(config_manager.get_all()))   # deep copy
+    else:
+        cached = _leaf_config_cache.get(unit_id)
+        if cached is None:
+            return _err(
+                f"no cached config for unit {unit_id}; push a full config "
+                "first via POST /api/units/{unit_id}/config, then patches will work",
+                409,
+            )
+        base = json.loads(json.dumps(cached))
+
+    # Apply the patch in-memory.
+    ok, err = json_path.set_at(base, path, value)
+    if not ok:
+        return _err(f"patch path invalid: {err}", 400)
+
+    # Validate the merged result before doing anything irreversible.
+    valid, errors = config_manager.validate_candidate(base)
+    if not valid:
+        return {"ok": False, "error": errors[0],
+                "data": {"errors": errors, "path": path},
+                "_status": 422}
+
+    # Coord-local apply.
+    if unit_id == 0:
+        try:
+            config_manager.replace(json.dumps(base))
+            log.info(f"[API] Coord patch {path}={value!r} applied locally")
+            return _ok({"applied": "local", "path": path})
+        except Exception as e:
+            return _err(str(e))
+
+    # Leaf path. Pick CFG_PATCH (single packet) vs chunked CFG_START
+    # with target_path based on encoded payload size. The encoded
+    # CFG_PATCH payload is `{"path": "...", "value": ...}`; if it fits
+    # the budget, one packet does it.
+    patch_payload = {"path": path, "value": value}
+    encoded_len = len(json.dumps(patch_payload).encode())
+    if encoded_len <= _CFG_PATCH_PAYLOAD_BUDGET:
+        seq = lora_protocol.send_patch(unit_id, path, value)
+        if seq is None:
+            return _err("CFG_PATCH send failed", 502)
+        ack = await lora_protocol._wait_ack(seq)
+        if ack is None:
+            return _err(f"CFG_PATCH to unit {unit_id} timed out — check LoRa link", 502)
+        if not ack.get("ok", True):
+            reason = ack.get("reason", "UNKNOWN")
+            errstr = ack.get("err", "")
+            return _err(f"Leaf rejected patch ({reason}): {errstr}", 502)
+        method = "patch"
+    else:
+        # Value too big to fit a single packet — fall back to a
+        # chunked transfer that targets the path. Only the bytes
+        # of the value (not the whole config) ride the chunked
+        # pipeline.
+        value_str = json.dumps(value)
+        ok_xfer = await lora_protocol.send_config(unit_id, value_str, target_path=path)
+        if not ok_xfer:
+            prog = lora_protocol.cfg_progress
+            if prog.get("phase") == "failed" and prog.get("message"):
+                return _err(prog["message"], 502)
+            return _err(f"Chunked patch to unit {unit_id} failed", 502)
+        method = "section"
+
+    # Leaf applied + rebooting. Update our cache so subsequent reads
+    # see the new state immediately, without waiting for the leaf to
+    # come back online and re-confirm via SRP.
+    _leaf_config_cache[unit_id] = base
+    _persist_leaf_cfg(unit_id, base)
+    return _ok({"applied": method, "sent_to": unit_id, "path": path})
+
+
+# ------------------------------------------------------------------
 # Config validation (dry-run)
 # ------------------------------------------------------------------
 # `POST /api/config/validate` runs the same schema + semantic checks

@@ -20,11 +20,12 @@ ERR       = "ERR"
 CFG_START = "CFG_START"
 CFG_CHUNK = "CFG_CHUNK"
 CFG_END   = "CFG_END"
+CFG_PATCH = "CFG_PATCH"   # single-packet single-field update; see send_patch()
 EO        = "EO"          # Emergency Off — all outputs to zero
 BLINK     = "BLINK"       # "blink your status LED so the operator can identify you" — used by the claim wizard
 
 # ACK required for these types
-_ACK_REQUIRED = {SC, MO, EO, CFG_END}
+_ACK_REQUIRED = {SC, MO, EO, CFG_END, CFG_PATCH}
 
 _ACK_TIMEOUT_S  = 10
 _CHUNK_SIZE     = 64
@@ -173,12 +174,23 @@ class LoRaProtocol:
     # Chunked config transfer (coordinator → leaf)
     # ------------------------------------------------------------------
 
-    async def send_config(self, dest_id, config_str, target_uid=None):
-        """If target_uid is given, the leaf will compare it against its own
-        chip UID and ignore the transfer if they don't match. Used by the
-        claim wizard so that a single CFG_START aimed at the shared
-        unit_id=99 address only takes effect on the specific freshly-
-        factory-reset board the operator picked."""
+    async def send_config(self, dest_id, config_str, target_uid=None, target_path=None):
+        """Chunked config transfer.
+
+        target_uid: if given, the leaf compares against its own chip
+        UID and ignores mismatches. Used by the claim wizard so a
+        CFG_START aimed at unit_id=99 only lands on the specific
+        freshly-factory-reset board the operator picked.
+
+        target_path: if given, the assembled string is parsed as JSON
+        and SET AT THAT PATH in the leaf's current config (rather
+        than replacing the whole config). Used by the incremental
+        config protocol for section-level updates that don't fit
+        CFG_PATCH's 200-byte single-packet budget — e.g. replacing
+        the entire `led_channels` array (~1.5 KB) without touching
+        `system`, `lora`, etc. Path syntax matches core.json_path:
+        slash-separated, numeric segments index lists.
+        """
         data    = config_str.encode()
         total   = len(data)
         chunks  = []
@@ -213,6 +225,8 @@ class LoRaProtocol:
             }
             if target_uid:
                 cfg_start_payload["target_uid"] = target_uid
+            if target_path:
+                cfg_start_payload["target_path"] = target_path
             seq = self.send(CFG_START, dest_id, cfg_start_payload)
             ack = await self._wait_ack(seq)
             if not ack or not ack.get("ok", True):
@@ -581,6 +595,24 @@ class LoRaProtocol:
 
     def send_emergency_off(self, dest):
         return self.send(EO, dest)
+
+    def send_patch(self, dest, path, value):
+        """Single-packet config patch (incremental config protocol).
+
+        Used by the dashboard's inline-edit flow on the coord: small
+        field tweaks (default_duty_percent, name, vacancy_timeout_s,
+        etc.) go through here, ~100 B in one LoRa packet, ~300 ms
+        round-trip including ACK — vs ~6 s for a full config push
+        via send_config(). Caller is responsible for checking the
+        serialized payload fits the per-packet budget before calling
+        (smart-dispatch logic on the coord falls back to chunked
+        send_config(target_path=...) when it doesn't).
+
+        ACK is required: the leaf validates the merged config against
+        the schema BEFORE applying, so ACK ok=False with a `reason`
+        field is the way the leaf reports a validation failure.
+        """
+        return self.send(CFG_PATCH, dest, {"path": path, "value": value})
 
     def send_blink(self, dest, target_uid=None):
         """Tell a leaf (or all leaves with matching target_uid) to flash

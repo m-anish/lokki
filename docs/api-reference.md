@@ -317,6 +317,47 @@ The cache is RAM-only — it's lost on coordinator reboot and needs to be re-pop
 
 ---
 
+#### `PATCH /api/units/{id}/config`
+Incremental config update — applies a single-field or section-level patch without re-pushing the whole config. The coordinator validates the merged result locally before sending anything over LoRa, then picks the most efficient wire transport:
+
+  * Encoded payload ≤ ~140 B → single-packet `CFG_PATCH` (~300 ms round-trip).
+  * Larger → falls back to a chunked `CFG_START`+`CHUNK`s+`CFG_END` with `target_path` set to the same path. Only the bytes of the patched value (not the whole config) ride the chunked pipeline.
+
+**Request body**
+```json
+{ "path": "led_channels/2/default_duty_percent", "value": 80 }
+```
+
+`path` is slash-separated; numeric segments index lists (matching `core/json_path`). `value` can be any JSON value, including arrays/objects (e.g. `path="scenes"`, `value=[{...}, {...}]` to replace the scenes section).
+
+**Response (success)**
+```json
+{ "ok": true, "data": { "applied": "patch", "sent_to": 2, "path": "led_channels/2/default_duty_percent" } }
+```
+
+`applied` is `"local"` (coord, `id=0`), `"patch"` (single packet via CFG_PATCH), or `"section"` (chunked via CFG_START+target_path).
+
+**Response (validation failure, HTTP 422)** — schema or semantic check rejected the candidate merged config; nothing was sent:
+```json
+{
+  "ok": false,
+  "error": "led_channels[2].default_duty_percent must be <= 100 (got 150)",
+  "data": {
+    "errors": ["led_channels[2].default_duty_percent must be <= 100 (got 150)"],
+    "path":   "led_channels/2/default_duty_percent"
+  }
+}
+```
+
+**Response (other failures)**:
+- `400` — bad request body (missing `path`, missing `value`, bad path syntax).
+- `409` — no cached config for that leaf; push a full config first via `POST` and patches will work afterward.
+- `502` — leaf rejected the patch (e.g. APPLY_FAILED on the leaf side) or LoRa link timed out.
+
+**Note: the leaf still reboots after applying a patch (v1).** Wire-time goes from ~6 s to ~300 ms, but the schedule briefly pauses while the leaf restarts. Reboot-elision for fields that don't affect boot-time wiring (channel default duty, names, time-windows) is planned for UX-2.
+
+---
+
 #### `POST /api/units/{id}/config`
 Pushes a complete new `config.json` to a unit.
 

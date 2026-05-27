@@ -360,20 +360,41 @@ Config files may exceed the 200-byte packet limit. Chunked transfer breaks them 
 
 ### Message Types
 
+### Incremental updates (`CFG_PATCH`, `CFG_START` with `target_path`)
+
+Editing a single field on a leaf used to require pushing the entire ~3-5 KB config via the chunked CFG_START/CHUNK/END flow (~6 s on the wire). The incremental config protocol gives that path a fast lane:
+
+  * **`CFG_PATCH`** — Coordinator → Leaf, single packet, fits in ~100 B. Payload:
+    ```json
+    { "path": "led_channels/2/default_duty_percent", "value": 80 }
+    ```
+    Path syntax is slash-separated, numeric segments index lists. Leaf walks its in-memory config to that path, sets the value, validates the merged result, atomically writes flash, ACKs, and reboots. **ACK required.** On failure the ACK carries `ok: false, reason: "APPLY_FAILED" | "BAD_PATCH", err: "..."`.
+
+  * **`CFG_START` with `target_path`** — chunked transfer where the assembled blob is **set at a path** instead of replacing the whole config. Used by the coord's smart-dispatch when the patch payload exceeds `CFG_PATCH`'s ~140 B budget (e.g. replacing an entire `led_channels` array). The path goes in the `CFG_START` payload alongside the existing `transfer_id`, `total_chunks`, `total_bytes`, `target_uid` fields.
+
+The coord chooses which path to take based on the encoded payload size of `{path, value}` — single packet under 140 B, chunked otherwise. Falls back to a full-config push (no `target_path`) only when explicitly told to via `POST /api/units/{id}/config`.
+
+**v1 limitation: leaf still reboots after applying a patch.** The wire-time win (~6 s → ~300 ms for `CFG_PATCH`) is the immediate benefit; eliminating the reboot for fields that don't affect boot-time wiring (channel duty, names, time-windows, etc.) is planned for UX-2.
+
+### `CFG_START`, `CFG_CHUNK`, `CFG_END` — full or path-targeted chunked transfer
+
 **`CFG_START`** — Coordinator → Leaf, initiates transfer
 ```json
 {
   "s": 0, "d": 1, "t": "CFG_START", "seq": 20,
   "p": {
     "total_chunks": 12,
-    "total_bytes": 1740,
-    "transfer_id": "a3f2",    // random 4-char ID to match chunks to transfer
-    "target_uid":  "A3F1C204" // OPTIONAL — only the leaf whose chip UID matches accepts the transfer
+    "total_bytes":  1740,
+    "transfer_id":  "a3f2",          // random 4-char ID to match chunks to transfer
+    "target_uid":   "A3F1C204",      // OPTIONAL — only the leaf whose chip UID matches accepts the transfer
+    "target_path":  "led_channels"   // OPTIONAL — assembled blob is set at this path instead of replacing the whole config
   }
 }
 ```
 
 **`target_uid` behaviour (claim wizard only):** When set, leaves whose `_chip_uid_hex()` doesn't match silently drop the `CFG_START` (no transfer state created, no auto-ACK from the dispatcher because the handler returns before that point). Subsequent `CFG_CHUNK`s are dropped because they reference an unknown `transfer_id`. The `CFG_END` from non-target leaves is suppressed when `unit_id == 99` so the coord doesn't see racing ACKs from multiple unclaimed boards on the bench. Without `target_uid`, the transfer behaves exactly as before.
+
+**`target_path` behaviour (incremental config protocol):** When set, the assembled UTF-8 string is parsed as JSON and SET at that path in the leaf's current in-memory config (rather than replacing the whole config). Used for section-level updates that don't fit `CFG_PATCH`'s single-packet budget — e.g. replacing the entire `led_channels` array. Same path syntax as `CFG_PATCH`. Without `target_path`, the assembled string IS the new full config (existing behaviour).
 
 **`CFG_CHUNK`** — Coordinator → Leaf, one chunk
 ```json
@@ -420,6 +441,7 @@ Coordinator retries full transfer on failure.
 | `MO` | On demand | Coordinator → Leaf | Yes |
 | `EO` | Emergency Off button | Coordinator → Leaf | Yes |
 | `BLINK` | Claim-wizard "Flash to identify" | Coordinator → Leaf(99) | No |
+| `CFG_PATCH` | Incremental single-field config update | Coordinator → Leaf | Yes |
 | `SR` | On demand | Coordinator → Leaf | No |
 | `SRP` | Response to SR | Leaf → Coordinator | No |
 | `ACK` | Response to SC/MO/CFG | Any | — |

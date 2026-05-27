@@ -648,6 +648,72 @@ def _register_lora_handlers(role, fleet_manager=None):
             log.info(f"[LORA] BLINK from {src} (target_uid={target})")
         lora_protocol.on("BLINK", on_blink)
 
+        def on_cfg_patch(src, payload):
+            """Apply a single-field config patch. Single LoRa packet
+            (no chunking), payload `{path, value}`. Validates the
+            merged config against the schema BEFORE applying; rolls
+            back on failure. ACKs with `ok: True` on success or
+            `ok: False, reason: ..., err: ...` on rejection.
+
+            Always reboots on success (v1 of the incremental protocol
+            — hot-apply without reboot is a planned UX-2 follow-up;
+            for now the wire-time win of ~6 s → ~300 ms is the
+            immediate benefit and the reboot path is unchanged).
+            """
+            seq = payload.get("_seq")
+            path = payload.get("path")
+            if not isinstance(path, str) or not path:
+                if seq is not None:
+                    lora_protocol.send("ACK", src, {
+                        "ack_seq": seq, "ok": False,
+                        "reason": "BAD_PATCH",
+                        "err": "missing or non-string path",
+                    })
+                return
+            # `value` may legitimately be None (delete-like) — distinguish
+            # via key presence rather than truthiness.
+            if "value" not in payload:
+                if seq is not None:
+                    lora_protocol.send("ACK", src, {
+                        "ack_seq": seq, "ok": False,
+                        "reason": "BAD_PATCH",
+                        "err": "missing value key",
+                    })
+                return
+            value = payload["value"]
+
+            try:
+                import json as _json
+                from core import json_path
+                # Deep-copy via round-trip — avoids mutating the live
+                # config until we know validation passes. On the Pico
+                # this costs a few KB transient heap, accepted for
+                # correctness.
+                candidate = _json.loads(_json.dumps(config_manager.get_all()))
+                ok, err = json_path.set_at(candidate, path, value)
+                if not ok:
+                    raise ValueError(err)
+                config_manager.replace(_json.dumps(candidate))
+            except Exception as e:
+                log.error(f"[LORA] CFG_PATCH {path} apply failed: {e}")
+                if seq is not None:
+                    lora_protocol.send("ACK", src, {
+                        "ack_seq": seq, "ok": False,
+                        "reason": "APPLY_FAILED",
+                        "err": str(e)[:80],
+                    })
+                return
+
+            log.info(f"[LORA] CFG_PATCH {path}={value!r} applied. Rebooting.")
+            if seq is not None:
+                lora_protocol.send("ACK", src, {"ack_seq": seq, "ok": True})
+            import machine, asyncio
+            async def do_reboot():
+                await asyncio.sleep(1)
+                machine.reset()
+            asyncio.create_task(do_reboot())
+        lora_protocol.on("CFG_PATCH", on_cfg_patch)
+
         def on_cfg_start(src, payload):
             tid = payload.get("transfer_id")
             # If CFG_START carries a target_uid, only the matching leaf
@@ -657,9 +723,21 @@ def _register_lora_handlers(role, fleet_manager=None):
             if target and target != _chip_uid_hex():
                 return
             if tid:
-                _cfg_transfers[tid] = {"chunks": {}, "total": payload.get("total_chunks", 0), "last": time.time()}
+                # target_path: if present, the assembled config string
+                # is parsed as JSON and SET at that path in the
+                # current config (incremental update). If absent, the
+                # assembled string is the entire new config (existing
+                # behaviour). Stored on the transfer state and read
+                # by on_cfg_end at apply time.
+                _cfg_transfers[tid] = {
+                    "chunks":      {},
+                    "total":       payload.get("total_chunks", 0),
+                    "last":        time.time(),
+                    "target_path": payload.get("target_path"),
+                }
                 log.info(f"[LORA] Started config transfer {tid} from {src}"
-                         + (f" (target_uid={target})" if target else ""))
+                         + (f" (target_uid={target})" if target else "")
+                         + (f" (target_path={payload.get('target_path')})" if payload.get("target_path") else ""))
         lora_protocol.on("CFG_START", on_cfg_start)
 
         def on_cfg_chunk(src, payload):
@@ -693,8 +771,25 @@ def _register_lora_handlers(role, fleet_manager=None):
                         # actually applied — and the dashboard would show enabled
                         # channels with stale 0% duty on the leaf row.
                         apply_err = None
+                        target_path = transfer.get("target_path")
                         try:
-                            config_manager.replace(config_str)
+                            if target_path:
+                                # Incremental: parse the assembled blob as
+                                # the value to set at target_path on the
+                                # current config. Build a candidate config,
+                                # validate it, then replace. config_manager
+                                # rolls back internally on validation
+                                # failure.
+                                import json as _json
+                                from core import json_path
+                                value = _json.loads(config_str)
+                                candidate = _json.loads(_json.dumps(config_manager.get_all()))
+                                ok, err = json_path.set_at(candidate, target_path, value)
+                                if not ok:
+                                    raise ValueError(f"path apply failed: {err}")
+                                config_manager.replace(_json.dumps(candidate))
+                            else:
+                                config_manager.replace(config_str)
                         except Exception as e:
                             apply_err = e
                             log.error(f"[LORA] Config transfer {tid} apply failed: {e}")

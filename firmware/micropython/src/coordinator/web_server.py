@@ -165,7 +165,7 @@ class WebServer:
                 f"Content-Type: {ctype}\r\n"
                 "Connection: close\r\n"
                 "Access-Control-Allow-Origin: *\r\n"
-                "Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\n"
+                "Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS\r\n"
                 "Access-Control-Allow-Headers: Content-Type\r\n"
                 "\r\n"
             ) + body_out
@@ -414,6 +414,14 @@ class WebServer:
                 cfg_str = body.decode("utf-8", "ignore") if body else ""
                 result = await api.handle_config_push(unit_id, cfg_str)
                 return self._json(result)
+            if method == "PATCH":
+                # Incremental config update. Body is {path, value}.
+                # Coord validates the merged result locally, picks
+                # CFG_PATCH (one LoRa packet) vs chunked CFG_START
+                # with target_path based on encoded payload size, and
+                # updates the cached leaf config on success.
+                parsed = self._parse_json_body(body) or {}
+                return self._json(await api.handle_config_patch(unit_id, parsed))
 
         if sub == "manual":
             if method == "POST":
