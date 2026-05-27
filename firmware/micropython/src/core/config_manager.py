@@ -283,21 +283,26 @@ class ConfigManager:
     # major).
 
     _SCHEMA_PATH = "/config.schema.json"
-    _SCHEMA = None    # lazy-loaded on first validate() call
 
     @classmethod
     def _load_schema(cls):
-        if cls._SCHEMA is None:
-            try:
-                with open(cls._SCHEMA_PATH, "r") as f:
-                    cls._SCHEMA = json.load(f)
-            except Exception as e:
-                # If the schema file is missing or broken, that's a
-                # genuine emergency — every config flowing through us
-                # depends on it. Refuse to validate rather than
-                # silently accept everything.
-                raise SafeModeError(f"config.schema.json unreadable: {e}")
-        return cls._SCHEMA
+        """Read + parse the schema fresh each call. We deliberately do
+        NOT cache the parsed dict in memory: the schema is ~5 KB and
+        the resident dict pins enough heap to push the web server's
+        large-response path (e.g. /api/events with a full log buffer)
+        into the "free bytes plenty, contiguous block impossible"
+        fragmentation zone on the Pico. Validation is rare (boot +
+        each config replace + each /api/config/validate POST), so
+        re-reading from flash is the right tradeoff. ~5 ms per call."""
+        try:
+            with open(cls._SCHEMA_PATH, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            # If the schema file is missing or broken, that's a
+            # genuine emergency — every config flowing through us
+            # depends on it. Refuse to validate rather than
+            # silently accept everything.
+            raise SafeModeError(f"config.schema.json unreadable: {e}")
 
     def _validate(self):
         # Version first — SafeModeError special case lives here because
@@ -319,6 +324,7 @@ class ConfigManager:
         from core import schema_validator
         schema = self._load_schema()
         errors = schema_validator.validate(self._config, schema)
+        del schema             # free the ~5 KB parsed schema dict ASAP
 
         # Semantic / cross-field invariants the schema can't express.
         # Run AFTER schema validation so these checks can assume
@@ -330,6 +336,12 @@ class ConfigManager:
 
         if errors:
             raise ValueError("Config invalid: " + "; ".join(errors))
+
+        # Schema parse + validation temporary allocations leave the
+        # heap fragmented. Collect now so subsequent boot work (LoRa
+        # buffers, WiFi connect, web server startup) sees a clean
+        # heap rather than tripping on the leftovers.
+        gc.collect()
 
     @classmethod
     def validate_candidate(cls, candidate):
@@ -354,11 +366,13 @@ class ConfigManager:
             from core import schema_validator, semantic_checks
             schema = cls._load_schema()
             errors = schema_validator.validate(candidate, schema)
+            del schema         # free ~5 KB before semantic_checks runs
             errors.extend(semantic_checks.check(candidate))
         except SafeModeError as e:
             # Schema file missing or broken — surface to the API
             # caller rather than crashing the request handler.
             return False, [str(e)]
+        gc.collect()           # validate calls happen mid-request; clear temps
         return (len(errors) == 0), errors
 
 

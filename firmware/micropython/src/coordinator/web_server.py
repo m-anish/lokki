@@ -76,6 +76,15 @@ class WebServer:
 
     async def _handle(self, conn, addr):
         try:
+            # Proactive collect BEFORE we start allocating per-request
+            # buffers. Big responses (e.g. /api/events with a full log
+            # ring, /api/fleet with many leaves, a config push body)
+            # need a 10-15 KB contiguous block which is the first
+            # thing to disappear when the heap fragments. The
+            # finally-block collect happens after the response is
+            # already built/sent, so it can't help the request that's
+            # currently trying to allocate. This one can.
+            gc.collect()
             conn.setblocking(False)
             await asyncio.sleep_ms(10)
 
