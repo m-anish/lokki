@@ -155,11 +155,11 @@ Two fields are sent **only when meaningful** so HB stays small under the 200 B p
 ---
 
 ### 3.2 `TS` — Time Sync
-**Direction:** Coordinator → Broadcast  
-**Frequency:** On boot, then every 24h after NTP sync  
+**Direction:** Coordinator → Broadcast
+**Frequency:** On boot (if NTP/RTC succeeded before LoRa came up), again immediately when LoRa-deferred-retry brings the radio online with valid wall-clock, then every 1 h. Also fired on-demand in response to a `TS_REQ`.
 **ACK required:** No
 
-Coordinator broadcasts current epoch time. All leaves update their DS3231.
+Coordinator broadcasts current epoch time. All leaves update their DS3231 AND their MCU's internal clock.
 
 ```json
 {
@@ -170,6 +170,25 @@ Coordinator broadcasts current epoch time. All leaves update their DS3231.
   }
 }
 ```
+
+The coord refuses to broadcast TS while its own `system_status.time_synced` is False — that would push a bogus boot-uptime epoch out and corrupt every leaf that was actually OK. While unsynced, `time_sync_task` retries NTP every 60 s and broadcasts nothing.
+
+---
+
+### 3.2b `TS_REQ` — Time Sync Request
+**Direction:** Leaf → Coordinator
+**Trigger:** Leaf has been up ~90 s without a usable wall-clock (typically: dead DS3231 backup battery + missed the coord's boot-time TS).
+**ACK required:** No
+
+```json
+{
+  "s": 2, "d": 0, "t": "TS_REQ", "seq": 1
+}
+```
+
+No payload — the request itself is just "please broadcast a TS now". Coord responds by firing a normal `TS` broadcast if and only if its own time is synced; otherwise silently drops the request. Leaf retries every 60 s up to 5 attempts before giving up and falling back to the 1 h periodic broadcast.
+
+This closes the worst-case race where the coord's LoRa init fails at boot, NTP succeeds (so the coord IS synced), the coord broadcasts TS (suppressed by the LoRa-not-configured gate), then LoRa-deferred-retry succeeds, and any leaves that booted in the same window are stuck in `time_waiting` until the next periodic broadcast — up to 1 h away.
 
 ---
 
@@ -442,6 +461,7 @@ Coordinator retries full transfer on failure.
 | `EO` | Emergency Off button | Coordinator → Leaf | Yes |
 | `BLINK` | Claim-wizard "Flash to identify" | Coordinator → Leaf(99) | No |
 | `CFG_PATCH` | Incremental single-field config update | Coordinator → Leaf | Yes |
+| `TS_REQ` | Leaf asking coord for an immediate TS broadcast | Leaf → Coord | No |
 | `SR` | On demand | Coordinator → Leaf | No |
 | `SRP` | Response to SR | Leaf → Coordinator | No |
 | `ACK` | Response to SC/MO/CFG | Any | — |

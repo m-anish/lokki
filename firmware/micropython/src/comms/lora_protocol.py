@@ -10,6 +10,7 @@ log = Logger()
 # Message types
 HB        = "HB"
 TS        = "TS"
+TS_REQ    = "TS_REQ"      # Leaf → Coord: please broadcast a TS now
 PIR_EV    = "PIR"
 SC        = "SC"
 MO        = "MO"
@@ -118,6 +119,21 @@ class LoRaProtocol:
     # ------------------------------------------------------------------
 
     def send(self, msg_type, dest, payload=None):
+        # If the E220's volatile-register config didn't take at boot,
+        # transmitting now would push bytes out over whatever
+        # channel/crypt the chip's NVRAM happens to hold — usually the
+        # wrong frequency, definitely the wrong key. Receivers on the
+        # fleet ignore those frames at the radio layer, but we *think*
+        # we sent successfully and the LoRa-deferred-retry task may not
+        # have fired yet. Refusing to send here keeps the wire silent
+        # until config_ok flips True (boot init or one of the deferred
+        # retries) and is the single chokepoint that protects EVERY
+        # message type (HB, TS, MO, CFG_*, etc.). Logged at DEBUG so a
+        # bringup window doesn't spam the event bus.
+        if not lora_transport.config_ok:
+            log.debug(f"[LORA_PROTO] {msg_type} suppressed (LoRa config not OK yet)")
+            return None
+
         self._seq = (self._seq + 1) & 0xFF
         seq = self._seq
 
@@ -503,6 +519,14 @@ class LoRaProtocol:
 
     def broadcast_time_sync(self, epoch, tz_offset):
         self.send(TS, _BROADCAST, {"epoch": epoch, "tz": tz_offset})
+
+    def request_time_sync(self, dest=0):
+        """Leaf → Coord: ask for a TS broadcast right now. Used when a
+        leaf boots without a usable wall-clock and doesn't want to
+        wait for the next periodic TS (which could be up to an hour
+        away). Coord responds with a normal TS broadcast if it
+        itself has synced time; otherwise silently ignores."""
+        return self.send(TS_REQ, dest)
 
     def send_scene(self, dest, scene_name):
         return self.send(SC, dest, {"scene": scene_name})

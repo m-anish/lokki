@@ -207,7 +207,14 @@ async def time_sync_task():
                 lora_protocol.broadcast_time_sync(time.time(), tz_offset)
             except Exception as e:
                 log.warn(f"[MAIN] TS broadcast failed: {e}")
-        await asyncio.sleep(60 if not system_status.time_synced else 86400)
+        # Cadence: 60 s while we're still chasing a wall-clock; 1 h
+        # once we have one. The 1 h rate (down from the original 24 h)
+        # bounds the worst-case recovery time for a leaf that misses
+        # a broadcast — TS is tiny (~50 B) so airtime cost is
+        # negligible at this rate, and 1 h is short enough that any
+        # leaf rejoining the fleet mid-day catches up before the next
+        # day. Leaves that can't wait that long send TS_REQ.
+        await asyncio.sleep(60 if not system_status.time_synced else 3600)
 
 
 async def schedule_task(interval_ms):
@@ -272,6 +279,22 @@ async def lora_deferred_retry_task():
             status_led.flash_event(*FLASH_LORA_OK_RGB, brightness=0.9, ms=500)
             await asyncio.sleep_ms(550)
             status_led.set_state(_ok_led_state())
+            # Catch-up TS broadcast (coord only). Without this, a coord
+            # whose boot-time LoRa init failed but whose NTP succeeded
+            # would have its TS broadcast suppressed at the gate (see
+            # lora_protocol.send), and leaves would stay in
+            # time_waiting until the next periodic broadcast — up to
+            # an hour away. Firing a TS right now means any leaf
+            # that's been waiting unblocks within a few seconds of
+            # the coord's radio coming online.
+            if config_manager.role == "coordinator" and system_status.time_synced:
+                try:
+                    import time as _t
+                    tz_offset = (config_manager.get("timezone") or {}).get("utc_offset_hours", 0)
+                    lora_protocol.broadcast_time_sync(_t.time(), tz_offset)
+                    log.info("[MAIN] Catch-up TS broadcast (LoRa just came up)")
+                except Exception as e:
+                    log.warn(f"[MAIN] Catch-up TS broadcast failed: {e}")
             return
 
     log.error(f"[MAIN] LoRa init failed after {_LORA_DEFERRED_MAX_TRIES} deferred "
@@ -368,6 +391,40 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
             log.error(f"[HB] Broadcast error: {e}")
             system_status.record_error(f"hb: {e}")
         await asyncio.sleep(interval_s)
+
+
+async def time_sync_request_task():
+    """Leaf-only: if no TS broadcast arrives in the first ~90 s after
+    boot, proactively ask the coord for one (TS_REQ). Retries every
+    60 s up to 5 times, then gives up and lets the next periodic TS
+    broadcast (~1 h cadence) handle it. Exits immediately if
+    system_status.time_synced flips True at any point.
+
+    The 90 s initial delay matches the LoRa-deferred-retry window —
+    if our own LoRa came up slowly, we don't want to spam TS_REQ
+    before our radio is even configured. The 60 s inter-retry gap
+    is short enough that an operator setting up a new fleet sees
+    leaves come out of time_waiting quickly, long enough that we
+    don't burn airtime if the coord itself is having issues.
+
+    No-op when called on the coord — the task isn't added to the
+    coord's task list (see main()), so this lives unguarded here
+    for clarity."""
+    await asyncio.sleep(90)
+    for attempt in range(1, 6):
+        if system_status.time_synced:
+            return
+        if not lora_transport.config_ok:
+            # No point asking — our radio isn't talking yet. Wait
+            # for the deferred-retry task to bring LoRa up, then
+            # try again on the next iteration.
+            await asyncio.sleep(60)
+            continue
+        log.info(f"[TIME] Requesting TS from coord (attempt {attempt}/5)")
+        lora_protocol.request_time_sync(dest=0)
+        await asyncio.sleep(60)
+    if not system_status.time_synced:
+        log.warn("[TIME] TS_REQ attempts exhausted — relying on next periodic TS broadcast")
 
 
 async def event_forward_task(min_level="WARN", interval_s=2, max_per_tick=3):
@@ -531,6 +588,28 @@ def _register_lora_handlers(role, fleet_manager=None):
             except Exception as e:
                 log.warn(f"[LORA] Time sync apply failed: {e}")
     lora_protocol.on("TS", on_time_sync)
+
+    if role == "coordinator":
+        def on_time_sync_request(src, payload):
+            """A leaf is asking for a TS broadcast — usually because it
+            booted without a wall-clock (dead DS3231 battery, no
+            previous TS heard) and is sitting in time_waiting state.
+            Honour the request only if WE ourselves have synced time;
+            otherwise we'd be broadcasting a bogus epoch (boot uptime
+            ≈ Jan 2000) which would corrupt every leaf that was
+            actually OK. The leaf-side request task retries on a
+            cadence, so silently dropping is the right move."""
+            if not system_status.time_synced:
+                log.warn(f"[LORA] TS_REQ from {src} ignored — coord not synced yet")
+                return
+            try:
+                import time
+                tz_offset = (config_manager.get("timezone") or {}).get("utc_offset_hours", 0)
+                lora_protocol.broadcast_time_sync(time.time(), tz_offset)
+                log.info(f"[LORA] TS_REQ from {src} — broadcast TS")
+            except Exception as e:
+                log.warn(f"[LORA] TS_REQ from {src} — broadcast failed: {e}")
+        lora_protocol.on("TS_REQ", on_time_sync_request)
 
     def on_scene(src, payload):
         scene_name = payload.get("scene")
@@ -1147,6 +1226,7 @@ async def main():
         ))
         tasks.append(asyncio.create_task(event_forward_task()))
         tasks.append(asyncio.create_task(leaf_status_task()))
+        tasks.append(asyncio.create_task(time_sync_request_task()))
 
     log.info(f"[MAIN] Running {len(tasks)} tasks")
 
