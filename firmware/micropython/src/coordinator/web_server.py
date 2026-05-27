@@ -171,9 +171,22 @@ class WebServer:
             ) + body_out
             await self._send_all(conn, response.encode())
         except Exception as e:
-            log.error(f"[WEB] Handler error: {e}")
-            import sys
-            sys.print_exception(e)
+            # OSError EIO (errno 5) and ECONNRESET (errno 104) during
+            # send are *recoverable* network-side conditions — the peer
+            # browser will retry the GET automatically and the next
+            # request usually succeeds. They are not bugs in our
+            # request handler, and they should not trip the dashboard's
+            # bell badge or flood the log at ERROR severity. Other
+            # exceptions (MemoryError, KeyError, programming bugs in a
+            # route handler) DO indicate something we should look at,
+            # so those still log at ERROR.
+            errno = getattr(e, "args", [None])[0] if isinstance(e, OSError) else None
+            if errno in (5, 104):
+                log.warn(f"[WEB] Connection dropped mid-response ({e}); peer will retry")
+            else:
+                log.error(f"[WEB] Handler error: {e}")
+                import sys
+                sys.print_exception(e)
             try:
                 await self._send_all(
                     conn,
