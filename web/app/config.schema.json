@@ -3,7 +3,7 @@
   "$id": "https://github.com/m-anish/PagodaLightPico/schemas/config.schema.v1.json",
   "title": "Lokki v1 Configuration",
   "type": "object",
-  "required": ["version", "system", "wifi", "lora", "timezone", "hardware", "ldr", "pir", "relays", "led_channels", "scenes", "notifications"],
+  "required": ["version", "system", "lora", "timezone", "hardware", "ldr", "pir", "relays", "led_channels", "scenes"],
   "additionalProperties": false,
   "properties": {
 

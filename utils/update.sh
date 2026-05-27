@@ -501,7 +501,8 @@ if [ "$FRESH" = "1" ]; then
     { "id": 7, "name": "Channel 7", "gpio_pin": 14, "enabled": false, "default_duty_percent": 0, "time_windows": [] },
     { "id": 8, "name": "Channel 8", "gpio_pin": 13, "enabled": false, "default_duty_percent": 0, "time_windows": [] }
   ],
-  "scenes": []
+  "scenes": [],
+  "notifications": { "mqtt_enabled": false }
 }
 EOF
         mpremote connect auto fs cp "$TMP_CFG" :config.json
