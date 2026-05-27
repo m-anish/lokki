@@ -415,18 +415,25 @@ body.is-bar-visible .lk-bar {
 .lk-band {
   position: relative;
   width: 100%;
-  min-height: 56vh;
-  /* No photo here — atmosphere comes from two soft radial gradients
-     (copper warm on the right, aurora cool on the left) over a dark
-     base. Lets the quote breathe without competing with imagery. */
-  background:
-    radial-gradient(ellipse 60% 70% at 78% 50%,
-      rgba(198,106,68,0.18) 0%,
-      rgba(198,106,68,0)    62%),
-    radial-gradient(ellipse 55% 65% at 20% 55%,
-      rgba(61,168,168,0.12) 0%,
-      rgba(61,168,168,0)    60%),
-    linear-gradient(180deg, var(--smoke) 0%, var(--ink) 100%);
+  min-height: 60vh;
+  /* The mood image (a single warm-gold wall in the lower-right of a
+     vast blue-black dusk) is anchored to the right-bottom corner via
+     background-position. A diagonal dark wash sits on top of it —
+     heaviest in the upper-left (where the quote text sits), lightest
+     in the lower-right (where the wall light glows). Result: the
+     quote always has a dark, deliberate canvas, and the focal point
+     of the image stays visible. */
+  background-image:
+    linear-gradient(135deg,
+      rgba(13,14,16,0.78) 0%,
+      rgba(13,14,16,0.55) 35%,
+      rgba(13,14,16,0.30) 70%,
+      rgba(13,14,16,0.08) 100%),
+    url("assets/mood.webp");
+  background-size: cover, cover;
+  background-position: center, right bottom;
+  background-repeat: no-repeat, no-repeat;
+  background-color: var(--ink);
   border-top: 1px solid var(--shadow);
   border-bottom: 1px solid var(--shadow);
   display: flex;
@@ -438,11 +445,20 @@ body.is-bar-visible .lk-bar {
   padding: var(--breath-8) var(--breath-4);
   position: relative;
   z-index: 2;
-  /* Quote centred horizontally so it never sits against the edge */
+  /* Quote sits in the LEFT HALF of the band on desktop, opposite the
+     image's lower-right focal point. Centred on mobile where the
+     image crops tighter and the wall sits at the bottom-right corner. */
   display: flex;
   flex-direction: column;
-  align-items: center;
-  text-align: center;
+  align-items: flex-start;
+  text-align: left;
+}
+@media (max-width: 700px) {
+  .lk-band-inner {
+    align-items: center;
+    text-align: center;
+    padding: var(--breath-7) var(--breath-4);
+  }
 }
 .lk-band-quote {
   font-family: var(--type-display);
