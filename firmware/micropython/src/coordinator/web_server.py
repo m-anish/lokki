@@ -160,7 +160,15 @@ class WebServer:
                 return
 
             status, ctype, body_out = await self._route(method, path, headers, body)
-            response = (
+            # Send the response in pieces to keep peak contiguous-heap
+            # demand as small as the inherent body size — no string
+            # concatenation, no whole-body .encode() doubling. The
+            # previous "headers + body, .encode() the lot" pattern
+            # briefly held three ~10 KB allocations simultaneously
+            # (body_out str + response str + response.encode() bytes)
+            # which OOM'd on /api/events under sustained dashboard
+            # polling once the heap fragmented enough.
+            header_bytes = (
                 f"HTTP/1.1 {status}\r\n"
                 f"Content-Type: {ctype}\r\n"
                 "Connection: close\r\n"
@@ -168,8 +176,26 @@ class WebServer:
                 "Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS\r\n"
                 "Access-Control-Allow-Headers: Content-Type\r\n"
                 "\r\n"
-            ) + body_out
-            await self._send_all(conn, response.encode())
+            ).encode()
+            await self._send_all(conn, header_bytes)
+            header_bytes = None    # release reference before allocating body chunks
+
+            if isinstance(body_out, str):
+                # Encode + send in slices so we never hold the whole
+                # encoded body as a single bytes allocation. Peak
+                # demand: body_out str (already in heap from json.dumps)
+                # + one 1 KB slice + its encoded form.
+                _CHUNK = 1024
+                i = 0
+                n = len(body_out)
+                while i < n:
+                    chunk = body_out[i:i + _CHUNK].encode()
+                    await self._send_all(conn, chunk)
+                    chunk = None
+                    i += _CHUNK
+            elif body_out:
+                # Already bytes — send as-is.
+                await self._send_all(conn, body_out)
         except Exception as e:
             # OSError EIO (errno 5) and ECONNRESET (errno 104) during
             # send are *recoverable* network-side conditions — the peer

@@ -1416,7 +1416,13 @@ async function pollEvents() {
   } catch (e) {}
   _pollEventsBusy = true;
   try {
-    const r = await fetch(`/api/events?since=${lastSeq}&limit=200`);
+    // limit=50 (was 200): each /api/events response on a coord with a
+    // full 100-event log ring would JSON-encode to ~10 KB, and the
+    // 3 s polling cadence put sustained pressure on the Pico's heap
+    // fragmentation. Halving keeps the typical response under ~5 KB.
+    // Catch-up still works: subsequent polls use since=lastSeq and
+    // pick up where this one left off.
+    const r = await fetch(`/api/events?since=${lastSeq}&limit=50`);
     if (!r.ok) return;
     const j = await r.json();
     const evts = (j.data && j.data.events) || [];
