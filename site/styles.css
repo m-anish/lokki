@@ -1,754 +1,1095 @@
 /* ============================================================
-   lokki / campus 01
-   marketing site — wellness lab notebook, dusk → aglow
-   palette lifted from the product itself:
-     copper-red top lid on a charcoal body.
-     emerald enters quietly as the status / "alive" colour
-     (a small nod to a certain Norse trickster, never costume).
+   lokki — marketing site
+   ----------------------------------------------------------
+   design system: "layered stillness"
+   - concentric rings appear in all three of the site's source
+     traditions (pagoda tiers, the world-tree's roots, a stone
+     dropped in a Finnish lake). this is the visual primitive.
+   - type: fraunces (variable serif) for display, manrope for
+     body, space mono for tickers. no inter. no JetBrains.
+   - palette: copper-red and charcoal from the device; aurora
+     teal and warm linen added for nordic depth.
+   - motion is breath-paced. nothing bounces.
    ============================================================ */
 
+
+/* ---------- tokens ---------- */
+
 :root {
-  --bg:        #0d0e10;
-  --bg-elev:   #131418;
-  --bg-card:   #15171a;
-  --text:      #ece9e0;
-  --text-dim:  #8e8d88;
-  --text-mute: #5f5e5a;
+  /* surface */
+  --ink:      #0d0e10;
+  --smoke:    #15171a;
+  --shadow:   #181918;
+  --bone:     #20211f;
 
-  /* Copper is the lead accent — it lifts straight off the device's
-     top lid. Emerald is the secondary, used for the resting-state
-     status indicator (cool, alive) before the page warms. */
-  --accent:    #c66a44;
-  --accent-2:  #4ea27a;
+  /* type */
+  --paper:    #ece9e0;
+  --ash:      #8e8d88;
+  --silver:   #5f5e5a;
 
-  --border:    #20211f;
-  --border-2:  #181918;
+  /* accents */
+  --copper:   #c66a44;
+  --copper-soft: rgba(198,106,68,0.18);
+  --aurora:   #3da8a8;
+  --aurora-soft: rgba(61,168,168,0.22);
+  --linen:    #f4ede0;
 
-  --mono: 'JetBrains Mono', 'IBM Plex Mono', 'SFMono-Regular', ui-monospace, Menlo, monospace;
-  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  /* type families */
+  --type-display: "Fraunces", "Cormorant Garamond", Cardo, Georgia, serif;
+  --type-body:    "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --type-glyph:   "Space Mono", "IBM Plex Mono", ui-monospace, Menlo, monospace;
 
-  --maxw: 1180px;
+  /* breath-paced spacing — each step lengthens like an exhale */
+  --breath-1:   4px;
+  --breath-2:   8px;
+  --breath-3:  16px;
+  --breath-4:  24px;
+  --breath-5:  40px;
+  --breath-6:  64px;
+  --breath-7: 104px;
+  --breath-8: 168px;
+
+  /* column width — a touch narrower than the jigawatt 1180 */
+  --column:   1080px;
+
+  /* breath cycle — 4s inhale, 6s exhale, true anapana ratio */
+  --breath:    10s;
+  --aurora-cycle: 60s;
+  --reveal:    600ms;
 }
 
-* { box-sizing: border-box; }
+
+/* ---------- reset + base ---------- */
+
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--sans);
-  font-size: 16px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--type-body);
+  font-size: 16.5px;
+  font-weight: 400;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 a {
-  color: var(--accent);
+  color: var(--copper);
   text-decoration: none;
-  border-bottom: 1px solid rgba(198,106,68,0.3);
-  transition: border-color 120ms ease, color 120ms ease;
+  border-bottom: 1px solid var(--copper-soft);
+  transition: border-color 240ms ease, color 240ms ease;
 }
-a:hover { border-color: var(--accent); }
-
-h1 a, h2 a, h3 a { border-bottom: none; }
+a:hover {
+  border-color: var(--copper);
+  color: var(--linen);
+}
+h1 a, h2 a, h3 a {
+  border-bottom: none;
+}
 h1 a:hover, h2 a:hover, h3 a:hover {
   border-bottom: none;
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
-::selection { background: var(--accent); color: #0d0e10; }
+::selection { background: var(--copper); color: var(--ink); }
 
-/* ---------- layout ---------- */
 
-.wrap {
-  max-width: var(--maxw);
-  margin: 0 auto;
-  padding: 0 28px;
-  position: relative;
-}
+/* ---------- type primitives ---------- */
 
-section.text { padding: 110px 0; }
-
-p { color: var(--text); max-width: 64ch; }
-p.lead {
-  font-size: clamp(20px, 2.2vw, 26px);
-  color: var(--text);
-  max-width: 30ch;
-  line-height: 1.25;
-  letter-spacing: -0.01em;
-}
-p.dim { color: var(--text-dim); }
-
-.kicker {
-  font-family: var(--mono);
-  font-size: 12px;
+/* labels are short mono tags that sit above section titles like
+   a librarian's call number. always uppercase, always tracked out. */
+.lk-label {
+  font-family: var(--type-glyph);
+  font-size: 11.5px;
   letter-spacing: 0.22em;
-  color: var(--accent);
+  color: var(--copper);
   text-transform: uppercase;
-  margin-bottom: 22px;
   display: inline-block;
+  margin: 0 0 var(--breath-4);
 }
 
-h2.headline {
-  font-size: clamp(34px, 5vw, 62px);
-  letter-spacing: -0.028em;
-  font-weight: 600;
-  margin: 0 0 28px;
+/* titles are fraunces, soft-italic for emphasis. */
+.lk-title {
+  font-family: var(--type-display);
+  font-size: clamp(36px, 5.2vw, 64px);
+  font-weight: 500;
+  font-variation-settings: "opsz" 96, "SOFT" 50;
+  letter-spacing: -0.022em;
   line-height: 1.04;
+  margin: 0 0 var(--breath-4);
+  color: var(--paper);
   max-width: 22ch;
 }
 
-/* ---------- top bar ---------- */
+.lk-prose {
+  font-family: var(--type-body);
+  font-size: 17px;
+  line-height: 1.62;
+  color: var(--paper);
+  max-width: 38ch;
+}
+.lk-prose p { margin: 0; }
+.lk-prose p + p { margin-top: var(--breath-3); }
+.lk-prose em { color: var(--paper); font-style: italic; }
 
-.topbar {
+
+/* ---------- topbar ---------- */
+
+.lk-bar {
   position: fixed;
   top: 0; left: 0; right: 0;
-  z-index: 20;
-  backdrop-filter: blur(10px) saturate(120%);
-  -webkit-backdrop-filter: blur(10px) saturate(120%);
-  background: rgba(13,14,16,0.55);
+  z-index: 30;
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  background: rgba(13,14,16,0.72);
   border-bottom: 1px solid rgba(255,255,255,0.04);
+
+  /* Hidden by default — over the hero, the bar is offstage.
+     body.is-bar-visible (set by JS when the reader scrolls past
+     #bar-sentinel) reveals it with a calm slide-down. */
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 520ms cubic-bezier(.22,.61,.36,1),
+              opacity 360ms ease;
 }
-.topbar-inner {
-  max-width: var(--maxw);
+body.is-bar-visible .lk-bar {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.lk-bar-inner {
+  max-width: var(--column);
   margin: 0 auto;
-  padding: 14px 28px;
+  padding: var(--breath-3) var(--breath-4);
   display: flex;
   align-items: center;
-  gap: 22px;
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-dim);
+  gap: var(--breath-5);
 }
-.topbar .brand {
+.lk-brand {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  color: var(--text);
-  font-weight: 600;
-  letter-spacing: 0.14em;
+  gap: var(--breath-2);
+  color: var(--paper);
+  font-family: var(--type-display);
+  font-size: 18px;
+  font-weight: 500;
+  font-variation-settings: "opsz" 36, "SOFT" 30;
+  letter-spacing: -0.01em;
   border: none;
 }
-.topbar .brand img { height: 18px; width: auto; }
-.topbar .status {
+.lk-brand-glyph {
+  width: 22px;
+  height: 22px;
+  display: inline-block;
+  /* slow concentric breath — 4s inhale, 6s exhale */
+  animation: lk-breathe var(--breath) ease-in-out infinite;
+  transform-origin: center;
+}
+@keyframes lk-breathe {
+  0%   { transform: scale(1.000); }
+  40%  { transform: scale(1.030); }
+  100% { transform: scale(1.000); }
+}
+
+/* Sane primary nav — three links, right-aligned. */
+.lk-nav {
   margin-left: auto;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--breath-5);
 }
-/* Status colours track the page state. Resting (default) reads as
-   cool emerald — the campus is awake but quiet. Aglow (after the
-   reader crosses "how it works") flips to brass — lights are on. */
-.topbar .status-text {
-  color: var(--accent-2);
-  transition: color 500ms ease;
+.lk-nav a {
+  color: var(--ash);
+  font-family: var(--type-glyph);
+  font-size: 11.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border: none;
+  transition: color 220ms ease;
 }
-.topbar .status .dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--accent-2);
-  box-shadow: 0 0 10px var(--accent-2);
-  animation: pulse 2.6s ease-in-out infinite;
-  transition: background-color 500ms ease, box-shadow 500ms ease;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.4; }
+.lk-nav a:hover,
+.lk-nav a:focus-visible { color: var(--paper); }
+.lk-nav a:last-child { color: var(--copper); }
+.lk-nav a:last-child:hover { color: var(--linen); }
+@media (max-width: 600px) {
+  .lk-nav { gap: var(--breath-3); }
+  .lk-nav a { font-size: 10.5px; letter-spacing: 0.14em; }
+  .lk-nav a:not(:last-child) { display: none; }  /* phones: only the GitHub chip */
 }
 
-/* ---------- hero (full-bleed) ---------- */
+/* Sentinel — invisible marker just below the hero. */
+#bar-sentinel {
+  position: relative;
+  height: 1px;
+  width: 100%;
+  pointer-events: none;
+  visibility: hidden;
+}
 
-.hero {
+
+/* ---------- ambient aurora drift (sits above the whole page,
+   below content. extremely slow horizontal pan, very low alpha. ---------- */
+
+.lk-aurora {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background:
+    radial-gradient(ellipse 60% 30% at 30% 0%,
+      var(--aurora-soft) 0%,
+      rgba(0,0,0,0) 70%),
+    radial-gradient(ellipse 50% 20% at 70% 0%,
+      var(--copper-soft) 0%,
+      rgba(0,0,0,0) 70%);
+  background-size: 200% 100%;
+  animation: lk-aurora-drift var(--aurora-cycle) ease-in-out infinite alternate;
+  opacity: 0.55;
+}
+@keyframes lk-aurora-drift {
+  0%   { background-position:   0% 0%, 100% 0%; }
+  100% { background-position: 100% 0%,   0% 0%; }
+}
+
+
+/* ---------- page wrapper ---------- */
+
+.lk-page { position: relative; z-index: 2; }
+
+
+/* ---------- hero ---------- */
+
+.lk-hero {
   position: relative;
   min-height: 100vh;
   width: 100%;
+  /* Gradient is heavier at the TOP now (where the title sits) and
+     light through the middle so the pagoda + Milky Way stay legible. */
   background-image:
     linear-gradient(180deg,
-      rgba(13,14,16,0.55) 0%,
-      rgba(13,14,16,0.15) 35%,
-      rgba(13,14,16,0.55) 75%,
-      rgba(13,14,16,0.95) 100%),
+      rgba(13,14,16,0.72) 0%,
+      rgba(13,14,16,0.28) 30%,
+      rgba(13,14,16,0.10) 60%,
+      rgba(13,14,16,0.55) 100%),
     url("assets/hero.webp");
   background-size: cover;
   background-position: center;
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;            /* title sits at the top */
   overflow: hidden;
 }
 @media (max-width: 700px) {
-  .hero {
+  .lk-hero {
     background-image:
       linear-gradient(180deg,
-        rgba(13,14,16,0.55) 0%,
-        rgba(13,14,16,0.15) 35%,
-        rgba(13,14,16,0.55) 75%,
-        rgba(13,14,16,0.95) 100%),
+        rgba(13,14,16,0.72) 0%,
+        rgba(13,14,16,0.28) 30%,
+        rgba(13,14,16,0.10) 60%,
+        rgba(13,14,16,0.55) 100%),
       url("assets/hero-mobile.webp");
   }
 }
-.hero::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(ellipse at 75% 65%, rgba(198,106,68,0.07) 0%, transparent 55%);
-}
-.hero-inner {
-  max-width: var(--maxw);
+.lk-hero-inner {
+  max-width: var(--column);
   margin: 0 auto;
-  padding: 0 28px 90px;
+  padding: var(--breath-7) var(--breath-4) 0;  /* breathing room at top */
   width: 100%;
   position: relative;
   z-index: 2;
-}
-
-.hero-eyebrow {
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.22em;
-  color: var(--accent);
-  text-transform: uppercase;
-  margin-bottom: 24px;
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.hero-eyebrow .sep { color: var(--text-mute); }
-
-.hero h1 {
-  font-size: clamp(72px, 14vw, 200px);
-  line-height: 0.9;
-  letter-spacing: -0.045em;
-  margin: 0 0 22px;
-  font-weight: 600;
-  color: var(--text);
-}
-.hero h1 .tail { color: var(--accent); }
-
-.hero-tag {
-  font-family: var(--sans);
-  font-size: clamp(24px, 2.8vw, 36px);
-  font-weight: 400;
-  color: var(--text);
-  max-width: 28ch;
-  letter-spacing: -0.018em;
-  line-height: 1.22;
-  margin: 0;
-  text-shadow: 0 2px 24px rgba(0,0,0,0.5);
-}
-
-.hero-scroll {
-  position: absolute;
-  bottom: 28px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  color: var(--text-mute);
-  z-index: 2;
-}
-
-/* ---------- text sections ---------- */
-
-section.text .kicker { margin-bottom: 14px; }
-
-.cols-two {
+  /* asymmetric: type sits in left 60%, right 40% empty */
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 80px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.65fr);
+  gap: var(--breath-5);
   align-items: start;
 }
 @media (max-width: 800px) {
-  .cols-two { grid-template-columns: 1fr; gap: 32px; }
+  .lk-hero-inner { grid-template-columns: 1fr; }
 }
 
-.prose p {
-  font-size: 17px;
-  color: var(--text);
+.lk-hero-name {
+  font-family: var(--type-display);
+  font-size: clamp(72px, 13vw, 184px);
+  font-weight: 400;
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  letter-spacing: -0.04em;
+  line-height: 0.92;
+  margin: 0 0 var(--breath-4);
+  color: var(--paper);
 }
-.prose p + p { margin-top: 16px; }
-.prose em { color: var(--text); font-style: italic; }
 
-/* ---------- full-bleed image bands ---------- */
+/* The "i" tittle. The HTML uses a dotless ı (U+0131) so the natural
+   tittle is gone; we draw it back here as a copper pseudo-element.
+   All dimensions in em so the dot scales with the variable
+   font-size (clamp 72px → 184px). Tuned visually to Fraunces' SOFT 30
+   tittle proportions. */
+.lk-hero-name .lk-hero-i {
+  position: relative;
+  display: inline-block;
+}
+.lk-hero-name .lk-hero-i::before {
+  content: "";
+  position: absolute;
+  width: 0.15em;
+  height: 0.15em;
+  border-radius: 50%;
+  background: var(--copper);
+  /* Box-top of the inline-block ≈ ascender top. The tittle sits
+     just below that, centred over the ı's stem. */
+  top: 0.15em;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.lk-hero-tag {
+  font-family: var(--type-display);
+  font-style: italic;
+  font-variation-settings: "opsz" 36, "SOFT" 80;
+  font-size: clamp(22px, 2.6vw, 32px);
+  font-weight: 400;
+  color: var(--copper);
+  letter-spacing: -0.012em;
+  line-height: 1.32;
+  margin: 0;
+  max-width: 30ch;
+  text-shadow: 0 2px 30px rgba(0,0,0,0.65);
+}
 
-.band {
+.lk-hero-cue {
+  position: absolute;
+  bottom: var(--breath-4);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--type-glyph);
+  font-size: 10px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--silver);
+  z-index: 2;
+}
+
+
+/* ---------- bay (a section primitive) ----------
+   A bay is the rhythm unit of this page. Each one has a label, a
+   title, and a body. Spacing is set on the bay, never inside. */
+
+.lk-bay {
+  padding: var(--breath-7) 0;
+  position: relative;
+}
+.lk-bay-inner {
+  max-width: var(--column);
+  margin: 0 auto;
+  padding: 0 var(--breath-4);
+  position: relative;
+}
+.lk-bay--narrow .lk-bay-inner {
+  max-width: 760px;
+}
+.lk-bay--rule {
+  border-top: 1px solid var(--shadow);
+}
+
+
+/* ---------- stillness ----------
+   The opening reflective bay. Two-column on wide, one on narrow.
+   Right column is the prose, left holds the label + title. */
+
+.lk-stillness {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: var(--breath-6);
+  align-items: start;
+}
+@media (max-width: 800px) {
+  .lk-stillness { grid-template-columns: 1fr; gap: var(--breath-4); }
+}
+
+
+/* ---------- banner quote band ---------- */
+
+.lk-band {
   position: relative;
   width: 100%;
-  min-height: 70vh;
+  min-height: 64vh;
+  background-image:
+    linear-gradient(180deg, rgba(13,14,16,0.42), rgba(13,14,16,0.92)),
+    url("assets/mood.webp");
   background-size: cover;
   background-position: center;
+  display: flex;
+  align-items: center;
 }
-.band.mood {
-  background-image:
-    linear-gradient(180deg, rgba(13,14,16,0.45), rgba(13,14,16,0.88)),
-    url("assets/mood.webp");
-}
-.band-inner {
-  max-width: var(--maxw);
+.lk-band-inner {
+  max-width: var(--column);
   margin: 0 auto;
-  padding: 120px 28px;
+  padding: var(--breath-8) var(--breath-4);
   position: relative;
   z-index: 2;
 }
-.band-quote {
-  font-size: clamp(28px, 4vw, 48px);
-  letter-spacing: -0.02em;
+.lk-band-quote {
+  font-family: var(--type-display);
+  font-size: clamp(28px, 4.4vw, 52px);
+  font-weight: 400;
+  font-style: italic;
+  font-variation-settings: "opsz" 144, "SOFT" 100;
+  letter-spacing: -0.018em;
   line-height: 1.15;
-  font-weight: 500;
   max-width: 24ch;
   margin: 0;
-  color: var(--text);
+  color: var(--paper);
 }
-.band-attribution {
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.18em;
+.lk-band-attribution {
+  font-family: var(--type-glyph);
+  font-size: 11.5px;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--accent);
-  margin-top: 28px;
+  color: var(--copper);
+  margin-top: var(--breath-5);
   display: inline-block;
 }
 
-/* ---------- timeline ---------- */
 
-.timeline-section {
-  padding: 120px 0;
-  border-top: 1px solid var(--border-2);
-}
-.timeline {
-  margin-top: 60px;
-  position: relative;
-}
-.timeline-track {
-  position: relative;
-  height: 2px;
-  background: var(--border);
-  margin-bottom: 28px;
-  overflow: visible;
-}
-.timeline-track::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0;
-  height: 100%;
-  width: 0;
-  background: linear-gradient(90deg, var(--accent) 0%, var(--accent) 80%, rgba(198,106,68,0.0) 100%);
-  box-shadow: 0 0 12px rgba(198,106,68,0.4);
-  transition: width 1.8s cubic-bezier(.22,.61,.36,1);
-}
-.timeline.in-view .timeline-track::before { width: 100%; }
+/* ---------- how it works ---------- */
 
-.timeline-steps {
-  list-style: none;
+.lk-mech-header {
+  margin-bottom: var(--breath-6);
+}
+
+/* the headline number — a quiet flex of capacity */
+.lk-mech-figure {
+  font-family: var(--type-display);
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-style: italic;
+  font-variation-settings: "opsz" 96, "SOFT" 80;
+  color: var(--ash);
+  letter-spacing: -0.005em;
+  line-height: 1.35;
   margin: 0;
-  padding: 0;
+}
+.lk-mech-figure b {
+  color: var(--paper);
+  font-weight: 600;
+  font-style: normal;
+  font-variation-settings: "opsz" 96, "SOFT" 30;
+}
+.lk-mech-figure .sep {
+  color: var(--silver);
+  margin: 0 var(--breath-2);
+}
+
+.lk-mech-sub {
+  font-family: var(--type-glyph);
+  font-size: 11px;
+  letter-spacing: 0.20em;
+  color: var(--silver);
+  text-transform: uppercase;
+  display: block;
+  margin-top: var(--breath-3);
+}
+
+/* grid of hardware facets */
+.lk-hw-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24px;
-  position: relative;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--breath-1);
+  margin-bottom: var(--breath-7);
 }
-.timeline-step {
-  position: relative;
-  padding-top: 8px;
-}
-.timeline-step .dot {
-  position: absolute;
-  top: -33px; left: 0;
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  background: var(--bg);
-  border: 1.5px solid var(--border);
-  transition: background 200ms ease, border-color 200ms ease, box-shadow 300ms ease;
-}
-.timeline.in-view .timeline-step .dot {
-  background: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 0 14px rgba(198,106,68,0.6);
-}
-.timeline-step:nth-child(1) .dot { transition-delay: 0.10s; }
-.timeline-step:nth-child(2) .dot { transition-delay: 0.55s; }
-.timeline-step:nth-child(3) .dot { transition-delay: 1.00s; }
-.timeline-step:nth-child(4) .dot { transition-delay: 1.45s; }
+@media (max-width: 800px) { .lk-hw-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 500px) { .lk-hw-grid { grid-template-columns: 1fr; } }
 
-.timeline-step .num {
-  font-family: var(--mono);
+.lk-card {
+  background: var(--smoke);
+  padding: var(--breath-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--breath-2);
+  position: relative;
+  transition: background 360ms ease;
+}
+.lk-card:hover { background: var(--shadow); }
+.lk-card-icon {
+  width: 26px; height: 26px;
+  color: var(--copper);
+  margin-bottom: var(--breath-2);
+}
+.lk-card-name {
+  font-family: var(--type-display);
+  font-size: 21px;
+  font-weight: 500;
+  font-variation-settings: "opsz" 36, "SOFT" 50;
+  letter-spacing: -0.015em;
+  color: var(--paper);
+  margin: 0;
+}
+.lk-card-spec {
+  font-family: var(--type-glyph);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--aurora);
+  margin: 0;
+}
+.lk-card-note {
+  font-family: var(--type-body);
   font-size: 14px;
-  letter-spacing: 0.18em;
-  color: var(--text-mute);
-  display: block;
-  margin-bottom: 14px;
-  transition: color 300ms ease;
+  line-height: 1.5;
+  color: var(--ash);
+  margin: var(--breath-2) 0 0;
 }
-.timeline.in-view .timeline-step .num { color: var(--accent); }
-.timeline-step:nth-child(1) .num { transition-delay: 0.10s; }
-.timeline-step:nth-child(2) .num { transition-delay: 0.55s; }
-.timeline-step:nth-child(3) .num { transition-delay: 1.00s; }
-.timeline-step:nth-child(4) .num { transition-delay: 1.45s; }
 
-.step-icon {
-  display: block;
-  width: 26px;
-  height: 26px;
-  margin: 0 0 14px;
-  color: var(--text-mute);
-  transition: color 400ms ease;
+/* software cards share the .lk-card primitive but use aurora */
+.lk-sw-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--breath-1);
 }
-.step-icon path,
-.step-icon circle:not([fill="none"]) { fill: currentColor; }
-.step-icon circle[fill="none"],
-.step-icon line,
-.step-icon path[fill="none"] {
+@media (max-width: 800px) { .lk-sw-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 500px) { .lk-sw-grid { grid-template-columns: 1fr; } }
+.lk-sw-grid .lk-card-icon { color: var(--aurora); }
+
+/* ---------- scrolly-tell ----------
+   A five-frame scroll-driven cinematic. The .lk-scrolly section is
+   explicitly 500vh tall (5 frames × 100vh of scroll travel). The
+   .lk-scrolly-stage child is position:sticky so it stays pinned at
+   the top of the viewport while the reader scrolls through the
+   section's 500vh of scroll distance. JS reads scroll progress from
+   .lk-scrolly.getBoundingClientRect() and sets data-step.
+
+   Earlier we used an absolute-positioned rail of stepper divs to
+   provide the section height — that was the bug: absolutely
+   positioned children don't contribute to their parent's height,
+   so the section collapsed to ~93vh and sticky had no room to stick.
+   Explicit `height: 500vh` is the simpler and correct pattern. */
+
+.lk-scrolly {
+  position: relative;
+  height: 500vh;                       /* 5 steps × 100vh of scroll */
+  margin: var(--breath-7) calc(-1 * var(--breath-4));
+}
+
+.lk-scrolly-stage {
+  position: sticky;
+  top: 64px;                           /* clears the fixed topbar */
+  height: calc(100vh - 80px);
+  z-index: 3;
+}
+
+.lk-scrolly-frame {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--breath-5);
+  align-items: stretch;
+  padding: var(--breath-4);
+}
+@media (max-width: 880px) {
+  .lk-scrolly-frame {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1.3fr 1fr;
+    gap: var(--breath-3);
+    padding: var(--breath-3);
+  }
+}
+
+/* === the stage (left): SVG === */
+.lk-scrolly-viz {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, var(--smoke) 0%, var(--ink) 100%);
+  border: 1px solid var(--shadow);
+  overflow: hidden;
+  border-radius: 2px;
+}
+.lk-scrolly-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* the camera group — all elements live inside this group, and a
+   single transform moves the whole SVG world. Each step sets a
+   different transform (below) and CSS handles the easing. */
+.lk-cam {
+  transform-origin: 0 0;
+  transition: transform 760ms cubic-bezier(.22,.61,.36,1);
+  transform: translate(0, 0) scale(1);  /* default = fleet view */
+}
+
+/* Camera positions per step. Derived from focus point (cx, cy):
+   translate(600 - cx*s, 400 - cy*s) scale(s), so (cx, cy) lands at
+   the viewBox centre (600, 400). */
+.lk-scrolly[data-step="0"] .lk-cam,
+.lk-scrolly[data-step="1"] .lk-cam {
+  transform: translate(-600px, -400px) scale(2.0);
+}
+.lk-scrolly[data-step="2"] .lk-cam {
+  transform: translate(-584px, -240px) scale(1.6);
+}
+.lk-scrolly[data-step="3"] .lk-cam {
+  transform: translate(-1072px, -360px) scale(1.9);
+}
+.lk-scrolly[data-step="4"] .lk-cam {
+  transform: translate(0, 0) scale(1.0);
+}
+
+/* === the SVG primitives === */
+.lk-cam-link        { stroke: var(--aurora); fill: none; stroke-width: 1.4; stroke-dasharray: 4 8; opacity: 0; transition: opacity 600ms ease; }
+.lk-cam-leaf        { fill: var(--silver); transition: fill 400ms ease; }
+.lk-cam-leaf--target { fill: var(--silver); }
+.lk-cam-coord-ring  { stroke: var(--aurora); fill: none; stroke-width: 2.4; }
+.lk-cam-coord-bindu { fill: var(--copper); }
+.lk-cam-coord-wifi  { stroke: var(--aurora); fill: none; stroke-width: 2.0; stroke-linecap: round; opacity: 0.85; }
+
+/* the coord ring breathes (same 10s cycle as the brand glyph) */
+.lk-cam-coord-ring {
+  animation: lk-weave-coord-pulse var(--breath) ease-in-out infinite;
+  transform-origin: 600px 400px;
+}
+
+/* === ability icons (the orbit "ports") === */
+.lk-ab .lk-ab-port {
+  stroke: var(--aurora);
+  fill: var(--smoke);
+  stroke-width: 1.4;
+}
+.lk-ab .lk-ab-glyph {
   fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
+  stroke: var(--copper);
+  stroke-width: 1.4;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-
-.timeline.in-view .step-icon { color: var(--accent); }
-.timeline-step:nth-child(1) .step-icon { transition-delay: 0.10s; }
-.timeline-step:nth-child(2) .step-icon { transition-delay: 0.55s; }
-.timeline-step:nth-child(3) .step-icon { transition-delay: 1.00s; }
-.timeline-step:nth-child(4) .step-icon { transition-delay: 1.45s; }
-
-/* SENSE — concentric rings pulse outward (the campus listening) */
-.icon-sense .ring {
+.lk-ab .lk-ab-glyph path,
+.lk-ab .lk-ab-glyph rect:not([fill]) {
   fill: none;
-  stroke: currentColor;
-  stroke-width: 1;
-  transform-origin: 12px 12px;
+}
+.lk-ab .lk-ab-glyph rect[fill="currentColor"],
+.lk-ab .lk-ab-glyph circle[fill="currentColor"] {
+  fill: var(--copper);
+  stroke: var(--copper);
+}
+/* circles in glyph that have fill="currentColor" set on the inline el */
+.lk-ab .lk-ab-glyph circle {
+  fill: var(--copper);
+}
+.lk-ab .lk-ab-glyph circle:not([fill="currentColor"]) {
+  /* outline-style circles (e.g. senses triad outer rings) */
+  fill: none;
+  stroke: var(--copper);
+}
+.lk-ab .lk-ab-label {
+  fill: var(--ash);
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-anchor: middle;
+}
+
+/* orbits are hidden by default; per-step CSS reveals them */
+.lk-cam-orbit       { opacity: 0; transition: opacity 600ms ease 120ms; }
+.lk-cam-orbit .lk-ab { transform-origin: center; }
+
+/* === per-step visibility (driven by class on .lk-scrolly) === */
+
+/* step 0: just the coordinator (no orbit, no leaves, no links) */
+.lk-scrolly[data-step="0"] .lk-cam-orbit,
+.lk-scrolly[data-step="0"] .lk-cam-link,
+.lk-scrolly[data-step="0"] .lk-cam-leaf {
   opacity: 0;
 }
-.timeline.in-view .icon-sense .ring:nth-of-type(1) {
-  animation: pulse-ring 2.4s ease-out 0.40s infinite;
-}
-.timeline.in-view .icon-sense .ring:nth-of-type(2) {
-  animation: pulse-ring 2.4s ease-out 1.20s infinite;
-}
-.timeline.in-view .icon-sense .ring:nth-of-type(3) {
-  animation: pulse-ring 2.4s ease-out 2.00s infinite;
-}
-@keyframes pulse-ring {
-  0%   { opacity: 0;   transform: scale(0.4); }
-  25%  { opacity: 0.7; }
-  100% { opacity: 0;   transform: scale(1.2); }
+
+/* step 1: coordinator + its orbit; leaves and links still hidden */
+.lk-scrolly[data-step="1"] .lk-cam-orbit--coord { opacity: 1; }
+.lk-scrolly[data-step="1"] .lk-cam-link,
+.lk-scrolly[data-step="1"] .lk-cam-leaf {
+  opacity: 0;
 }
 
-/* DRIVE — sun-rays grow outward as the lights come up */
-.icon-dim line {
-  transform-origin: 12px 12px;
-  transition: transform 700ms cubic-bezier(.36,.07,.19,.97) 1.0s;
-  transform: scale(0.6);
-  opacity: 0.6;
+/* step 2: coordinator (with orbit) + target leaf + target link */
+.lk-scrolly[data-step="2"] .lk-cam-orbit--coord { opacity: 0.45; }
+.lk-scrolly[data-step="2"] .lk-cam-leaf--target { opacity: 1; }
+.lk-scrolly[data-step="2"] .lk-cam-link[data-leaf="0"] { opacity: 0.75; }
+.lk-scrolly[data-step="2"] .lk-cam-leaf:not(.lk-cam-leaf--target) { opacity: 0; }
+.lk-scrolly[data-step="2"] .lk-cam-link:not([data-leaf="0"]) { opacity: 0; }
+
+/* step 3: zoom on leaf, leaf orbit visible; coordinator orbit hidden */
+.lk-scrolly[data-step="3"] .lk-cam-orbit--coord { opacity: 0; }
+.lk-scrolly[data-step="3"] .lk-cam-orbit--leaf  { opacity: 1; }
+.lk-scrolly[data-step="3"] .lk-cam-link[data-leaf="0"] { opacity: 0.45; }
+.lk-scrolly[data-step="3"] .lk-cam-leaf:not(.lk-cam-leaf--target) { opacity: 0; }
+.lk-scrolly[data-step="3"] .lk-cam-link:not([data-leaf="0"]) { opacity: 0; }
+
+/* step 4: full fleet, all leaves + all links, orbits hidden */
+.lk-scrolly[data-step="4"] .lk-cam-orbit { opacity: 0; }
+.lk-scrolly[data-step="4"] .lk-cam-link { opacity: 0.55; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf { opacity: 1; }
+
+/* leaves: a soft round-robin highlight on fleet step */
+.lk-scrolly[data-step="4"] .lk-cam-leaf {
+  animation: lk-weave-leaf-step calc(var(--breath) * 1.4) ease-in-out infinite;
+  transform-origin: center;
 }
-.timeline.in-view .icon-dim line {
-  transform: scale(1);
-  opacity: 1;
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(1) { animation-delay: 0.0s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(2) { animation-delay: 0.5s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(3) { animation-delay: 1.0s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(4) { animation-delay: 1.5s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(5) { animation-delay: 2.0s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(6) { animation-delay: 2.5s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(7) { animation-delay: 3.0s; }
+
+/* link flow animation kicks in on the fleet step */
+.lk-scrolly[data-step="4"] .lk-cam-link {
+  animation: lk-weave-link-flow calc(var(--breath) * 1.6) linear infinite;
 }
 
-/* WEAVE — the three Norns-strands shift gently in opposite phases */
-.icon-weave path {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
+/* === the narrator (right) === */
+.lk-scrolly-narrator {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--breath-5) var(--breath-4);
+  border-left: 1px solid var(--shadow);
 }
-.timeline.in-view .icon-weave path:nth-of-type(1) {
-  animation: weave 4s ease-in-out 1.6s infinite alternate;
-}
-.timeline.in-view .icon-weave path:nth-of-type(2) {
-  animation: weave 4s ease-in-out 1.8s infinite alternate-reverse;
-}
-.timeline.in-view .icon-weave path:nth-of-type(3) {
-  animation: weave 4s ease-in-out 2.0s infinite alternate;
-}
-@keyframes weave {
-  from { transform: translateX(0); }
-  to   { transform: translateX(2px); }
+@media (max-width: 880px) {
+  .lk-scrolly-narrator { border-left: none; border-top: 1px solid var(--shadow); }
 }
 
-.timeline-step h3 {
-  font-size: 22px;
-  letter-spacing: -0.02em;
-  margin: 0 0 10px;
-  font-weight: 600;
-  color: var(--text);
+.lk-scrolly-narrator-title {
+  font-family: var(--type-glyph);
+  font-size: 11.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--copper);
+  margin: 0 0 var(--breath-5);
+  font-weight: 400;
 }
-.timeline-step p {
-  font-size: 14px;
-  color: var(--text-dim);
-  line-height: 1.5;
+
+.lk-scrolly-steps {
+  list-style: none;
+  padding: 0;
   margin: 0;
-  max-width: 26ch;
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-@media (max-width: 800px) {
-  .timeline-steps { grid-template-columns: 1fr 1fr; gap: 36px 24px; }
-}
-@media (max-width: 480px) {
-  .timeline-steps { grid-template-columns: 1fr; gap: 28px; }
-  .timeline-track { display: none; }
-  .timeline-step { padding-left: 22px; }
-  .timeline-step .dot { top: 14px; left: 0; }
-}
-
-/* ---------- dusk → lit transition overlay ----------
-   Mirrors the product's act: a brief warm flash at the threshold of
-   "how it works", then a sustained gold cast that lingers for the rest
-   of the page. The status indicator hops from emerald to brass. */
-
-.lk-warm {
-  position: fixed;
+.lk-scrolly-step {
+  position: absolute;
   inset: 0;
-  pointer-events: none;
-  z-index: 50;
-  background:
-    radial-gradient(ellipse 70% 55% at 50% 60%,
-      rgba(238,160,110,0.32) 0%,
-      rgba(198,106,68,0.14) 40%,
-      rgba(0,0,0,0) 75%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   opacity: 0;
-  transition: opacity 240ms ease-out;
+  transform: translateY(12px);
+  transition: opacity 500ms ease, transform 500ms ease;
+  pointer-events: none;
 }
-.lk-warm.flash { opacity: 1; transition-duration: 60ms; }
-
-section, footer {
-  transition: filter 1100ms ease;
-}
-body.lit section,
-body.lit footer {
-  filter: saturate(1.08) brightness(1.04);
-}
-body.lit .topbar .status-text { color: var(--accent); }
-body.lit .topbar .status .dot {
-  background: var(--accent);
-  box-shadow: 0 0 16px var(--accent), 0 0 4px var(--accent);
+.lk-scrolly-step.is-active {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
+.lk-scrolly-step-num {
+  font-family: var(--type-glyph);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--ash);
+  margin-bottom: var(--breath-3);
+}
+.lk-scrolly-step-title {
+  font-family: var(--type-display);
+  font-size: clamp(28px, 3vw, 40px);
+  font-weight: 500;
+  font-variation-settings: "opsz" 96, "SOFT" 60;
+  letter-spacing: -0.022em;
+  line-height: 1.05;
+  color: var(--paper);
+  margin: 0 0 var(--breath-3);
+}
+.lk-scrolly-step p {
+  font-family: var(--type-body);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ash);
+  margin: 0;
+  max-width: 32ch;
+}
+
+.lk-scrolly-hint {
+  font-family: var(--type-glyph);
+  font-size: 10px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--silver);
+  margin: var(--breath-4) 0 0;
+  align-self: flex-start;
+  opacity: 0.55;
+}
+
+/* (the old `.lk-scrolly-rail` of stepper divs was dropped — explicit
+   `height: 500vh` on .lk-scrolly is the correct way to give the
+   section its scroll length. See note at the top of this block.) */
+
+/* === reduced motion fallback ===
+   No sticky stage, no scroll-linked camera. Show the final "fleet"
+   frame statically and stack the narrator steps as plain text. */
 @media (prefers-reduced-motion: reduce) {
-  .lk-warm { display: none !important; }
-  section, footer { transition: none !important; }
-  .timeline-track::before { transition: none !important; width: 100% !important; }
-  .timeline-step .dot, .timeline-step .num, .step-icon { transition: none !important; }
-  .icon-sense .ring, .icon-dim line, .icon-weave path {
-    animation: none !important;
-    transition: none !important;
+  .lk-scrolly { margin: var(--breath-7) 0; height: auto; }
+  .lk-scrolly-stage {
+    position: relative;
+    top: auto;
+    height: auto;
   }
-  .icon-sense .ring { opacity: 1; }
+  .lk-scrolly-frame {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    height: auto;
+  }
+  .lk-scrolly-viz {
+    aspect-ratio: 3 / 2;
+    max-height: 70vh;
+  }
+  .lk-cam { transition: none !important; }
+  .lk-cam-link { opacity: 0.55 !important; animation: none !important; }
+  .lk-cam-leaf { opacity: 1 !important; animation: none !important; }
+  .lk-cam-orbit { opacity: 0 !important; }
+  .lk-scrolly-step {
+    position: relative;
+    inset: auto;
+    opacity: 1 !important;
+    transform: none !important;
+    padding: var(--breath-4) 0;
+    border-top: 1px solid var(--shadow);
+  }
+  .lk-scrolly-step:first-child { border-top: none; }
 }
 
-/* ---------- unit feature (product shot) ---------- */
 
-.feature {
-  padding: 120px 0;
-}
-.feature-grid {
+/* ---------- the instrument (product shot) ---------- */
+
+.lk-instrument {
   display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 64px;
+  grid-template-columns: 1fr 1.1fr;
+  gap: var(--breath-6);
   align-items: center;
 }
 @media (max-width: 800px) {
-  .feature-grid { grid-template-columns: 1fr; gap: 36px; }
+  .lk-instrument { grid-template-columns: 1fr; gap: var(--breath-4); }
 }
-.feature-image {
+.lk-instrument-photo {
   position: relative;
   aspect-ratio: 1 / 1;
   background:
-    radial-gradient(ellipse at 60% 40%, rgba(198,106,68,0.06), transparent 60%),
-    var(--bg-elev);
-  border: 1px solid var(--border-2);
+    radial-gradient(ellipse at 55% 45%, rgba(198,106,68,0.05), transparent 60%),
+    var(--smoke);
   overflow: hidden;
 }
-.feature-image img {
+.lk-instrument-photo img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-.feature-text .kicker { margin-bottom: 14px; }
 
-/* ---------- the numbers (marketing stats) ---------- */
 
-.numbers {
-  padding: 140px 0;
-  border-top: 1px solid var(--border-2);
-  border-bottom: 1px solid var(--border-2);
-}
-.numbers-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0;
-}
-@media (max-width: 800px) {
-  .numbers-grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 480px) {
-  .numbers-grid { grid-template-columns: 1fr; }
-}
-.numbers-grid > div {
-  padding: 28px 24px;
-  border-right: 1px solid var(--border-2);
-  border-bottom: 1px solid var(--border-2);
-}
-.numbers-grid > div:nth-child(3n) { border-right: none; }
-.numbers-grid > div:nth-last-child(-n+3) { border-bottom: none; }
-@media (max-width: 800px) {
-  .numbers-grid > div:nth-child(3n) { border-right: 1px solid var(--border-2); }
-  .numbers-grid > div:nth-child(2n) { border-right: none; }
-  .numbers-grid > div:nth-last-child(-n+3) { border-bottom: 1px solid var(--border-2); }
-  .numbers-grid > div:nth-last-child(-n+2) { border-bottom: none; }
-}
-@media (max-width: 480px) {
-  .numbers-grid > div { border-right: none !important; border-bottom: 1px solid var(--border-2) !important; }
-  .numbers-grid > div:last-child { border-bottom: none !important; }
-}
-.numbers .label {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--text-mute);
-  margin-bottom: 16px;
-}
-.numbers .big {
-  font-family: var(--mono);
-  font-size: clamp(36px, 5vw, 62px);
-  font-weight: 500;
-  letter-spacing: -0.03em;
-  color: var(--text);
-  line-height: 1;
-}
-.numbers .big .u {
-  color: var(--text-mute);
-  font-size: 0.4em;
-  margin-left: 4px;
-  letter-spacing: 0.04em;
-}
-.numbers .sub {
-  font-size: 13px;
-  color: var(--text-dim);
-  margin-top: 12px;
-  line-height: 1.45;
-}
+/* ---------- honesty (what it doesn't claim) ---------- */
 
-/* ---------- honesty section ---------- */
-
-.honesty {
-  padding: 120px 0;
-}
-.honesty .kicker { color: var(--text-dim); }
-.honesty p {
-  font-size: clamp(20px, 2vw, 26px);
-  line-height: 1.35;
-  letter-spacing: -0.015em;
-  max-width: 42ch;
-  color: var(--text);
+.lk-honesty .lk-prose {
+  font-family: var(--type-display);
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-style: italic;
+  font-variation-settings: "opsz" 96, "SOFT" 80;
   font-weight: 400;
-}
-.honesty p + p { margin-top: 22px; }
-.honesty em { color: var(--accent); font-style: normal; }
-
-/* the etymology aside — quieter than the main honesty paragraphs,
-   still emphasised, sits a step away from the rest of the section */
-.honesty p.aside {
-  margin-top: 40px;
-  font-family: var(--mono);
-  font-size: clamp(13px, 1.1vw, 15px);
-  color: var(--text-dim);
-  letter-spacing: 0.01em;
-  line-height: 1.55;
-  max-width: 52ch;
-}
-.honesty p.aside em { color: var(--accent-2); font-style: italic; }
-
-/* ---------- provenance ---------- */
-
-.provenance {
-  padding: 120px 0;
-  border-top: 1px solid var(--border-2);
-}
-.provenance .cols-two { gap: 64px; }
-.provenance h2 {
-  font-size: clamp(28px, 3vw, 38px);
-  letter-spacing: -0.02em;
-  margin: 0 0 22px;
-  font-weight: 600;
-}
-.provenance p {
-  font-size: 17px;
-  color: var(--text-dim);
+  letter-spacing: -0.012em;
+  line-height: 1.4;
   max-width: 38ch;
+  color: var(--paper);
 }
-.provenance p + p { margin-top: 14px; }
+.lk-honesty .lk-prose em {
+  color: var(--copper);
+  font-style: italic;
+}
+.lk-honesty .lk-aside {
+  margin-top: var(--breath-5);
+  font-family: var(--type-glyph);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  line-height: 1.55;
+  color: var(--ash);
+  max-width: 52ch;
+  font-style: normal;
+}
+.lk-honesty .lk-aside em {
+  color: var(--aurora);
+  font-style: italic;
+  /* Reliable Latin Extended-A coverage for the macron in "āloka".
+     Fraunces' Latin-Extended subset can be flaky in privacy-strict
+     browsers (Brave's shields, etc.) that block second-subset URLs
+     from Google Fonts. Putting a system serif first guarantees the
+     diacritic renders; Fraunces remains as a fallback for the rest. */
+  font-family: Georgia, "Iowan Old Style", "Cormorant Garamond", "Fraunces", serif;
+}
 
-.cant-list {
+
+/* ---------- kin (family) ---------- */
+
+.lk-kin {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--breath-6);
+  align-items: start;
+}
+@media (max-width: 800px) {
+  .lk-kin { grid-template-columns: 1fr; gap: var(--breath-5); }
+}
+.lk-cant {
   list-style: none;
   padding: 0;
   margin: 0;
   max-width: 42ch;
 }
-.cant-list li {
-  padding: 22px 0;
-  border-bottom: 1px solid var(--border-2);
-  font-size: 16px;
-  line-height: 1.5;
-  color: var(--text-dim);
+.lk-cant li {
+  padding: var(--breath-4) 0;
+  border-bottom: 1px solid var(--shadow);
+  font-family: var(--type-body);
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--ash);
 }
-.cant-list li:first-child { padding-top: 0; }
-.cant-list li:last-child { border-bottom: none; padding-bottom: 0; }
-.cant-list li strong {
+.lk-cant li:first-child { padding-top: 0; }
+.lk-cant li:last-child { border-bottom: none; padding-bottom: 0; }
+.lk-cant li strong {
   display: block;
-  color: var(--text);
+  color: var(--paper);
+  font-family: var(--type-display);
   font-weight: 500;
-  font-size: 17px;
-  letter-spacing: -0.01em;
-  margin-bottom: 4px;
+  font-variation-settings: "opsz" 36, "SOFT" 50;
+  font-size: 18px;
+  letter-spacing: -0.012em;
+  margin-bottom: var(--breath-1);
 }
+.lk-kin h3 {
+  font-family: var(--type-display);
+  font-size: clamp(26px, 2.8vw, 36px);
+  font-weight: 500;
+  font-variation-settings: "opsz" 48, "SOFT" 50;
+  letter-spacing: -0.018em;
+  margin: 0 0 var(--breath-3);
+  color: var(--paper);
+}
+.lk-kin p {
+  font-family: var(--type-body);
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--ash);
+  max-width: 38ch;
+  margin: 0;
+}
+.lk-kin p + p { margin-top: var(--breath-3); }
+
 
 /* ---------- footer ---------- */
 
-footer {
-  border-top: 1px solid var(--border-2);
-  padding: 64px 0 84px;
-  color: var(--text-dim);
-  font-size: 13px;
+.lk-foot {
+  padding: var(--breath-6) 0 var(--breath-7);
+  border-top: 1px solid var(--shadow);
+  color: var(--ash);
 }
-footer .cols {
+.lk-foot-inner {
+  max-width: var(--column);
+  margin: 0 auto;
+  padding: 0 var(--breath-4);
+}
+.lk-foot-cols {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 60px;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--breath-6);
 }
 @media (max-width: 700px) {
-  footer .cols { grid-template-columns: 1fr; }
+  .lk-foot-cols { grid-template-columns: 1fr; }
 }
-footer h4 {
-  font-family: var(--mono);
+.lk-foot h4 {
+  font-family: var(--type-glyph);
   font-size: 11px;
   letter-spacing: 0.18em;
-  color: var(--text-mute);
+  color: var(--silver);
   text-transform: uppercase;
-  margin: 0 0 12px;
-  font-weight: 500;
+  margin: 0 0 var(--breath-3);
+  font-weight: 400;
 }
-footer p { margin: 0; max-width: none; }
-footer .signoff {
-  margin-top: 56px;
-  padding-top: 24px;
-  border-top: 1px solid var(--border-2);
-  font-family: var(--mono);
+.lk-foot p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.lk-foot-sign {
+  margin-top: var(--breath-6);
+  padding-top: var(--breath-4);
+  border-top: 1px solid var(--shadow);
+  font-family: var(--type-glyph);
   font-size: 11px;
-  letter-spacing: 0.14em;
-  color: var(--text-mute);
+  letter-spacing: 0.16em;
+  color: var(--silver);
   display: flex;
   justify-content: space-between;
-  gap: 18px;
+  gap: var(--breath-3);
   flex-wrap: wrap;
   text-transform: uppercase;
+}
+
+
+/* ---------- scroll reveal ----------
+   Sections fade + drift up gently as they enter view. Slow enough
+   that you notice the calm, not the trick. ---------- */
+
+.lk-reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity var(--reveal) ease-out, transform var(--reveal) ease-out;
+}
+.lk-reveal.is-seen {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+
+/* ---------- reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .lk-aurora,
+  .lk-brand-glyph { animation: none !important; }
+  .lk-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .lk-page section, .lk-page footer { transition: none !important; }
+  .lk-cam, .lk-cam-link, .lk-cam-leaf, .lk-cam-coord-ring, .lk-cam-coord-wifi path { animation: none !important; }
+}
+
+
+/* ---------- keyframes shared by the scrolly-tell ----------
+   Kept named "lk-weave-*" for historical continuity; the scrolly
+   references them on .lk-cam-* elements at step 4 (fleet view). */
+
+@keyframes lk-weave-link-flow {
+  0%   { opacity: 0.35; stroke-dashoffset: 0; }
+  50%  { opacity: 0.70; stroke-dashoffset: -9; }
+  100% { opacity: 0.35; stroke-dashoffset: -18; }
+}
+
+@keyframes lk-weave-leaf-step {
+  0%, 82%, 100% { fill: var(--silver); }
+  10%           { fill: var(--aurora); }
+}
+
+@keyframes lk-weave-coord-pulse {
+  0%, 100% { stroke-width: 2.0; opacity: 0.78; }
+  40%      { stroke-width: 2.8; opacity: 1.00; }
 }
