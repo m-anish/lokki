@@ -415,60 +415,65 @@ body.is-bar-visible .lk-bar {
 .lk-band {
   position: relative;
   width: 100%;
-  min-height: 60vh;
-  /* The mood image (a single warm-gold wall in the lower-right of a
-     vast blue-black dusk) is anchored to the right-bottom corner via
-     background-position. A diagonal dark wash sits on top of it —
-     heaviest in the upper-left (where the quote text sits), lightest
-     in the lower-right (where the wall light glows). Result: the
-     quote always has a dark, deliberate canvas, and the focal point
-     of the image stays visible. */
+  min-height: 78vh;                   /* taller, so the bollard ends up
+                                         further down in the visible crop */
+  /* The mood image is an ordinary gravel pathway lit by a single
+     warm bollard — a literal illustration of the Aaron Rose quote.
+     Anchored at 35% Y (slightly above centre) so the bollard's body
+     and the warm gravel pool sit in the lower 60% of the band; the
+     dark sky above the bollard sits behind the quote.
+     A strong gradient at the top makes that dark area a deliberate
+     canvas; the warm light below remains as the mood. */
   background-image:
-    linear-gradient(135deg,
-      rgba(13,14,16,0.78) 0%,
-      rgba(13,14,16,0.55) 35%,
-      rgba(13,14,16,0.30) 70%,
-      rgba(13,14,16,0.08) 100%),
+    linear-gradient(180deg,
+      rgba(13,14,16,0.90) 0%,
+      rgba(13,14,16,0.78) 12%,
+      rgba(13,14,16,0.55) 25%,
+      rgba(13,14,16,0.20) 44%,
+      rgba(13,14,16,0.05) 65%,
+      rgba(13,14,16,0.28) 100%),
     url("assets/mood.webp");
   background-size: cover, cover;
-  background-position: center, right bottom;
+  background-position: center, center 30%;
   background-repeat: no-repeat, no-repeat;
   background-color: var(--ink);
   border-top: 1px solid var(--shadow);
   border-bottom: 1px solid var(--shadow);
   display: flex;
-  align-items: center;
+  align-items: flex-start;            /* quote sits at top, image breathes below */
 }
 .lk-band-inner {
   max-width: var(--column);
   margin: 0 auto;
-  padding: var(--breath-8) var(--breath-4);
+  padding: var(--breath-5) var(--breath-4) var(--breath-7);  /* 40 / 24 / 104 */
   position: relative;
   z-index: 2;
-  /* Quote sits in the LEFT HALF of the band on desktop, opposite the
-     image's lower-right focal point. Centred on mobile where the
-     image crops tighter and the wall sits at the bottom-right corner. */
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  text-align: left;
+  align-items: center;
+  text-align: center;
 }
 @media (max-width: 700px) {
+  .lk-band {
+    min-height: 72vh;
+    /* On mobile the image scales to fit height (no vertical crop), so
+       the bollard sits where it does — no need to shift via Y position. */
+    background-position: center, center;
+  }
   .lk-band-inner {
-    align-items: center;
-    text-align: center;
-    padding: var(--breath-7) var(--breath-4);
+    padding: var(--breath-4) var(--breath-4) var(--breath-6);
   }
 }
 .lk-band-quote {
   font-family: var(--type-display);
-  font-size: clamp(28px, 4.4vw, 52px);
+  font-size: clamp(22px, 3.4vw, 38px);  /* a touch smaller — reads as an
+                                           inscription, not a banner */
   font-weight: 400;
   font-style: italic;
   font-variation-settings: "opsz" 144, "SOFT" 100;
   letter-spacing: -0.018em;
-  line-height: 1.18;
-  max-width: 22ch;
+  line-height: 1.25;
+  max-width: 26ch;
   margin: 0;
   color: var(--paper);
 }

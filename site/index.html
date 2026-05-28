@@ -565,6 +565,32 @@
         <p class="lk-card-note">An LDR caps daylight brightness. Ambient temperature comes from an optional I2C add-on. The I2C bus is open for more.</p>
       </article>
 
+      <article class="lk-card">
+        <!-- Safety: shield with a bindu inside — echoes the brand mark
+             and reads as "protected, calm centre". -->
+        <svg class="lk-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3 L4 6 V12 C 4 17 12 21 12 21 C 12 21 20 17 20 12 V6 Z"/>
+          <circle cx="12" cy="13" r="1.8" fill="currentColor" stroke="none"/>
+        </svg>
+        <h3 class="lk-card-name">Safety</h3>
+        <p class="lk-card-spec">certified PSU · per-channel surge protection</p>
+        <p class="lk-card-note">The internal 24 V supply carries the standard industry safety marks. Each of the eight LED outputs is wrapped in a transient-voltage suppressor, so a glitch downstream doesn't reach the logic.</p>
+      </article>
+
+      <article class="lk-card">
+        <!-- Made robust: three concentric rings + a bindu — the brand
+             mark with one extra layer wrapped around it. Reads as
+             "the centre is still calm; we just added another ring." -->
+        <svg class="lk-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+          <circle cx="12" cy="12" r="9"/>
+          <circle cx="12" cy="12" r="5.5"/>
+          <circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/>
+        </svg>
+        <h3 class="lk-card-name">Made robust</h3>
+        <p class="lk-card-spec">out of stubbornness</p>
+        <p class="lk-card-note">Built by an engineer who finds support tickets tedious. So nothing's borderline — conservative current limits, watchdog timer, battery-backed clock, a PSU rated well over spec.</p>
+      </article>
+
     </div>
 
     <!-- =========== SOFTWARE GRID =========== -->
@@ -706,9 +732,9 @@
         <h3>What lokki can't do.</h3>
         <ul class="lk-cant">
           <li>
-            <strong>Replace an electrician.</strong>
-            It speaks at low voltage. The mains side is still someone's
-            licensed problem.
+            <strong>Replace the sun.</strong>
+            It augments daylight; it doesn't substitute for it. A space
+            without a window stays a space without a window.
           </li>
           <li>
             <strong>Cover a city.</strong>
