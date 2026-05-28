@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Lokki — coordinated light for places that try to be quiet</title>
-  <meta name="description" content="A campus-scale lighting instrument for wellness venues. Eight units coordinate by themselves over LoRa. No cloud, no broker, no recurring fee. A starstucklab project." />
+  <meta name="description" content="A campus-scale lighting instrument for wellness venues. A coordinator plus up to eight leaves coordinate by themselves over LoRa. No cloud, no broker, no recurring fee. A starstucklab project." />
   <meta property="og:title" content="Lokki" />
   <meta property="og:description" content="Coordinated light for places that try to be quiet. A starstucklab project." />
   <meta property="og:image" content="https://lokki.starstucklab.com/assets/hero.webp" />
@@ -127,7 +127,7 @@
         <b>8</b> channels <span class="sep">·</span>
         <b>4</b> sensors <span class="sep">·</span>
         <b>2</b> relays
-        <span class="lk-mech-sub">Per unit. Up to eight units per campus.</span>
+        <span class="lk-mech-sub">Per unit. Up to eight leaves per coordinator.</span>
       </p>
     </div>
 
@@ -147,29 +147,37 @@
             <svg class="lk-scrolly-svg" viewBox="0 0 1200 800" role="img" aria-hidden="true">
               <g class="lk-cam">
 
-                <!-- 7 dashed LoRa links (drawn first, behind everything) -->
-                <line class="lk-cam-link" data-leaf="0" x1="600" y1="400" x2="880" y2="400"/>
-                <line class="lk-cam-link" data-leaf="1" x1="600" y1="400" x2="775" y2="244"/>
-                <line class="lk-cam-link" data-leaf="2" x1="600" y1="400" x2="538" y2="205"/>
-                <line class="lk-cam-link" data-leaf="3" x1="600" y1="400" x2="348" y2="313"/>
-                <line class="lk-cam-link" data-leaf="4" x1="600" y1="400" x2="348" y2="487"/>
-                <line class="lk-cam-link" data-leaf="5" x1="600" y1="400" x2="538" y2="595"/>
-                <line class="lk-cam-link" data-leaf="6" x1="600" y1="400" x2="775" y2="556"/>
+                <!-- 8 dashed LoRa links (drawn first, behind everything).
+                     Leaves sit on an ellipse rx=280, ry=170 around the
+                     coordinator, on an 8-fold ring rotated by 22.5° —
+                     so no leaf sits directly above the coordinator and
+                     no link cuts through the WiFi cone. -->
+                <line class="lk-cam-link" data-leaf="0" x1="600" y1="400" x2="859" y2="335"/>
+                <line class="lk-cam-link" data-leaf="1" x1="600" y1="400" x2="707" y2="243"/>
+                <line class="lk-cam-link" data-leaf="2" x1="600" y1="400" x2="493" y2="243"/>
+                <line class="lk-cam-link" data-leaf="3" x1="600" y1="400" x2="341" y2="335"/>
+                <line class="lk-cam-link" data-leaf="4" x1="600" y1="400" x2="341" y2="465"/>
+                <line class="lk-cam-link" data-leaf="5" x1="600" y1="400" x2="493" y2="557"/>
+                <line class="lk-cam-link" data-leaf="6" x1="600" y1="400" x2="707" y2="557"/>
+                <line class="lk-cam-link" data-leaf="7" x1="600" y1="400" x2="859" y2="465"/>
 
-                <!-- 7 leaves (6 standard + 1 target leaf at the right) -->
-                <circle class="lk-cam-leaf lk-cam-leaf--target" cx="880" cy="400" r="14"/>
-                <circle class="lk-cam-leaf" cx="775" cy="244" r="14"/>
-                <circle class="lk-cam-leaf" cx="538" cy="205" r="14"/>
-                <circle class="lk-cam-leaf" cx="348" cy="313" r="14"/>
-                <circle class="lk-cam-leaf" cx="348" cy="487" r="14"/>
-                <circle class="lk-cam-leaf" cx="538" cy="595" r="14"/>
-                <circle class="lk-cam-leaf" cx="775" cy="556" r="14"/>
+                <!-- 8 leaves (7 standard + 1 target leaf at upper-right).
+                     Target leaf is at angle 22.5° on the ring. -->
+                <circle class="lk-cam-leaf lk-cam-leaf--target" cx="859" cy="335" r="14"/>
+                <circle class="lk-cam-leaf" cx="707" cy="243" r="14"/>
+                <circle class="lk-cam-leaf" cx="493" cy="243" r="14"/>
+                <circle class="lk-cam-leaf" cx="341" cy="335" r="14"/>
+                <circle class="lk-cam-leaf" cx="341" cy="465" r="14"/>
+                <circle class="lk-cam-leaf" cx="493" cy="557" r="14"/>
+                <circle class="lk-cam-leaf" cx="707" cy="557" r="14"/>
+                <circle class="lk-cam-leaf" cx="859" cy="465" r="14"/>
 
-                <!-- TARGET LEAF orbit: 5 ability icons around (880, 400) -->
+                <!-- TARGET LEAF orbit: 5 ability icons around (859, 335),
+                     orbit radius 70. Positions = target + (cos*70, -sin*70). -->
                 <g class="lk-cam-orbit lk-cam-orbit--leaf">
                   <!-- 0° right: LEDs — rake of 8 outputs from a baseline,
                        each riser capped with a dot (one LED per channel). -->
-                  <g class="lk-ab" transform="translate(950, 400)">
+                  <g class="lk-ab" transform="translate(929, 335)">
                     <circle r="20" class="lk-ab-port"/>
                     <g transform="translate(-10.5, -10.5) scale(0.875)" class="lk-ab-glyph">
                       <line x1="2.5"  y1="20" x2="21.5" y2="20"/>
@@ -193,7 +201,7 @@
                     <text class="lk-ab-label" y="38">LEDS</text>
                   </g>
                   <!-- 72°: motion -->
-                  <g class="lk-ab" transform="translate(902, 333)">
+                  <g class="lk-ab" transform="translate(881, 268)">
                     <circle r="20" class="lk-ab-port"/>
                     <g transform="translate(-10.5, -10.5) scale(0.875)" class="lk-ab-glyph">
                       <circle cx="5" cy="19" r="1.6" fill="currentColor"/>
@@ -205,7 +213,7 @@
                   </g>
                   <!-- 144°: sensors — a simple sun/light glyph
                        (filled dot + 8 rays) for the ambient senses. -->
-                  <g class="lk-ab" transform="translate(823, 359)">
+                  <g class="lk-ab" transform="translate(802, 294)">
                     <circle r="20" class="lk-ab-port"/>
                     <g transform="translate(-10.5, -10.5) scale(0.875)" class="lk-ab-glyph">
                       <circle cx="12" cy="12" r="3" fill="currentColor"/>
@@ -221,7 +229,7 @@
                     <text class="lk-ab-label" y="38">SENSORS</text>
                   </g>
                   <!-- 216°: relays -->
-                  <g class="lk-ab" transform="translate(823, 441)">
+                  <g class="lk-ab" transform="translate(802, 376)">
                     <circle r="20" class="lk-ab-port"/>
                     <g transform="translate(-10.5, -10.5) scale(0.875)" class="lk-ab-glyph">
                       <line x1="3" y1="8" x2="9" y2="8"/>
@@ -238,7 +246,7 @@
                     <text class="lk-ab-label" y="38">RELAYS</text>
                   </g>
                   <!-- 288°: LoRa -->
-                  <g class="lk-ab" transform="translate(902, 467)">
+                  <g class="lk-ab" transform="translate(881, 402)">
                     <circle r="20" class="lk-ab-port"/>
                     <g transform="translate(-10.5, -10.5) scale(0.875)" class="lk-ab-glyph">
                       <line x1="12" y1="3"  x2="12" y2="20"/>
@@ -423,7 +431,7 @@
               <li class="lk-scrolly-step" data-step="4">
                 <span class="lk-scrolly-step-num">05</span>
                 <h4 class="lk-scrolly-step-title">The fleet, complete</h4>
-                <p>Eight units. One weave. If the LoRa link drops, every leaf keeps its own schedule. Nothing stops.</p>
+                <p>One coordinator. Up to eight leaves. One weave. If the LoRa link drops, every leaf keeps its own schedule. Nothing stops.</p>
               </li>
             </ol>
             <p class="lk-scrolly-hint">scroll ↓</p>
@@ -647,7 +655,7 @@
         <h2 class="lk-title">One board. One firmware. A role chosen at boot.</h2>
         <div class="lk-prose">
           <p>
-            Every box on the wall is the same. Up to eight per campus, each
+            Every box on the wall is the same. Up to nine per campus, each
             wired to its own set of fixtures. One of them is told, at the time
             of configuration, that it is the coordinator; the rest are leaves.
           </p>
@@ -704,7 +712,7 @@
           </li>
           <li>
             <strong>Cover a city.</strong>
-            One coordinator, up to seven leaves. Beyond a campus, you want a
+            One coordinator, up to eight leaves. Beyond a campus, you want a
             different kind of system.
           </li>
           <li>

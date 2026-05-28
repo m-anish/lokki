@@ -658,11 +658,15 @@ body.is-bar-visible .lk-bar {
 .lk-scrolly[data-step="1"] .lk-cam {
   transform: translate(-600px, -400px) scale(2.0);
 }
+/* Step 2: pan from coord (600,400) right to the new target (859,335),
+   midpoint (730, 368), scale 1.6 → tx = 600 - 730*1.6, ty = 400 - 368*1.6. */
 .lk-scrolly[data-step="2"] .lk-cam {
-  transform: translate(-584px, -240px) scale(1.6);
+  transform: translate(-568px, -189px) scale(1.6);
 }
+/* Step 3: zoom on target (859, 335), scale 1.9 →
+   tx = 600 - 859*1.9, ty = 400 - 335*1.9. */
 .lk-scrolly[data-step="3"] .lk-cam {
-  transform: translate(-1072px, -360px) scale(1.9);
+  transform: translate(-1032px, -237px) scale(1.9);
 }
 .lk-scrolly[data-step="4"] .lk-cam {
   transform: translate(0, 0) scale(1.0);
@@ -772,6 +776,7 @@ body.is-bar-visible .lk-bar {
 .lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(5) { animation-delay: 2.0s; }
 .lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(6) { animation-delay: 2.5s; }
 .lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(7) { animation-delay: 3.0s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(8) { animation-delay: 3.5s; }
 
 /* link flow animation kicks in on the fleet step */
 .lk-scrolly[data-step="4"] .lk-cam-link {
