@@ -24,9 +24,10 @@ CFG_END   = "CFG_END"
 CFG_PATCH = "CFG_PATCH"   # single-packet single-field update; see send_patch()
 EO        = "EO"          # Emergency Off — all outputs to zero
 BLINK     = "BLINK"       # "blink your status LED so the operator can identify you" — used by the claim wizard
+RB        = "RB"          # Reboot request — coord asks a leaf to machine.reset()
 
 # ACK required for these types
-_ACK_REQUIRED = {SC, MO, EO, CFG_END, CFG_PATCH}
+_ACK_REQUIRED = {SC, MO, EO, CFG_END, CFG_PATCH, RB}
 
 _ACK_TIMEOUT_S  = 10
 _CHUNK_SIZE     = 64
@@ -619,6 +620,14 @@ class LoRaProtocol:
 
     def send_emergency_off(self, dest):
         return self.send(EO, dest)
+
+    def send_reboot(self, dest):
+        """Coord → Leaf: ask the leaf to reboot via machine.reset().
+        ACK-required; leaf ACKs before scheduling the reset so the
+        coord knows the message was received before the radio goes
+        silent. Used by the dashboard's per-leaf reboot button (the
+        leaf-side counterpart to the existing coord /api/reboot)."""
+        return self.send(RB, dest)
 
     def send_patch(self, dest, path, value):
         """Single-packet config patch (incremental config protocol).

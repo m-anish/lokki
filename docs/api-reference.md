@@ -133,6 +133,22 @@ The coord applies the epoch to the MCU's internal clock, mirrors it to the DS323
 
 ---
 
+#### `POST /api/units/{id}/reboot`
+Reboot a specific unit. For `id=0` this is equivalent to `POST /api/reboot` (coord resets itself after a 1 s delay to let the HTTP response flush). For `id=1..8` the coord sends a LoRa `RB` message to the leaf, waits for the ACK, and returns success — the leaf then resets itself after a 1 s grace period.
+
+**Response (success)**
+```json
+{ "ok": true, "data": { "rebooting": 2 } }
+```
+
+**Response (failure, HTTP 502)** — typical reasons:
+- LoRa link timed out before ACK arrived (`Reboot to unit N timed out — check LoRa link`)
+- Coord's LoRa isn't ready (the send-gate is still suppressing transmissions — try again in a few seconds)
+
+Used by the per-leaf detail page's "Reboot" button. Confirms via browser dialog before firing.
+
+---
+
 #### `POST /api/reboot`
 Schedules a soft reset of the coordinator (executes after ~1 s to allow the response to be sent).
 

@@ -270,6 +270,23 @@ No payload. Leaf applies `priority_arbiter.set_manual(id, 0, 0, 0)` for every ou
 
 ---
 
+### 3.5d `RB` — Reboot
+**Direction:** Coordinator → Leaf
+**Trigger:** Operator clicks the reboot button on a leaf's detail page in the dashboard (`POST /api/units/{id}/reboot`).
+**ACK required:** Yes
+
+```json
+{
+  "s": 0, "d": 3, "t": "RB", "seq": 26
+}
+```
+
+No payload. Leaf ACKs immediately (via the dispatcher's `_ACK_REQUIRED` auto-ACK path), then schedules `machine.reset()` after a 1 s grace period so the ACK reaches the coord before the radio goes silent. The coord-side endpoint waits for the ACK before returning success to the dashboard, so the operator gets immediate feedback that the reset was received.
+
+For coordinator reboot (id=0), the dashboard hits `POST /api/reboot` directly — no LoRa involved.
+
+---
+
 ### 3.5c `BLINK` — Flash to Identify
 **Direction:** Coordinator → Leaf (typically `d = 99`, the unclaimed unit_id)
 **Trigger:** Operator clicks "Flash to identify" in the claim wizard
@@ -462,6 +479,7 @@ Coordinator retries full transfer on failure.
 | `BLINK` | Claim-wizard "Flash to identify" | Coordinator → Leaf(99) | No |
 | `CFG_PATCH` | Incremental single-field config update | Coordinator → Leaf | Yes |
 | `TS_REQ` | Leaf asking coord for an immediate TS broadcast | Leaf → Coord | No |
+| `RB` | Reboot — coord asks leaf to machine.reset() | Coordinator → Leaf | Yes |
 | `SR` | On demand | Coordinator → Leaf | No |
 | `SRP` | Response to SR | Leaf → Coordinator | No |
 | `ACK` | Response to SC/MO/CFG | Any | — |

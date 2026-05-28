@@ -710,6 +710,23 @@ def _register_lora_handlers(role, fleet_manager=None):
         log.info(f"[LORA] Emergency off from {src}")
     lora_protocol.on("EO", on_emergency_off)
 
+    def on_reboot_request(src, _payload):
+        """Coord → Leaf reboot. Scheduled via the existing dispatcher
+        auto-ACK path (RB is in _ACK_REQUIRED so the lora_protocol
+        layer ACKs before this handler runs); we then sleep briefly
+        to let the ACK propagate to the coord before the radio goes
+        silent, and reset. Registered for both roles so a coord can
+        also be rebooted via RB from another coord in a multi-coord
+        deployment (Phase 6 idea), but in practice today only leaves
+        receive RB."""
+        log.info(f"[LORA] Reboot requested from {src}")
+        import machine, asyncio
+        async def do_reboot():
+            await asyncio.sleep(1)
+            machine.reset()
+        asyncio.create_task(do_reboot())
+    lora_protocol.on("RB", on_reboot_request)
+
     if role == "leaf":
         import time
         _cfg_transfers = {}

@@ -462,6 +462,12 @@ class WebServer:
         if sub == "scenes" and method == "GET":
             return self._json(api.handle_unit_scenes(unit_id))
 
+        if sub == "reboot" and method == "POST":
+            # Per-unit reboot — coord (id=0) reboots itself, leaves
+            # (id=1..8) receive a LoRa RB message and ACK before
+            # actually resetting.
+            return self._json(await api.handle_unit_reboot(unit_id))
+
         return "404 Not Found", "application/json", '{"ok":false,"error":"not found"}'
 
     # ------------------------------------------------------------------

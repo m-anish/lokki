@@ -188,9 +188,45 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
 .rail button:hover, .rail a.rail-link:hover { background:rgba(79,70,229,.10); color:var(--brand); }
 .rail button.active, .rail a.rail-link.active { background:var(--brand); color:#fff; }
 .rail .rail-spacer { flex:1; }                    /* push Settings to the bottom */
+#rail-units { display:flex; flex-direction:column; gap:4px; align-items:center; }
+#rail-units .rail-link.unit-leaf { font-size:1.1em; }
+#rail-units .rail-link.unit-coord { font-size:1.1em; }
 .content { flex:1; min-width:0; }
 .view { display:none; }
 .view.active { display:block; }
+
+/* ── PER-UNIT DETAIL VIEW (UX-2a) ─────────────────────────────── */
+.unit-detail-header { padding:20px 24px 12px; }
+.tab-bar {
+  display:flex; gap:2px; padding:0 24px;
+  border-bottom:1px solid var(--border); background:var(--card);
+  position:sticky; top:56px; z-index:5;
+  overflow-x:auto;
+}
+.tab-bar .tab {
+  border:0; background:transparent; cursor:pointer;
+  padding:10px 16px; font-size:.95em; color:var(--muted);
+  border-bottom:2px solid transparent; transition:all .15s;
+  white-space:nowrap;
+}
+.tab-bar .tab:hover { color:var(--text); background:rgba(79,70,229,.06); }
+.tab-bar .tab.active {
+  color:var(--brand); border-bottom-color:var(--brand);
+  font-weight:600;
+}
+.tab-panels { padding:20px 24px 60px; }
+.tab-panel { display:none; }
+.tab-panel.active { display:block; }
+.tab-stub {
+  color:var(--muted); font-style:italic; padding:24px;
+  background:var(--card); border:1px dashed var(--border); border-radius:var(--radius);
+  text-align:center;
+}
+.unit-detail-actions {
+  margin-top:24px; padding-top:20px;
+  border-top:1px solid var(--border);
+  display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+}
 
 /* Bell + alerts */
 .bell-wrap { position:relative; }
@@ -334,6 +370,10 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
   <aside class="rail">
     <button id="rail-fleet" class="active" title="Fleet" onclick="switchView('fleet')">🌿</button>
     <button id="rail-logs"  title="Logs"  onclick="switchView('logs')">📜</button>
+    <!-- Per-unit detail-page entries injected here at runtime by
+         rebuildSidebarUnits() once /api/fleet is populated. Coord
+         appears first as 🪴, claimed leaves follow as 🍃. -->
+    <div id="rail-units"></div>
     <div class="rail-spacer"></div>
     <a id="rail-settings" class="rail-link" title="Settings — Config Builder" href="/config-builder.html">⚙️</a>
   </aside>
@@ -393,6 +433,40 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
         </div>
         <div class="logs-list" id="logsList"><div class="log-empty">Waiting for events…</div></div>
         <div class="log-stats" id="logStats"></div>
+      </main>
+    </section>
+
+    <!-- ── PER-UNIT DETAIL PAGE (UX-2a) ──────────────────────────
+         Single dynamic view that re-renders for whichever unit the
+         user picks from the sidebar / fleet card. currentUnitId
+         tracks which one is showing; renderUnitView() rebuilds the
+         body each time. Future UX-2b/c will fill in the Channels /
+         Relays / PIRs / Schedule / Scenes / Advanced tabs; for now
+         only Overview has content. -->
+    <section id="view-unit" class="view">
+      <main>
+        <div class="unit-detail-header">
+          <h1 id="unitDetailTitle" style="margin:0 0 4px;font-size:1.6em;font-weight:800">Loading…</h1>
+          <div id="unitDetailSubtitle" style="color:var(--muted);font-size:.95em"></div>
+        </div>
+        <div class="tab-bar" id="unitTabBar">
+          <button class="tab active" data-tab="overview" onclick="switchUnitTab('overview')">Overview</button>
+          <button class="tab"        data-tab="channels" onclick="switchUnitTab('channels')">Channels</button>
+          <button class="tab"        data-tab="relays"   onclick="switchUnitTab('relays')">Relays</button>
+          <button class="tab"        data-tab="pirs"     onclick="switchUnitTab('pirs')">PIRs</button>
+          <button class="tab"        data-tab="schedule" onclick="switchUnitTab('schedule')">Schedule</button>
+          <button class="tab"        data-tab="scenes"   onclick="switchUnitTab('scenes')">Scenes</button>
+          <button class="tab"        data-tab="advanced" onclick="switchUnitTab('advanced')">Advanced</button>
+        </div>
+        <div class="tab-panels">
+          <div id="tab-overview" class="tab-panel active"></div>
+          <div id="tab-channels" class="tab-panel"><p class="tab-stub">Channels editing — coming in UX-2b.</p></div>
+          <div id="tab-relays"   class="tab-panel"><p class="tab-stub">Relays editing — coming in UX-2b.</p></div>
+          <div id="tab-pirs"     class="tab-panel"><p class="tab-stub">PIRs editing — coming in UX-2b.</p></div>
+          <div id="tab-schedule" class="tab-panel"><p class="tab-stub">Schedule visualizer — coming in UX-3.</p></div>
+          <div id="tab-scenes"   class="tab-panel"><p class="tab-stub">Scene editor — coming in UX-3.</p></div>
+          <div id="tab-advanced" class="tab-panel"><p class="tab-stub">Advanced (LoRa, hardware, validation) — coming in UX-2c.</p></div>
+        </div>
       </main>
     </section>
 
@@ -543,7 +617,11 @@ function renderFleet(units) {
     h += `<span class="unit-name">${name}</span>`;
     h += `<span class="unit-role">${roleLabel}</span>`;
     h += `<div style="margin-left:auto;display:flex;gap:8px">`;
-    h += `<button class="btn" onclick="openControlModal(${id},'${onclickName}')">Control</button>`;
+    // "Control" (modal) → "Configure" (detail page). Modal still
+    // works if invoked directly; we'll retire it entirely when UX-2b
+    // moves the manual-override sliders inline on the detail page.
+    h += `<button class="btn" onclick="openUnit(${id})">⚙️ Configure</button>`;
+    h += `<button class="btn" onclick="openControlModal(${id},'${onclickName}')">Quick override</button>`;
     h += `<button class="btn" onclick="reqStatus(${id})">Refresh</button>`;
     h += `</div></div>`;
     h += `<div class="unit-body"><div class="status-grid">`;
@@ -790,6 +868,13 @@ async function load() {
     lastUnclaimed = data.unclaimed || {};
     renderFleet(lastFleet);
     renderUnclaimed(lastUnclaimed);
+    rebuildSidebarUnits();
+    // If we're currently looking at a unit detail page, re-render its
+    // Overview tab too so the live state updates with each poll.
+    if (document.getElementById("view-unit").classList.contains("active")
+        && currentUnitId !== null && currentUnitTab === "overview") {
+      renderUnitView();
+    }
   } catch (e) {
     console.error("load failed:", e);
   } finally {
@@ -1122,8 +1207,203 @@ async function updateStatus() {
 // ============================================================
 function switchView(name) {
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + name));
-  document.querySelectorAll(".rail button").forEach(b => b.classList.toggle("active", b.id === "rail-" + name));
+  // Clear active state from BOTH static rail buttons and dynamic unit
+  // links — the unit-detail view's active state is set in openUnit(),
+  // not here, because the rail entry to highlight depends on which
+  // unit is being viewed.
+  document.querySelectorAll(".rail button, .rail a.rail-link").forEach(b => {
+    b.classList.toggle("active", b.id === "rail-" + name);
+  });
   if (name === "logs") renderLogs();
+}
+
+// ============================================================
+// UX-2a: Per-unit detail page
+// ============================================================
+// Single dynamic view section (`view-unit`) re-renders based on
+// currentUnitId. Sidebar has one link per claimed unit; clicking it
+// (or a fleet card's "Configure" button) calls openUnit(N).
+
+let currentUnitId = null;
+let currentUnitTab = "overview";
+
+function openUnit(unitId) {
+  currentUnitId = unitId;
+  currentUnitTab = "overview";
+  // Toggle to the unit view via switchView's class machinery, then
+  // overlay the unit-specific active state on the rail entry.
+  switchView("unit");
+  document.querySelectorAll("#rail-units .rail-link").forEach(el => {
+    el.classList.toggle("active", el.dataset.unitid == String(unitId));
+  });
+  // Reset all tab buttons to overview (the default landing tab).
+  document.querySelectorAll("#unitTabBar .tab").forEach(t => {
+    t.classList.toggle("active", t.dataset.tab === "overview");
+  });
+  document.querySelectorAll(".tab-panel").forEach(p => {
+    p.classList.toggle("active", p.id === "tab-overview");
+  });
+  renderUnitView();
+}
+
+function switchUnitTab(tab) {
+  currentUnitTab = tab;
+  document.querySelectorAll("#unitTabBar .tab").forEach(t => {
+    t.classList.toggle("active", t.dataset.tab === tab);
+  });
+  document.querySelectorAll(".tab-panel").forEach(p => {
+    p.classList.toggle("active", p.id === "tab-" + tab);
+  });
+  if (tab === "overview") renderUnitView();
+  // Other tabs render placeholders today; UX-2b/c will add real content.
+}
+
+function renderUnitView() {
+  if (currentUnitId == null) return;
+  const u = lastFleet[String(currentUnitId)];
+  const title = document.getElementById("unitDetailTitle");
+  const sub   = document.getElementById("unitDetailSubtitle");
+  const panel = document.getElementById("tab-overview");
+  if (!u) {
+    title.textContent = `Unit ${currentUnitId}`;
+    sub.textContent = "No data yet — waiting for next fleet poll.";
+    panel.innerHTML = '<p class="tab-stub">Loading…</p>';
+    return;
+  }
+  const isCoord = currentUnitId === 0;
+  const name = unitDisplayName(currentUnitId, u);
+  const roleLabel = isCoord ? "Coordinator" : "Leaf";
+  title.textContent = name;
+  const up = u.online ? fmtUptime(u.uptime || 0) : "Offline";
+  const lastSeen = u.last_seen_ago_s !== undefined ? fmtAgoS(u.last_seen_ago_s) : "—";
+  sub.innerHTML =
+    `<span class="unit-role" style="margin-right:8px">${roleLabel}</span>` +
+    `Unit ID ${currentUnitId} · Uptime ${up}` +
+    (isCoord ? "" : ` · Last seen ${lastSeen}`) +
+    (u.rssi != null ? ` · ${signalBarHTML(u.rssi)} ${fmtRssi(u.rssi)}` : "");
+
+  // Body: re-use the fleet-card status sections at a larger scale.
+  let h = '<div class="status-grid">';
+
+  // LED Channels
+  h += `<div class="status-section"><div class="status-label">LED Channels</div>`;
+  h += `<div class="led-indicators">`;
+  const chNames = u.ch_names || [];
+  const chEnabled = u.ch_enabled || [];
+  (u.ch || []).forEach((v, i) => {
+    const label = chNames[i] || `ch${i+1}`;
+    const dim = chEnabled[i] === false ? ' row-disabled' : '';
+    h += `<div class="led-row${dim}"><span class="bswatch" style="${swatchStyle(v)}" title="${label}: ${v}%"></span><span class="led-row-label">${i+1}: ${label}</span><span class="led-row-val">${v}%</span></div>`;
+  });
+  h += `</div></div>`;
+
+  // Relays
+  h += `<div class="status-section"><div class="status-label">Relays</div>`;
+  h += `<div class="relay-indicators">`;
+  const rlNames = u.rl_names || [];
+  const rlEnabled = u.rl_enabled || [];
+  (u.rl || []).forEach((v, i) => {
+    const label = rlNames[i] || `rl${i+1}`;
+    const cls = v ? "on" : "off";
+    const dim = rlEnabled[i] === false ? ' row-disabled' : '';
+    h += `<div class="relay-row${dim}"><span class="relay-ind ${cls}">${v?'ON':'OFF'}</span><span class="led-row-label">${i+1}: ${label}</span></div>`;
+  });
+  h += `</div></div>`;
+
+  // PIR
+  h += `<div class="status-section"><div class="status-label">Motion (PIR)</div>`;
+  h += `<div class="pir-indicators">`;
+  const pirNames = u.pir_names || [];
+  const pirEnabled = u.pir_enabled || [];
+  (u.pir || []).forEach((v, i) => {
+    const label = pirNames[i] || `pir${i+1}`;
+    const cls = v ? "on" : "off";
+    const dim = pirEnabled[i] === false ? ' row-disabled' : '';
+    h += `<div class="pir-row${dim}"><span class="relay-ind ${cls}">${v?'MOTION':'CLEAR'}</span><span class="led-row-label">${i+1}: ${label}</span></div>`;
+  });
+  h += `</div></div>`;
+
+  // Sensors
+  h += `<div class="status-section"><div class="status-label">Sensors</div>`;
+  h += `<div class="sensor-data">`;
+  if (u.ldr != null) {
+    const ldrIcon = u.ldr > 70 ? "☀️" : u.ldr > 40 ? "🌤️" : u.ldr > 10 ? "⛅" : "🌙";
+    h += `<div class="sensor-item">${ldrIcon} Light: <span class="sensor-value">${u.ldr}%</span></div>`;
+  }
+  if (u.rtc_t != null) {
+    const t = u.rtc_t;
+    const tIcon = t >= 55 ? "🔥" : "🌡️";
+    h += `<div class="sensor-item" title="DS3231 die temperature">${tIcon} Chip: <span class="sensor-value">${t.toFixed(1)}°C</span></div>`;
+  }
+  h += `</div></div>`;
+
+  // System
+  h += `<div class="status-section"><div class="status-label">System</div>`;
+  h += `<div style="font-size:.9em">`;
+  h += `<div>Uptime: <b>${up}</b></div>`;
+  h += `<div>Last seen: <b>${lastSeen}</b></div>`;
+  if (!isCoord && u.rssi != null) {
+    h += `<div>Signal: ${signalBarHTML(u.rssi)} <b>${fmtRssi(u.rssi)}</b></div>`;
+  }
+  if (u.err) h += `<div>Errors: <b style="color:#dc2626">${u.err}</b></div>`;
+  if (u.uid) h += `<div style="color:var(--muted);font-size:.85em">Chip UID: <code>${u.uid}</code></div>`;
+  h += `</div></div>`;
+
+  h += `</div>`;   // /status-grid
+
+  // Per-unit actions: reboot + (in UX-2b) manual override sliders inline.
+  h += `<div class="unit-detail-actions">`;
+  h += `<button class="btn" onclick="reqStatus(${currentUnitId})">🔄 Refresh status</button>`;
+  h += `<button class="btn btn-danger" onclick="rebootUnit(${currentUnitId})">⚠️ Reboot ${isCoord ? "coordinator" : "leaf"}</button>`;
+  h += `</div>`;
+
+  panel.innerHTML = h;
+}
+
+function rebuildSidebarUnits() {
+  // Populate the dynamic rail section with one entry per known unit.
+  // Coord first as 🪴, then claimed leaves as 🍃. Unclaimed leaves are
+  // intentionally excluded — the operator interacts with those via
+  // the claim wizard, not a detail page.
+  const container = document.getElementById("rail-units");
+  if (!container) return;
+  let html = "";
+  const ids = Object.keys(lastFleet || {})
+                    .map(s => parseInt(s, 10))
+                    .filter(n => !isNaN(n))
+                    .sort((a, b) => a - b);
+  for (const id of ids) {
+    const u = lastFleet[String(id)];
+    const isCoord = id === 0;
+    const icon = isCoord ? "🪴" : "🍃";
+    const label = isCoord ? "Coordinator" : `Leaf ${id}: ${u.name || "(no name)"}`;
+    const klass = isCoord ? "unit-coord" : "unit-leaf";
+    const activeClass = (currentUnitId === id && document.getElementById("view-unit").classList.contains("active")) ? " active" : "";
+    html += `<a class="rail-link ${klass}${activeClass}" data-unitid="${id}" title="${label.replace(/"/g, '&quot;')}" href="javascript:void(0)" onclick="openUnit(${id})">${icon}</a>`;
+  }
+  container.innerHTML = html;
+}
+
+async function rebootUnit(unitId) {
+  const name = unitId === 0
+    ? "the coordinator"
+    : `Leaf ${unitId} (${(lastFleet[String(unitId)] || {}).name || ""})`;
+  if (!confirm(`Reboot ${name}? Schedule will pause briefly during the reset.`)) return;
+  try {
+    const r = await fetchJSON(`/api/units/${unitId}/reboot`, { method: "POST" });
+    if (r.ok) {
+      if (unitId === 0) {
+        alert("Coordinator rebooting. The page will reload in 12 seconds.");
+        setTimeout(() => window.location.reload(), 12000);
+      } else {
+        alert(`Leaf ${unitId} reboot requested. It will reappear in the Fleet view in ~30 seconds.`);
+      }
+    } else {
+      alert(`Reboot failed: ${r.error || "unknown"}`);
+    }
+  } catch (e) {
+    alert(`Reboot request failed: ${e.message || e}`);
+  }
 }
 
 // ============================================================
@@ -1484,9 +1764,22 @@ window.onclick = e => {
 
 init().then(() => {
   updateClock(); setInterval(updateClock, 1000);
-  // Honour `#logs` (or any future #view) in the URL so the rail in
-  // config-builder.html can hand off to a specific dashboard view.
-  if (window.location.hash === "#logs") switchView("logs");
+  // Honour `#logs` and `#unit-N` in the URL hash so cross-links from
+  // config-builder.html / bookmarks / logs entries / etc. land on the
+  // right view. Unit selection waits until /api/fleet has populated
+  // lastFleet so the rail entry exists; tryOpen retries every 250 ms.
+  const hash = window.location.hash;
+  if (hash === "#logs") switchView("logs");
+  else if (hash.startsWith("#unit-")) {
+    const id = parseInt(hash.slice("#unit-".length), 10);
+    if (!isNaN(id)) {
+      const tryOpen = () => {
+        if (lastFleet && lastFleet[String(id)] !== undefined) openUnit(id);
+        else setTimeout(tryOpen, 250);
+      };
+      tryOpen();
+    }
+  }
   load(); setInterval(load, 15000);
   updateStatus(); setInterval(updateStatus, 30000);
   // Tick "last seen" labels every second — the underlying data only refreshes

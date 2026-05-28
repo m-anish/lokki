@@ -924,3 +924,39 @@ def handle_reboot():
         machine.reset()
     asyncio.create_task(do_reboot())
     return _ok({"rebooting": True})
+
+
+# ------------------------------------------------------------------
+# Per-leaf reboot (UX-2: detail-page button)
+# ------------------------------------------------------------------
+
+async def handle_unit_reboot(unit_id):
+    """POST /api/units/{id}/reboot.
+
+    For id=0 (coord), delegates to handle_reboot() — local reset
+    after a 1 s delay to let the HTTP response flush.
+
+    For id=1..8 (leaf), sends a LoRa RB message and waits for the
+    ACK before returning. The leaf ACKs first, then schedules its
+    own machine.reset() after a 1 s grace period; the ACK timing
+    means the coord knows the leaf received the request before the
+    radio goes silent. Returns 502 on send failure / ACK timeout /
+    leaf-side rejection (which shouldn't happen — RB has no
+    rejectable failure mode — but defensive).
+    """
+    if unit_id == 0:
+        return handle_reboot()
+    if not (1 <= unit_id <= 8):
+        return _err(f"unit_id {unit_id} out of range", 400)
+    seq = lora_protocol.send_reboot(unit_id)
+    if seq is None:
+        return _err(f"Reboot send to unit {unit_id} failed (LoRa not ready?)", 502)
+    ack = await lora_protocol._wait_ack(seq)
+    if ack is None:
+        return _err(f"Reboot to unit {unit_id} timed out — check LoRa link", 502)
+    if not ack.get("ok", True):
+        return _err(
+            f"Leaf rejected reboot: {ack.get('reason', 'unknown')}", 502
+        )
+    log.info(f"[API] Leaf {unit_id} reboot requested via LoRa RB")
+    return _ok({"rebooting": unit_id})
