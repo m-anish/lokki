@@ -62,7 +62,7 @@ Coordinator only. Leaf ignores this block.
 "wifi": {
   "ssid": "MyNetwork",
   "password": "secret",
-  "hostname": "lokki-pagoda"
+  "hostname": "lokki"
 }
 ```
 
@@ -361,7 +361,7 @@ Optional MQTT push. Carried over from existing firmware, unchanged.
   "broker": "192.168.1.100",
   "port": 1883,
   "topic_prefix": "lokki/pagoda",
-  "client_id": "lokki-pagoda"
+  "client_id": "lokki"
 }
 ```
 

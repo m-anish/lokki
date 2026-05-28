@@ -1084,26 +1084,11 @@ async def main():
             if wifi_ok:
                 log.info("[MAIN] WiFi connected")
                 system_status.set_connection_status(wifi=True)
-                # Bring up the Python-side mDNS responder so the
-                # dashboard is reachable as <hostname>.local even on
-                # MicroPython builds that don't compile lwIP's mDNS
-                # responder. network.hostname() was already called in
-                # wifi_connect.connect_wifi — leave it; if lwIP IS
-                # serving mDNS, the OS resolver will see both answers
-                # and dedupe.
-                try:
-                    import network as _net
-                    from comms.mdns_responder import mdns_responder as _mdns
-                    sta_ip = _net.WLAN(_net.STA_IF).ifconfig()[0]
-                    hostname = cfg.get("wifi").get("hostname", "lokki")
-                    if _mdns.init(hostname, sta_ip):
-                        # Task is started later in the task list so it
-                        # shares the same lifecycle as the other
-                        # network tasks. We just initialised the socket
-                        # here so failure is visible in the boot log.
-                        pass
-                except Exception as e:
-                    log.warn(f"[MAIN] mDNS responder init failed: {e}")
+                # mDNS: handled entirely by lwIP's built-in responder.
+                # network.hostname() in wifi_connect.connect_wifi() is
+                # what tells lwIP what to advertise; the Python-side
+                # fallback we used to ship was redundant on every build
+                # we've tested and has been removed.
                 # NTP sync — enabled by default, can be disabled in config
                 tz_config = cfg.get("timezone") or {}
                 ntp_enabled = tz_config.get("ntp_enabled", True)
@@ -1203,17 +1188,6 @@ async def main():
                 log.info("[MAIN] Web server task added")
             except Exception as e:
                 log.error(f"[MAIN] Web server init failed: {e}")
-            # mDNS responder — only start if init succeeded above.
-            # The init call may have failed (lwIP without IGMP, bind
-            # contention) and printed a WARN already; in that case the
-            # socket is None and run() returns immediately.
-            try:
-                from comms.mdns_responder import mdns_responder
-                if mdns_responder._sock is not None:
-                    tasks.append(asyncio.create_task(mdns_responder.run()))
-                    log.info("[MAIN] mDNS responder task added")
-            except Exception as e:
-                log.error(f"[MAIN] mDNS responder task add failed: {e}")
     else:
         # Leaf: always start HB broadcast + event forwarder. If the
         # transport isn't ready, lora_protocol.send_heartbeat/

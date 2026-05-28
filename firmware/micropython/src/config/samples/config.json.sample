@@ -16,7 +16,7 @@
   "wifi": {
     "ssid": "YourNetworkName",
     "password": "YourPassword",
-    "hostname": "lokki-pagoda"
+    "hostname": "lokki"
   },
 
   "lora": {
@@ -183,6 +183,6 @@
     "broker": "broker.hivemq.com",
     "port": 1883,
     "topic_prefix": "lokki/pagoda",
-    "client_id": "lokki-pagoda"
+    "client_id": "lokki"
   }
 }

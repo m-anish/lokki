@@ -21,13 +21,12 @@ def connect_wifi(timeout=10, max_attempts=3):
     password = wifi_cfg.get("password", "")
     hostname = wifi_cfg.get("hostname", "lokki")
 
-    # Set the hostname BEFORE activating the interface — on the RP2 port,
-    # some lwIP builds latch the netif name at active() time and ignore
-    # later changes, which is why we previously saw no <hostname>.local
-    # response on the LAN. Whether this also starts an mDNS responder
-    # depends on whether LWIP_MDNS_RESPONDER was compiled into the
-    # firmware; if it wasn't, we'll need a Python-side responder (see the
-    # TODO in comms/ — option 2 of the mDNS plan).
+    # Set the hostname BEFORE activating the interface — some lwIP
+    # builds latch the netif name at active() time and ignore later
+    # changes. This also activates lwIP's built-in mDNS responder on
+    # builds that compiled LWIP_MDNS_RESPONDER (every RP2 build we've
+    # tested in the field), making the dashboard reachable at
+    # <hostname>.local without any further setup.
     try:
         network.hostname(hostname)
         log.info(f"[WIFI] Hostname set to '{hostname}' (try {hostname}.local)")
