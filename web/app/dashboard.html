@@ -228,6 +228,63 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
   display:flex; gap:8px; flex-wrap:wrap; align-items:center;
 }
 
+/* ── INLINE OVERRIDE / CONFIG ROWS (UX-2b) ─────────────────────── */
+.tab-section {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:var(--radius); padding:16px 20px;
+  margin-bottom:14px;
+}
+.tab-section-title {
+  font-size:.8em; font-weight:600; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.05em;
+  margin:0 0 12px;
+}
+.tab-section-hint {
+  font-size:.85em; color:var(--muted); margin:6px 0 14px;
+}
+.override-row {
+  display:flex; align-items:center; gap:12px;
+  padding:8px 0; border-bottom:1px solid var(--border);
+}
+.override-row:last-child { border-bottom:0; }
+.override-row.row-disabled { opacity:.45; }
+.override-row .ov-swatch {
+  width:18px; height:18px; border-radius:50%;
+  border:1px solid #475569; flex-shrink:0;
+}
+.override-row .ov-label {
+  min-width:140px; font-size:.9em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.override-row .ov-slider {
+  flex:1; min-width:120px;
+}
+.override-row .ov-value {
+  min-width:48px; text-align:right;
+  font-variant-numeric:tabular-nums; font-size:.9em;
+  color:var(--muted);
+}
+.override-row .ov-buttons {
+  display:flex; gap:6px;
+}
+.override-row .ov-buttons .btn {
+  padding:4px 10px; font-size:.85em;
+}
+.relay-toggle-row {
+  display:flex; align-items:center; gap:12px;
+  padding:10px 0; border-bottom:1px solid var(--border);
+}
+.relay-toggle-row:last-child { border-bottom:0; }
+.relay-toggle-row.row-disabled { opacity:.45; }
+.config-readonly {
+  font-size:.85em; color:var(--muted);
+  margin-top:4px;
+}
+.config-readonly code {
+  background:var(--bg); border:1px solid var(--border);
+  border-radius:4px; padding:1px 5px; font-size:.95em;
+}
+
 /* Bell + alerts */
 .bell-wrap { position:relative; }
 .bell-btn {
@@ -1259,9 +1316,289 @@ function switchUnitTab(tab) {
   document.querySelectorAll(".tab-panel").forEach(p => {
     p.classList.toggle("active", p.id === "tab-" + tab);
   });
-  if (tab === "overview") renderUnitView();
-  // Other tabs render placeholders today; UX-2b/c will add real content.
+  // Dispatch to the per-tab renderer. Overview re-uses live fleet
+  // state. Channels/Relays/PIRs fetch the unit's config (cached) so
+  // they can show enabled/default/time-window info alongside the
+  // live state — both come from different /api endpoints.
+  if      (tab === "overview")  renderUnitView();
+  else if (tab === "channels")  renderChannelsTab();
+  else if (tab === "relays")    renderRelaysTab();
+  else if (tab === "pirs")      renderPirsTab();
+  // schedule, scenes, advanced — placeholders until UX-2c / UX-3.
 }
+
+// ============================================================
+// UX-2b: unit-config cache + Channels / Relays / PIRs tabs
+// ============================================================
+// Per-unit config (from /api/units/{id}/config) is fetched on
+// demand and cached for 60 s. Bypassed via `force` after any
+// inline edit, so the next render reflects the leaf's actual
+// state. Coord uses live config; leaves use the coord's cached
+// /leaf-configs/N.json copy — same shape, same endpoint.
+
+const _unitConfigCache = {};   // {unitId: {cfg, ts}}
+
+async function getUnitConfig(unitId, force=false) {
+  const cached = _unitConfigCache[unitId];
+  if (cached && !force && (Date.now() - cached.ts < 60000)) {
+    return cached.cfg;
+  }
+  try {
+    const r = await fetchJSON(`/api/units/${unitId}/config`);
+    if (r.ok) {
+      _unitConfigCache[unitId] = { cfg: r.data, ts: Date.now() };
+      return r.data;
+    }
+  } catch (e) {
+    console.error("getUnitConfig failed:", e);
+  }
+  return null;
+}
+
+// ---- Channels tab ----
+
+async function renderChannelsTab() {
+  if (currentUnitId == null) return;
+  const panel = document.getElementById("tab-channels");
+  panel.innerHTML = '<p class="tab-stub">Loading…</p>';
+  const cfg = await getUnitConfig(currentUnitId);
+  if (!cfg) {
+    panel.innerHTML = '<p class="tab-stub">Could not load config — try Refresh.</p>';
+    return;
+  }
+  if (cfg.source === "none") {
+    panel.innerHTML = '<p class="tab-stub">No config cached on coord for this leaf yet. Push a config via the Config Builder first.</p>';
+    return;
+  }
+  const live = lastFleet[String(currentUnitId)] || {};
+  const channels = cfg.led_channels || [];
+
+  let h = '';
+
+  // Section 1: Inline manual override sliders. Replaces the old
+  // Control modal entirely for channels. Apply/Clear buttons per
+  // row use the existing /api/units/{id}/manual endpoint.
+  h += '<div class="tab-section">';
+  h += '<h3 class="tab-section-title">Manual Override</h3>';
+  h += '<div class="tab-section-hint">Drag a slider, click Apply to push the value to this leaf over LoRa. Manual overrides win against the schedule until you Clear All. Fade defaults to 500 ms.</div>';
+  for (let i = 1; i <= 8; i++) {
+    const ch = channels.find(c => c.id === i);
+    const enabled = ch && ch.enabled;
+    const name = ch && ch.name ? ch.name : `Channel ${i}`;
+    const currentDuty = (live.ch || [])[i-1] || 0;
+    const rowCls = enabled ? '' : ' row-disabled';
+    h += `<div class="override-row${rowCls}">`;
+    h += `<span class="ov-swatch" style="${swatchStyle(currentDuty)}"></span>`;
+    h += `<span class="ov-label">${i}: ${_escape(name)}</span>`;
+    h += `<input type="range" class="ov-slider" id="ov-ch-${i}" min="0" max="100" value="${currentDuty}" `;
+    h += `oninput="document.getElementById('ov-ch-val-${i}').textContent = this.value + '%'" `;
+    h += enabled ? '' : 'disabled ';
+    h += `/>`;
+    h += `<span class="ov-value" id="ov-ch-val-${i}">${currentDuty}%</span>`;
+    h += `<span class="ov-buttons">`;
+    if (enabled) {
+      h += `<button class="btn" onclick="applyChannelOverride(${i})">Apply</button>`;
+    }
+    h += `</span>`;
+    h += `</div>`;
+  }
+  h += '<div style="margin-top:12px;text-align:right">';
+  h += `<button class="btn btn-danger" onclick="clearAllOverrides(${currentUnitId})">Clear all overrides</button>`;
+  h += '</div>';
+  h += '</div>';
+
+  // Section 2: Read-only config view. Inline editing of these
+  // fields lands in UX-2c via CFG_PATCH.
+  h += '<div class="tab-section">';
+  h += '<h3 class="tab-section-title">Configuration (read-only — inline editing coming in UX-2c)</h3>';
+  for (let i = 1; i <= 8; i++) {
+    const ch = channels.find(c => c.id === i) || {};
+    const enabled = ch.enabled === true;
+    const rowCls = enabled ? '' : ' row-disabled';
+    h += `<div class="config-row${rowCls}" style="padding:10px 0;border-bottom:1px solid var(--border)">`;
+    h += `<div><strong>${i}: ${_escape(ch.name || `Channel ${i}`)}</strong>`;
+    h += enabled ? ' <span style="color:var(--green);font-size:.85em">enabled</span>' : ' <span class="ov-value">disabled</span>';
+    h += `</div>`;
+    if (ch.gpio_pin !== undefined) {
+      h += `<div class="config-readonly">GPIO <code>${ch.gpio_pin}</code> · default duty <code>${ch.default_duty_percent ?? 0}%</code></div>`;
+    }
+    const tw = ch.time_windows || [];
+    if (tw.length) {
+      h += `<div class="config-readonly">Time windows: ${tw.map(w => `<code>${_escape(w.start)}–${_escape(w.end)} @ ${w.duty_percent}%${w.fade_ms ? ' fade ' + w.fade_ms + 'ms' : ''}</code>`).join(' · ')}</div>`;
+    }
+    h += `</div>`;
+  }
+  h += '</div>';
+
+  panel.innerHTML = h;
+}
+
+async function applyChannelOverride(channelId) {
+  const slider = document.getElementById(`ov-ch-${channelId}`);
+  if (!slider) return;
+  const value = parseInt(slider.value, 10);
+  try {
+    const r = await fetchJSON(`/api/units/${currentUnitId}/manual`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ch: [[channelId, value]],
+        rl: [],
+        fade_ms: 500,
+        revert_s: 0,
+      }),
+    });
+    if (!r.ok) alert(`Override failed: ${r.error || 'unknown'}`);
+    else setTimeout(load, 800);   // pull fresh fleet state to confirm
+  } catch (e) {
+    alert(`Override failed: ${e.message || e}`);
+  }
+}
+
+async function clearAllOverrides(unitId) {
+  if (!confirm('Clear all manual overrides on this unit? Schedule resumes immediately.')) return;
+  try {
+    const r = await fetchJSON(`/api/units/${unitId}/manual`, { method: 'DELETE' });
+    if (!r.ok) alert(`Clear failed: ${r.error || 'unknown'}`);
+    else setTimeout(load, 800);
+  } catch (e) {
+    alert(`Clear failed: ${e.message || e}`);
+  }
+}
+
+// ---- Relays tab ----
+
+async function renderRelaysTab() {
+  if (currentUnitId == null) return;
+  const panel = document.getElementById("tab-relays");
+  panel.innerHTML = '<p class="tab-stub">Loading…</p>';
+  const cfg = await getUnitConfig(currentUnitId);
+  if (!cfg) {
+    panel.innerHTML = '<p class="tab-stub">Could not load config — try Refresh.</p>';
+    return;
+  }
+  const live = lastFleet[String(currentUnitId)] || {};
+  const relays = cfg.relays || [];
+
+  let h = '';
+
+  // Manual override section
+  h += '<div class="tab-section">';
+  h += '<h3 class="tab-section-title">Manual Override</h3>';
+  h += '<div class="tab-section-hint">Toggle a relay to push the new state over LoRa. Manual overrides win against the schedule until cleared.</div>';
+  for (let i = 1; i <= 2; i++) {
+    const r = relays.find(x => x.id === i);
+    const enabled = r && r.enabled;
+    const name = r && r.name ? r.name : `Relay ${i}`;
+    const state = (live.rl || [])[i-1] ? 'on' : 'off';
+    const rowCls = enabled ? '' : ' row-disabled';
+    h += `<div class="relay-toggle-row${rowCls}">`;
+    h += `<span class="relay-ind ${state}">${state.toUpperCase()}</span>`;
+    h += `<span style="flex:1">${i}: ${_escape(name)}</span>`;
+    if (enabled) {
+      h += `<button class="btn" onclick="applyRelayOverride(${i}, 'on')">Turn ON</button>`;
+      h += `<button class="btn" onclick="applyRelayOverride(${i}, 'off')">Turn OFF</button>`;
+    }
+    h += `</div>`;
+  }
+  h += '<div style="margin-top:12px;text-align:right">';
+  h += `<button class="btn btn-danger" onclick="clearAllOverrides(${currentUnitId})">Clear all overrides</button>`;
+  h += '</div>';
+  h += '</div>';
+
+  // Read-only config section
+  h += '<div class="tab-section">';
+  h += '<h3 class="tab-section-title">Configuration (read-only — inline editing coming in UX-2c)</h3>';
+  for (let i = 1; i <= 2; i++) {
+    const r = relays.find(x => x.id === i) || {};
+    const enabled = r.enabled === true;
+    const rowCls = enabled ? '' : ' row-disabled';
+    h += `<div class="config-row${rowCls}" style="padding:10px 0;border-bottom:1px solid var(--border)">`;
+    h += `<div><strong>${i}: ${_escape(r.name || `Relay ${i}`)}</strong>`;
+    h += enabled ? ' <span style="color:var(--green);font-size:.85em">enabled</span>' : ' <span class="ov-value">disabled</span>';
+    h += `</div>`;
+    if (r.gpio_pin !== undefined) {
+      h += `<div class="config-readonly">GPIO <code>${r.gpio_pin}</code> · default <code>${r.default_state || 'off'}</code></div>`;
+    }
+    const tw = r.time_windows || [];
+    if (tw.length) {
+      h += `<div class="config-readonly">Time windows: ${tw.map(w => `<code>${_escape(w.start)}–${_escape(w.end)} → ${_escape(w.state)}</code>`).join(' · ')}</div>`;
+    }
+    h += `</div>`;
+  }
+  h += '</div>';
+
+  panel.innerHTML = h;
+}
+
+async function applyRelayOverride(relayId, state) {
+  try {
+    const r = await fetchJSON(`/api/units/${currentUnitId}/manual`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ch: [],
+        rl: [[relayId, state]],
+        revert_s: 0,
+      }),
+    });
+    if (!r.ok) alert(`Override failed: ${r.error || 'unknown'}`);
+    else setTimeout(load, 800);
+  } catch (e) {
+    alert(`Override failed: ${e.message || e}`);
+  }
+}
+
+// ---- PIRs tab ----
+
+async function renderPirsTab() {
+  if (currentUnitId == null) return;
+  const panel = document.getElementById("tab-pirs");
+  panel.innerHTML = '<p class="tab-stub">Loading…</p>';
+  const cfg = await getUnitConfig(currentUnitId);
+  if (!cfg) {
+    panel.innerHTML = '<p class="tab-stub">Could not load config — try Refresh.</p>';
+    return;
+  }
+  const live = lastFleet[String(currentUnitId)] || {};
+  const pirs = cfg.pir || [];
+
+  let h = '<div class="tab-section">';
+  h += '<h3 class="tab-section-title">PIR Sensors (read-only — inline editing coming in UX-2c)</h3>';
+  h += '<div class="tab-section-hint">PIRs are inputs — they have no manual override. Live state shows current motion detection; configuration shows what action fires on each transition.</div>';
+  for (let i = 1; i <= 4; i++) {
+    const p = pirs.find(x => x.id === i);
+    const enabled = p && p.enabled;
+    const name = p && p.name ? p.name : `PIR ${i}`;
+    const liveState = (live.pir || [])[i-1] ? 'MOTION' : 'CLEAR';
+    const rowCls = enabled ? '' : ' row-disabled';
+    h += `<div class="config-row${rowCls}" style="padding:12px 0;border-bottom:1px solid var(--border)">`;
+    h += `<div style="display:flex;align-items:center;gap:10px">`;
+    h += `<span class="relay-ind ${enabled && (live.pir || [])[i-1] ? 'on' : 'off'}">${liveState}</span>`;
+    h += `<strong>${i}: ${_escape(name)}</strong>`;
+    h += enabled ? ' <span style="color:var(--green);font-size:.85em">enabled</span>' : ' <span class="ov-value">disabled</span>';
+    h += `</div>`;
+    if (p && p.gpio_pin !== undefined) {
+      h += `<div class="config-readonly">GPIO <code>${p.gpio_pin}</code> · vacancy timeout <code>${p.vacancy_timeout_s ?? 60}s</code></div>`;
+    }
+    if (p && p.on_motion) {
+      const m = p.on_motion;
+      let desc = `action=<code>${_escape(m.action)}</code>`;
+      if (m.action === 'set_scene' && m.scene_name) desc += ` scene=<code>${_escape(m.scene_name)}</code>`;
+      if (m.action === 'set_led_channels') desc += ` channels=<code>${JSON.stringify(m.channels)}</code> duty=<code>${m.duty_percent}%</code>${m.fade_ms ? ' fade=<code>'+m.fade_ms+'ms</code>' : ''}`;
+      if (m.action === 'set_relay') desc += ` relay=<code>${m.relay_id}</code> state=<code>${_escape(m.state)}</code>`;
+      h += `<div class="config-readonly">on_motion: ${desc}</div>`;
+    }
+    if (p && p.on_vacancy) {
+      const v = p.on_vacancy;
+      h += `<div class="config-readonly">on_vacancy: action=<code>${_escape(v.action)}</code></div>`;
+    }
+    h += `</div>`;
+  }
+  h += '</div>';
+  panel.innerHTML = h;
+}
+
 
 function renderUnitView() {
   if (currentUnitId == null) return;
