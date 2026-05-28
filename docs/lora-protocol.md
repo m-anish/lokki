@@ -193,19 +193,23 @@ This closes the worst-case race where the coord's LoRa init fails at boot, NTP s
 ---
 
 ### 3.3 `PIR` — PIR Event
-**Direction:** Leaf → Coordinator  
-**Trigger:** On PIR state change (motion detected or vacancy)  
+**Direction:** Leaf → Coordinator
+**Trigger:** PIR state transitions (vacant→motion at the moment of motion, motion→vacant after `vacancy_timeout_s` of no motion). Fired by `pir_manager._broadcast_event` alongside the local action handler — same trigger point so dashboard sees the transition at the same instant the leaf acts on it.
 **ACK required:** No
 
 ```json
 {
   "s": 2, "d": 0, "t": "PIR", "seq": 7,
   "p": {
-    "id": 1,          // PIR id from config
-    "state": "motion"         // "motion" | "vacancy"
+    "id": 1,                  // PIR id from config (1..4)
+    "state": "motion"         // "motion" | "vacant"
   }
 }
 ```
+
+Coord-side handler (in `_register_lora_handlers`): updates `fleet_manager.get(leaf_id)["pir"][id-1]` so the dashboard's Motion (PIR) column reflects the transition on the next `/api/fleet` poll (within 15 s), AND pushes an INFO event tagged `pir` to the event bus so the Logs view shows the motion-activity stream across the whole fleet.
+
+Without this real-time event, the dashboard would only see PIR state via the periodic HB (every ~30 s) — meaning a motion event in the first 29 s of an HB cycle would be invisible until the next HB.
 
 ---
 

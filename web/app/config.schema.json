@@ -145,7 +145,13 @@
           "on_vacancy": {
             "type": "object",
             "properties": {
-              "action": { "type": "string", "enum": ["revert_to_schedule","set_scene","set_led_channels","set_relay"] }
+              "action":       { "type": "string", "enum": ["revert_to_schedule","set_scene","set_led_channels","set_relay"] },
+              "scene_name":   { "type": "string" },
+              "channels":     { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 8 } },
+              "duty_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+              "fade_ms":      { "type": "integer", "minimum": 0 },
+              "relay_id":     { "type": "integer", "minimum": 1, "maximum": 2 },
+              "state":        { "type": "string", "enum": ["on","off"] }
             }
           }
         }

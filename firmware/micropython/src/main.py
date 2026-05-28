@@ -52,12 +52,18 @@ _LORA_DEFERRED_MAX_TRIES  = 3
 # Translates config on_motion / on_vacancy actions into arbiter calls
 # ------------------------------------------------------------------
 
-def _build_pir_handler(action_cfg, scenes_by_name):
+def _build_pir_handler(action_cfg, scenes_by_name, trigger_label):
+    """Build the closure that fires when a PIR transitions in
+    `trigger_label` direction (`"motion"` or `"vacancy"`). Logs at
+    INFO every time the handler runs so operators can see exactly
+    what was triggered and how it was acted on — previously these
+    fired silently, making debugging "did the PIR even see motion?"
+    a serial-console problem."""
     act = action_cfg.get("action", "revert_to_schedule")
 
     if act == "revert_to_schedule":
         def handler(pir_id):
-            # Clear PIR state for all outputs — schedule takes over
+            log.info(f"[PIR] pir{pir_id} {trigger_label} → revert_to_schedule")
             priority_arbiter.clear_all_pir()
         return handler
 
@@ -66,7 +72,13 @@ def _build_pir_handler(action_cfg, scenes_by_name):
         def handler(pir_id):
             scene = scenes_by_name.get(scene_name)
             if scene:
+                log.info(f"[PIR] pir{pir_id} {trigger_label} → set_scene('{scene_name}')")
                 priority_arbiter.apply_scene(scene)
+            else:
+                log.warn(
+                    f"[PIR] pir{pir_id} {trigger_label} → set_scene('{scene_name}'): "
+                    f"scene not found in config (have: {list(scenes_by_name.keys())})"
+                )
         return handler
 
     if act == "set_led_channels":
@@ -74,6 +86,10 @@ def _build_pir_handler(action_cfg, scenes_by_name):
         duty = action_cfg.get("duty_percent", 100)
         fade = action_cfg.get("fade_ms", 0)
         def handler(pir_id):
+            log.info(
+                f"[PIR] pir{pir_id} {trigger_label} → set_led_channels "
+                f"channels={channels} duty={duty}% fade={fade}ms"
+            )
             for cid in channels:
                 priority_arbiter.set_pir_channel(cid, duty, fade_ms=fade)
         return handler
@@ -82,23 +98,39 @@ def _build_pir_handler(action_cfg, scenes_by_name):
         relay_id = action_cfg.get("relay_id")
         state = action_cfg.get("state", "on")
         def handler(pir_id):
-            if relay_id is not None:
-                priority_arbiter.set_pir_relay(relay_id, state)
+            if relay_id is None:
+                log.warn(f"[PIR] pir{pir_id} {trigger_label} → set_relay: relay_id missing in config")
+                return
+            log.info(f"[PIR] pir{pir_id} {trigger_label} → set_relay({relay_id}={state})")
+            priority_arbiter.set_pir_relay(relay_id, state)
         return handler
 
-    return lambda pir_id: None
+    def _noop(pir_id):
+        log.warn(f"[PIR] pir{pir_id} {trigger_label} → unknown action '{act}', ignored")
+    return _noop
 
 
 def _setup_pir_handlers(pir_cfg, scenes):
     scenes_by_name = {s["name"]: s for s in scenes}
+    registered = 0
     for p in pir_cfg:
         if not p.get("enabled", False):
             continue
         pid = p["id"]
-        on_motion_handler = _build_pir_handler(p.get("on_motion", {}), scenes_by_name)
-        on_vacancy_handler = _build_pir_handler(p.get("on_vacancy", {}), scenes_by_name)
+        on_motion_cfg  = p.get("on_motion",  {}) or {}
+        on_vacancy_cfg = p.get("on_vacancy", {}) or {}
+        on_motion_handler  = _build_pir_handler(on_motion_cfg,  scenes_by_name, "motion")
+        on_vacancy_handler = _build_pir_handler(on_vacancy_cfg, scenes_by_name, "vacancy")
         pir_manager.on_motion(pid, on_motion_handler)
         pir_manager.on_vacancy(pid, on_vacancy_handler)
+        log.info(
+            f"[PIR] pir{pid} '{p.get('name', '')}' handlers wired: "
+            f"on_motion={on_motion_cfg.get('action', 'revert_to_schedule')}, "
+            f"on_vacancy={on_vacancy_cfg.get('action', 'revert_to_schedule')}"
+        )
+        registered += 1
+    if registered == 0 and pir_cfg:
+        log.info(f"[PIR] {len(pir_cfg)} PIR entries in config — none enabled, no handlers wired")
 
 
 # ------------------------------------------------------------------
@@ -546,6 +578,35 @@ def _register_lora_handlers(role, fleet_manager=None):
             except Exception:
                 pass
         lora_protocol.on("ERR", on_remote_error)
+
+        # PIR_EV: leaf reports a motion/vacancy transition the moment
+        # it happens. The dashboard's `pir` array is also updated via
+        # the periodic HB (every ~30 s), but events lag that
+        # cadence — pushing PIR_EV into the event bus + bumping
+        # fleet_manager's per-leaf pir array gives near-realtime
+        # feedback on the Motion (PIR) column of the fleet view.
+        def on_pir_event(src, payload):
+            pid = payload.get("id")
+            st  = payload.get("state")     # "motion" | "vacancy"
+            if not isinstance(pid, int) or pid < 1 or pid > 4:
+                log.warn(f"[LORA] PIR_EV from {src} ignored: bad id={pid!r}")
+                return
+            # Update fleet_manager's cached pir array so the dashboard
+            # sees the transition immediately on its next /api/fleet
+            # poll (rather than waiting for the next HB to refresh
+            # the array).
+            u = fleet_manager.get(src)
+            if u is not None and isinstance(u.get("pir"), list) and 1 <= pid <= 4:
+                u["pir"][pid - 1] = 1 if st == "motion" else 0
+            # Also surface as a tagged event so the Logs view shows
+            # the activity stream of motion events across the fleet.
+            event_bus.push(
+                "INFO",
+                f"pir{pid} {st}",
+                src=src, tag="pir",
+            )
+            log.info(f"[LORA] PIR_EV from unit {src}: pir{pid} → {st}")
+        lora_protocol.on("PIR", on_pir_event)
 
     # Fitter for ERR: trim `msg` if the envelope would overflow. Drops about
     # 8 B at a time until it fits, leaving level/ts/sq intact for correlation.

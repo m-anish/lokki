@@ -40,6 +40,10 @@ class PIRSensor:
                     self._last_motion_ms = time.ticks_ms()
                     if self._state == self.VACANT:
                         self._state = self.MOTION
+                        log.info(
+                            f"[PIR] pir{self.pir_id} (GPIO{self.gpio_pin}): "
+                            f"VACANT → MOTION"
+                        )
                         if self._on_motion:
                             self._on_motion(self.pir_id)
             else:
@@ -50,6 +54,10 @@ class PIRSensor:
                     ) // 1000
                     if elapsed_s >= self.vacancy_timeout_s:
                         self._state = self.VACANT
+                        log.info(
+                            f"[PIR] pir{self.pir_id} (GPIO{self.gpio_pin}): "
+                            f"MOTION → VACANT (after {elapsed_s}s)"
+                        )
                         if self._on_vacancy:
                             self._on_vacancy(self.pir_id)
 
@@ -69,12 +77,34 @@ class PIRManager:
     def on_vacancy(self, pir_id, callback):
         self._vacancy_callbacks[pir_id] = callback
 
+    def _broadcast_event(self, pir_id, state):
+        """Forward a PIR transition to the coordinator over LoRa so the
+        dashboard sees motion/vacancy events near-realtime instead of
+        waiting for the next HB (up to 30 s of lag). Lazy-imported to
+        keep this module loadable in isolation (unit tests / mocked
+        environments) and silently no-ops on the coord (where role
+        != leaf) and when LoRa isn't ready (the send-gate in
+        lora_protocol.send drops it). state is the string 'motion' or
+        'vacancy'."""
+        try:
+            from comms.lora_protocol import lora_protocol
+            from core.config_manager import config_manager
+            if config_manager.role != "leaf":
+                return
+            lora_protocol.send_pir_event(pir_id, state)
+        except Exception as e:
+            # Never let a forwarding failure break the local PIR
+            # action path. The forward is best-effort.
+            log.debug(f"[PIR] PIR_EV forward failed: {e}")
+
     def _motion_fired(self, pir_id):
+        self._broadcast_event(pir_id, PIRSensor.MOTION)
         cb = self._motion_callbacks.get(pir_id)
         if cb:
             cb(pir_id)
 
     def _vacancy_fired(self, pir_id):
+        self._broadcast_event(pir_id, PIRSensor.VACANT)
         cb = self._vacancy_callbacks.get(pir_id)
         if cb:
             cb(pir_id)

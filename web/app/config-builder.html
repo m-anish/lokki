@@ -1309,11 +1309,26 @@ const PIR_GPIO  = [6, 7, 8, 9];
 const RELAY_GPIO = [10, 11];
 const LED_GPIOS  = [16, 17, 18, 19, 22, 15, 14, 13];
 
+// Default vacancy_timeout aligned with the firmware sample (180 s).
+// Per-action shape carries every possible sub-field so syncPIRField
+// can write into a stable location regardless of action; buildConfig
+// emits only the fields relevant to the chosen action.
+function _defaultPirActionState() {
+  return {
+    action: 'revert_to_schedule',
+    scene_name: '',
+    channels: [],
+    duty_percent: 100,
+    fade_ms: 0,
+    relay_id: 1,
+    state: 'on',
+  };
+}
 let pirState = PIR_GPIO.map((gpio, i) => ({
   id: i+1, name: `Motion Sensor ${i+1}`, gpio_pin: gpio,
-  enabled: false, vacancy_timeout_s: 300,
-  on_motion: {action: 'revert_to_schedule'},
-  on_vacancy: {action: 'revert_to_schedule'},
+  enabled: false, vacancy_timeout_s: 180,
+  on_motion:  _defaultPirActionState(),
+  on_vacancy: _defaultPirActionState(),
 }));
 
 let relayState = RELAY_GPIO.map((gpio, i) => ({
@@ -1444,46 +1459,74 @@ function renderPIR() {
 }
 
 function pirActionUI(pirIdx, key, actionObj) {
+  // Action picker. Identical for on_motion and on_vacancy.
   const sel = PIR_ACTIONS.map(a =>
     `<option value="${a.v}" ${a.v===actionObj.action?'selected':''}>${a.l}</option>`
   ).join('');
+
+  // Extra fields keyed on the selected action. Previously this block
+  // was gated behind `if (key === 'on_motion')`, which silently
+  // dropped every parameter the user could possibly want to set when
+  // configuring a vacancy-side action. set_relay had no UI at all.
+  // Now: extras render for both keys, and set_relay has its own
+  // picker. Field data-f names include the key (on_motion_X /
+  // on_vacancy_X) so syncPIRField can route into the right action
+  // sub-object.
   let extra = '';
-  if (key === 'on_motion') {
-    if (actionObj.action === 'set_scene') {
-      extra = `<div class="field" style="margin-top:6px">
-        <label class="field-label">Scene name</label>
-        <input type="text" value="${actionObj.scene_name||''}"
-               data-pir="${pirIdx}" data-f="${key}_scene_name" placeholder="e.g. motion_bright" />
-      </div>`;
-    } else if (actionObj.action === 'set_led_channels') {
-      extra = `<div style="margin-top:6px">
+  if (actionObj.action === 'set_scene') {
+    extra = `<div class="field" style="margin-top:6px">
+      <label class="field-label">Scene name</label>
+      <input type="text" value="${(actionObj.scene_name||'').replace(/"/g,'&quot;')}"
+             data-pir="${pirIdx}" data-f="${key}_scene_name" placeholder="e.g. motion_bright" />
+      <div class="field-hint">Must match a scene name in the <code>scenes</code> section.</div>
+    </div>`;
+  } else if (actionObj.action === 'set_led_channels') {
+    extra = `<div style="margin-top:6px">
+      <div class="field">
+        <label class="field-label">Which channels</label>
+        <input type="text" value="${(actionObj.channels||[]).join(', ')}"
+               data-pir="${pirIdx}" data-f="${key}_channels" placeholder="1, 2" />
+        <div class="field-hint">Comma-separated channel IDs (1–8, e.g. 1, 3)</div>
+      </div>
+      <div class="grid2">
         <div class="field">
-          <label class="field-label">Which channels</label>
-          <input type="text" value="${(actionObj.channels||[]).join(', ')}"
-                 data-pir="${pirIdx}" data-f="${key}_channels" placeholder="1, 2" />
-          <div class="field-hint">Comma-separated channel IDs (1–8, e.g. 1, 3)</div>
-        </div>
-        <div class="grid2">
-          <div class="field">
-            <label class="field-label">Brightness</label>
-            <div class="range-field">
-              <input type="range" min="0" max="100" value="${actionObj.duty_percent||100}"
-                     data-pir="${pirIdx}" data-f="${key}_duty_percent" />
-              <span class="range-val">${actionObj.duty_percent||100}%</span>
-            </div>
-          </div>
-          <div class="field">
-            <label class="field-label">Fade duration</label>
-            <div style="display:flex;align-items:center;gap:6px">
-              <input type="number" min="0" value="${actionObj.fade_ms||0}"
-                     data-pir="${pirIdx}" data-f="${key}_fade_ms" style="width:80px" />
-              <span style="font-size:.82em;color:var(--muted)">ms</span>
-            </div>
+          <label class="field-label">Brightness</label>
+          <div class="range-field">
+            <input type="range" min="0" max="100" value="${actionObj.duty_percent||100}"
+                   data-pir="${pirIdx}" data-f="${key}_duty_percent" />
+            <span class="range-val">${actionObj.duty_percent||100}%</span>
           </div>
         </div>
-      </div>`;
-    }
+        <div class="field">
+          <label class="field-label">Fade duration</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="number" min="0" value="${actionObj.fade_ms||0}"
+                   data-pir="${pirIdx}" data-f="${key}_fade_ms" style="width:80px" />
+            <span style="font-size:.82em;color:var(--muted)">ms</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  } else if (actionObj.action === 'set_relay') {
+    extra = `<div class="grid2" style="margin-top:6px">
+      <div class="field">
+        <label class="field-label">Relay</label>
+        <select data-pir="${pirIdx}" data-f="${key}_relay_id">
+          <option value="1" ${actionObj.relay_id===1?'selected':''}>Relay 1</option>
+          <option value="2" ${actionObj.relay_id===2?'selected':''}>Relay 2</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label">State</label>
+        <select data-pir="${pirIdx}" data-f="${key}_state">
+          <option value="on"  ${actionObj.state==='on' ?'selected':''}>On</option>
+          <option value="off" ${actionObj.state==='off'?'selected':''}>Off</option>
+        </select>
+      </div>
+    </div>`;
   }
+  // revert_to_schedule: no extras (no fields to set).
+
   return `<select data-pir="${pirIdx}" data-f="${key}_action">${sel}</select>${extra}`;
 }
 
@@ -1491,16 +1534,33 @@ function syncPIRField(el) {
   const i = +el.getAttribute('data-pir');
   const f = el.getAttribute('data-f');
   const v = el.value;
+
+  // Top-level PIR fields.
   if (f === 'enabled') { pirState[i].enabled = el.checked; renderPIR(); return; }
-  else if (f === 'name') pirState[i].name = v;
-  else if (f === 'gpio_pin') pirState[i].gpio_pin = +v;
-  else if (f === 'vacancy_timeout_s') pirState[i].vacancy_timeout_s = +v;
-  else if (f === 'on_motion_action') { pirState[i].on_motion.action = v; renderPIR(); return; }
-  else if (f === 'on_vacancy_action') { pirState[i].on_vacancy.action = v; renderPIR(); return; }
-  else if (f === 'on_motion_scene_name') pirState[i].on_motion.scene_name = v;
-  else if (f === 'on_motion_channels') pirState[i].on_motion.channels = v.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>Number.isInteger(n) && n>=1 && n<=8);
-  else if (f === 'on_motion_duty_percent') pirState[i].on_motion.duty_percent = +v;
-  else if (f === 'on_motion_fade_ms') pirState[i].on_motion.fade_ms = +v;
+  if (f === 'name')              { pirState[i].name = v; scheduleRender(); return; }
+  if (f === 'gpio_pin')          { pirState[i].gpio_pin = +v; scheduleRender(); return; }
+  if (f === 'vacancy_timeout_s') { pirState[i].vacancy_timeout_s = +v; scheduleRender(); return; }
+
+  // Per-action fields: data-f is `<key>_<subfield>` where key is
+  // either on_motion or on_vacancy. Earlier code only handled
+  // on_motion's sub-fields — this dispatcher routes both equally.
+  const m = f.match(/^(on_motion|on_vacancy)_(.+)$/);
+  if (!m) { scheduleRender(); return; }
+  const key = m[1];
+  const sub = m[2];
+  const target = pirState[i][key];
+
+  if (sub === 'action') {
+    target.action = v;
+    renderPIR();    // re-render to swap in/out the action-specific sub-fields
+    return;
+  }
+  if (sub === 'scene_name')    target.scene_name   = v;
+  else if (sub === 'channels') target.channels     = v.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>Number.isInteger(n) && n>=1 && n<=8);
+  else if (sub === 'duty_percent') target.duty_percent = +v;
+  else if (sub === 'fade_ms')      target.fade_ms      = +v;
+  else if (sub === 'relay_id')     target.relay_id     = +v;
+  else if (sub === 'state')        target.state        = v;
   scheduleRender();
 }
 
@@ -2030,17 +2090,40 @@ function buildConfig() {
       cap_rules:          ldrCapRules.map(r=>({...r})),
     },
     pir: pirState.map(p => {
-      const out = {id:p.id, name:p.name, gpio_pin:p.gpio_pin, enabled:p.enabled,
-                   vacancy_timeout_s:p.vacancy_timeout_s,
-                   on_motion:{action:p.on_motion.action},
-                   on_vacancy:{action:p.on_vacancy.action}};
-      if (p.on_motion.action==='set_scene') out.on_motion.scene_name=p.on_motion.scene_name||'';
-      if (p.on_motion.action==='set_led_channels') {
-        out.on_motion.channels=p.on_motion.channels||[];
-        out.on_motion.duty_percent=p.on_motion.duty_percent||100;
-        out.on_motion.fade_ms=p.on_motion.fade_ms||0;
+      // Emit action sub-fields based on the chosen action, for BOTH
+      // on_motion and on_vacancy. Previously this only handled
+      // on_motion {set_scene, set_led_channels} and silently dropped
+      // every other combination — including the entire on_vacancy
+      // action's parameters. Now: symmetric for both keys, and
+      // set_relay also gets through.
+      function _emitAction(a) {
+        if (a.action === 'set_scene') {
+          return { action: a.action, scene_name: a.scene_name || '' };
+        }
+        if (a.action === 'set_led_channels') {
+          return {
+            action: a.action,
+            channels: a.channels || [],
+            duty_percent: a.duty_percent != null ? a.duty_percent : 100,
+            fade_ms: a.fade_ms || 0,
+          };
+        }
+        if (a.action === 'set_relay') {
+          return {
+            action: a.action,
+            relay_id: a.relay_id || 1,
+            state: a.state || 'on',
+          };
+        }
+        // revert_to_schedule (and any unknown action): action only.
+        return { action: a.action || 'revert_to_schedule' };
       }
-      return out;
+      return {
+        id: p.id, name: p.name, gpio_pin: p.gpio_pin, enabled: p.enabled,
+        vacancy_timeout_s: p.vacancy_timeout_s,
+        on_motion:  _emitAction(p.on_motion),
+        on_vacancy: _emitAction(p.on_vacancy),
+      };
     }),
     relays: relayState.map(r=>({
       id:r.id, name:r.name, gpio_pin:r.gpio_pin, enabled:r.enabled,
@@ -2372,8 +2455,32 @@ function applyConfigToForm(cfg) {
   set('ldr_smooth', ldr.smoothing_window_s);
   if (ldr.cap_rules) { ldrCapRules=ldr.cap_rules.map(r=>({...r})); renderLdrRules(); }
 
-  if (cfg.pir) { cfg.pir.forEach((p,i)=>{ if(i<pirState.length) Object.assign(pirState[i],p,
-    {on_motion:{...p.on_motion},on_vacancy:{...p.on_vacancy}}); }); renderPIR(); }
+  if (cfg.pir) {
+    // Two issues we fix here vs. the old one-liner:
+    //   1. If cfg.pir has fewer than pirState.length entries (e.g.
+    //      cfg.pir is [] from a fresh leaf), the missing positions
+    //      kept their page-init defaults. We now RESET the whole
+    //      pirState array first so a load reflects the actual
+    //      config — no stale defaults bleeding through on save.
+    //   2. The loaded on_motion/on_vacancy may have only a subset
+    //      of sub-fields (action only, no scene_name etc.). We
+    //      merge onto a full-shape default so syncPIRField always
+    //      has a stable place to write into.
+    pirState = PIR_GPIO.map((gpio, i) => ({
+      id: i+1, name: `Motion Sensor ${i+1}`, gpio_pin: gpio,
+      enabled: false, vacancy_timeout_s: 180,
+      on_motion:  _defaultPirActionState(),
+      on_vacancy: _defaultPirActionState(),
+    }));
+    cfg.pir.forEach((p, i) => {
+      if (i >= pirState.length) return;
+      const merged = Object.assign({}, pirState[i], p);
+      merged.on_motion  = Object.assign(_defaultPirActionState(), p.on_motion  || {});
+      merged.on_vacancy = Object.assign(_defaultPirActionState(), p.on_vacancy || {});
+      pirState[i] = merged;
+    });
+    renderPIR();
+  }
   if (cfg.relays) { cfg.relays.forEach((r,i)=>{ if(i<relayState.length) relayState[i]=
     Object.assign({},relayState[i],r,{time_windows:(r.time_windows||[]).map(w=>({...w}))}); }); renderRelays(); }
   if (cfg.led_channels) { cfg.led_channels.forEach((ch,i)=>{ if(i<ledState.length) ledState[i]=
