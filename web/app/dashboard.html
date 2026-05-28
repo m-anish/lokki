@@ -1223,8 +1223,13 @@ function switchView(name) {
 // Single dynamic view section (`view-unit`) re-renders based on
 // currentUnitId. Sidebar has one link per claimed unit; clicking it
 // (or a fleet card's "Configure" button) calls openUnit(N).
+//
+// Note: `currentUnitId` is already declared near the top of the
+// script — it was originally introduced for the Control modal and is
+// reused here for the detail-page view. Don't redeclare with `let`
+// (SyntaxError on a second `let` in the same scope); only the new
+// `currentUnitTab` is local to this block.
 
-let currentUnitId = null;
 let currentUnitTab = "overview";
 
 function openUnit(unitId) {
