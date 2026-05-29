@@ -370,7 +370,14 @@ Incremental config update — applies a single-field or section-level patch with
 - `409` — no cached config for that leaf; push a full config first via `POST` and patches will work afterward.
 - `502` — leaf rejected the patch (e.g. APPLY_FAILED on the leaf side) or LoRa link timed out.
 
-**Note: the leaf still reboots after applying a patch (v1).** Wire-time goes from ~6 s to ~300 ms, but the schedule briefly pauses while the leaf restarts. Reboot-elision for fields that don't affect boot-time wiring (channel default duty, names, time-windows) is planned for UX-2.
+**Hot-apply vs reboot:** the leaf (or coord) hot-applies most patches without rebooting — names, default duty/state, time-windows, vacancy timeout, PIR actions, scenes, LDR, timezone, and `dashboard.*` re-run the relevant subsystem's `init_from_config` in place. The response carries `data.rebooted` so the dashboard can show "applied instantly" vs "rebooting". A reboot still happens for boot-wired fields:
+
+  * `lora.*`, `hardware.*`, `wifi.*`
+  * `system.role`, `system.unit_id`, `system.log_level`, `system.log_buffer_size`, `system.heartbeat_interval_s`, `system.pwm_update_interval_ms`
+  * `notifications.*`
+  * `enabled` and `gpio_pin` changes on `led_channels`, `relays`, or `pir` entries
+
+For these, `data.rebooted = true`; otherwise `false`. See `core/hot_apply.requires_reboot` for the authoritative rules.
 
 ---
 

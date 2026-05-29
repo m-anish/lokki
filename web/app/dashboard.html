@@ -1520,6 +1520,27 @@ function bindChannelEditListeners(channelId) {
 
 function isCoord(unitId) { return unitId === 0 || unitId === '0'; }
 
+// Pick the appropriate "Saved" / "Saving" copy. With hot_apply
+// landed, most edits don't reboot any more — only LoRa, hardware,
+// wifi, role/unit_id, log_level, log_buffer_size, and the
+// led_channels / relays / pir `enabled` toggles do. The actual
+// decision is made by the leaf and reported back via the response's
+// `data.rebooted` flag; we just translate it to UI text.
+function _savingCopy(unitId) {
+  // "Saving…" stays neutral — we don't know yet whether the leaf
+  // will hot-apply or reboot, that's the leaf's call based on the
+  // path. Predicting either way risks misleading the operator.
+  return 'Saving…';
+}
+function _savedCopy(unitId, rebooted) {
+  if (rebooted) {
+    return isCoord(unitId)
+      ? 'Saved ✓ (coord rebooting…)'
+      : 'Saved ✓ (leaf rebooting…)';
+  }
+  return 'Saved ✓ (applied instantly)';
+}
+
 // Compare the row's current form values against the cached config
 // snapshot. If anything differs, mark the input "dirty" and reveal
 // the action buttons. Called on every input/change event in the row.
@@ -1590,7 +1611,7 @@ async function saveChannelEdit(channelId, idx) {
   if (!row) return;
   const status = row.querySelector('.save-status');
   status.classList.remove('err');
-  status.textContent = isCoord(currentUnitId) ? 'Saving…' : 'Saving (leaf will reboot)…';
+  status.textContent = _savingCopy(currentUnitId);
 
   // Fetch the current channel entry to preserve fields we don't expose
   // in the form (gpio_pin, time_windows). Always refresh — the snapshot
@@ -1636,7 +1657,7 @@ async function saveChannelEdit(channelId, idx) {
       default_duty_percent: merged.default_duty_percent,
     });
     onEditRowChanged(row);    // recompute dirty (everything matches snapshot now)
-    status.textContent = isCoord(currentUnitId) ? 'Saved ✓' : 'Saved ✓ (leaf rebooting…)';
+    status.textContent = _savedCopy(currentUnitId, !r.data || r.data.rebooted !== false);
   } catch (e) {
     status.textContent = `Save failed: ${e.message || e}`;
     status.classList.add('err');
@@ -1792,7 +1813,7 @@ async function saveRelayEdit(relayId, idx) {
   if (!row) return;
   const status = row.querySelector('.save-status');
   status.classList.remove('err');
-  status.textContent = isCoord(currentUnitId) ? 'Saving…' : 'Saving (leaf will reboot)…';
+  status.textContent = _savingCopy(currentUnitId);
 
   const cfg = await getUnitConfig(currentUnitId, true);
   if (!cfg) {
@@ -1828,7 +1849,7 @@ async function saveRelayEdit(relayId, idx) {
       default_state: merged.default_state,
     });
     onEditRowChanged(row);
-    status.textContent = isCoord(currentUnitId) ? 'Saved ✓' : 'Saved ✓ (leaf rebooting…)';
+    status.textContent = _savedCopy(currentUnitId, !r.data || r.data.rebooted !== false);
   } catch (e) {
     status.textContent = `Save failed: ${e.message || e}`;
     status.classList.add('err');
@@ -2053,7 +2074,7 @@ async function savePirEdit(pirId, idx) {
   if (!row) return;
   const status = row.querySelector('.save-status');
   status.classList.remove('err');
-  status.textContent = isCoord(currentUnitId) ? 'Saving…' : 'Saving (leaf will reboot)…';
+  status.textContent = _savingCopy(currentUnitId);
 
   const cfg = await getUnitConfig(currentUnitId, true);
   if (!cfg) {
@@ -2088,7 +2109,7 @@ async function savePirEdit(pirId, idx) {
     delete _unitConfigCache[currentUnitId];
     _setEditSnapshot('pir', pirId, _pirSnapshot(pirId, merged));
     onEditRowChanged(row);
-    status.textContent = isCoord(currentUnitId) ? 'Saved ✓' : 'Saved ✓ (leaf rebooting…)';
+    status.textContent = _savedCopy(currentUnitId, !r.data || r.data.rebooted !== false);
   } catch (e) {
     status.textContent = `Save failed: ${e.message || e}`;
     status.classList.add('err');
@@ -2284,7 +2305,7 @@ async function saveAdvancedEdit(sectionKey) {
   if (!row) return;
   const status = row.querySelector('.save-status');
   status.classList.remove('err');
-  status.textContent = isCoord(currentUnitId) ? 'Saving…' : 'Saving (leaf will reboot)…';
+  status.textContent = _savingCopy(currentUnitId);
 
   const cfg = await getUnitConfig(currentUnitId, true);
   if (!cfg) {
@@ -2333,7 +2354,7 @@ async function saveAdvancedEdit(sectionKey) {
     });
     _setEditSnapshot('advanced', sectionKey, newSnap);
     onEditRowChanged(row);
-    status.textContent = isCoord(currentUnitId) ? 'Saved ✓' : 'Saved ✓ (leaf rebooting…)';
+    status.textContent = _savedCopy(currentUnitId, !r.data || r.data.rebooted !== false);
   } catch (e) {
     status.textContent = `Save failed: ${e.message || e}`;
     status.classList.add('err');

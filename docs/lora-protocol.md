@@ -414,7 +414,7 @@ Editing a single field on a leaf used to require pushing the entire ~3-5 KB conf
 
 The coord chooses which path to take based on the encoded payload size of `{path, value}` — single packet under 140 B, chunked otherwise. Falls back to a full-config push (no `target_path`) only when explicitly told to via `POST /api/units/{id}/config`.
 
-**v1 limitation: leaf still reboots after applying a patch.** The wire-time win (~6 s → ~300 ms for `CFG_PATCH`) is the immediate benefit; eliminating the reboot for fields that don't affect boot-time wiring (channel duty, names, time-windows, etc.) is planned for UX-2.
+**Hot-apply vs reboot:** as of UX-2c, most patches hot-apply without rebooting — the leaf re-runs the relevant subsystem's `init_from_config` in place. The ACK payload carries `rebooted: true | false` so the coord (and through it the dashboard) can show "applied instantly" or "rebooting" accordingly. Boot-wired fields (`lora.*`, `hardware.*`, `system.role`/`unit_id`/`log_level`/`log_buffer_size`/`heartbeat_interval_s`/`pwm_update_interval_ms`, `wifi.*`, `notifications.*`, and `enabled`/`gpio_pin` on channels/relays/PIRs) still reboot. See `firmware/.../core/hot_apply.py` for the authoritative rules.
 
 ### `CFG_START`, `CFG_CHUNK`, `CFG_END` — full or path-targeted chunked transfer
 

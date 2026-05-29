@@ -382,8 +382,6 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
     """
     jitter_ms = unit_id * 500
     await asyncio.sleep_ms(jitter_ms)
-    # Cached at task entry so we don't pay config_manager attribute lookups every HB.
-    name = config_manager.unit_name
     uid = _chip_uid_hex()
     is_unclaimed = (unit_id == 99)
     from hardware.rtc_module import get_rtc_temp_c
@@ -391,8 +389,11 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
         try:
             t = get_rtc_temp_c()
             err = system_status.error_count
+            # Read unit_name each iteration so a hot-applied
+            # system.unit_name patch shows up on the next HB without
+            # waiting for a reboot. The lookup is a dict get — cheap.
             payload = {
-                "n":       name,
+                "n":       config_manager.unit_name,
                 "up":      system_status.get_uptime(),
                 "ch":      pwm_controller.get_all(),
                 "rl":      relay_controller.get_all(),
@@ -673,8 +674,14 @@ def _register_lora_handlers(role, fleet_manager=None):
         lora_protocol.on("TS_REQ", on_time_sync_request)
 
     def on_scene(src, payload):
+        # Read scenes from config_manager each call (rather than the
+        # closure-captured `scenes` dict above) so a hot-applied
+        # `scenes` patch takes effect on the next SC without needing
+        # a reboot. SC fires only on operator action so the lookup
+        # cost is irrelevant.
         scene_name = payload.get("scene")
-        scene = scenes.get(scene_name)
+        cur_scenes = {s["name"]: s for s in config_manager.get("scenes") if isinstance(s, dict)}
+        scene = cur_scenes.get(scene_name)
         if scene:
             priority_arbiter.apply_scene(scene)
             log.info(f"[LORA] Scene '{scene_name}' applied from {src}")
@@ -809,13 +816,16 @@ def _register_lora_handlers(role, fleet_manager=None):
             """Apply a single-field config patch. Single LoRa packet
             (no chunking), payload `{path, value}`. Validates the
             merged config against the schema BEFORE applying; rolls
-            back on failure. ACKs with `ok: True` on success or
-            `ok: False, reason: ..., err: ...` on rejection.
+            back on failure. ACKs with `ok: True, rebooted: <bool>`
+            on success or `ok: False, reason: ..., err: ...` on
+            rejection.
 
-            Always reboots on success (v1 of the incremental protocol
-            — hot-apply without reboot is a planned UX-2 follow-up;
-            for now the wire-time win of ~6 s → ~300 ms is the
-            immediate benefit and the reboot path is unchanged).
+            Hot-apply path: for changes that don't touch boot-wired
+            things (LoRa registers, GPIO pins, role/unit_id, etc. —
+            see core.hot_apply.requires_reboot for the full list),
+            re-runs the affected subsystems' init_from_config without
+            a reboot. ~50 ms wallclock instead of ~30 s. For
+            boot-critical paths the reboot path is unchanged.
             """
             seq = payload.get("_seq")
             path = payload.get("path")
@@ -839,9 +849,16 @@ def _register_lora_handlers(role, fleet_manager=None):
                 return
             value = payload["value"]
 
+            # Capture the BEFORE value at this path so the
+            # requires_reboot check can compare field-by-field on
+            # section/index patches.
+            from core import json_path, hot_apply
+            ok_get, old_value = json_path.get_at(config_manager.get_all(), path)
+            if not ok_get:
+                old_value = None
+
             try:
                 import json as _json
-                from core import json_path
                 # Deep-copy via round-trip — avoids mutating the live
                 # config until we know validation passes. On the Pico
                 # this costs a few KB transient heap, accepted for
@@ -861,9 +878,29 @@ def _register_lora_handlers(role, fleet_manager=None):
                     })
                 return
 
+            # Decide: hot-apply or reboot?
+            needs_reboot = hot_apply.requires_reboot(path, old_value, value)
+            if not needs_reboot:
+                try:
+                    hot_apply.apply_changes(path, config_manager.get_all())
+                    log.info(f"[LORA] CFG_PATCH {path}={value!r} applied (hot, no reboot)")
+                    if seq is not None:
+                        lora_protocol.send("ACK", src, {
+                            "ack_seq": seq, "ok": True, "rebooted": False
+                        })
+                    return
+                except Exception as e:
+                    # Subsystem re-init failed mid-flight. Config is
+                    # durably saved, so rebooting recovers to a
+                    # consistent state. Log loudly and fall through
+                    # to the reboot path.
+                    log.error(f"[LORA] CFG_PATCH {path} hot-apply failed: {e}; rebooting to recover")
+
             log.info(f"[LORA] CFG_PATCH {path}={value!r} applied. Rebooting.")
             if seq is not None:
-                lora_protocol.send("ACK", src, {"ack_seq": seq, "ok": True})
+                lora_protocol.send("ACK", src, {
+                    "ack_seq": seq, "ok": True, "rebooted": True
+                })
             import machine, asyncio
             async def do_reboot():
                 await asyncio.sleep(1)
@@ -929,17 +966,23 @@ def _register_lora_handlers(role, fleet_manager=None):
                         # channels with stale 0% duty on the leaf row.
                         apply_err = None
                         target_path = transfer.get("target_path")
+                        old_value_at_path = None   # for target_path patches
                         try:
                             if target_path:
                                 # Incremental: parse the assembled blob as
                                 # the value to set at target_path on the
-                                # current config. Build a candidate config,
-                                # validate it, then replace. config_manager
-                                # rolls back internally on validation
-                                # failure.
+                                # current config. Snapshot the old value
+                                # so hot_apply.requires_reboot can do its
+                                # field-by-field check on section/index
+                                # patches.
                                 import json as _json
                                 from core import json_path
                                 value = _json.loads(config_str)
+                                ok_get, old_value_at_path = json_path.get_at(
+                                    config_manager.get_all(), target_path
+                                )
+                                if not ok_get:
+                                    old_value_at_path = None
                                 candidate = _json.loads(_json.dumps(config_manager.get_all()))
                                 ok, err = json_path.set_at(candidate, target_path, value)
                                 if not ok:
@@ -952,9 +995,40 @@ def _register_lora_handlers(role, fleet_manager=None):
                             log.error(f"[LORA] Config transfer {tid} apply failed: {e}")
 
                         if apply_err is None:
+                            # For full-config push (no target_path),
+                            # always reboot — the diff scope is the
+                            # whole config and any one of dozens of
+                            # boot-critical fields might have changed.
+                            # For target_path patches, defer to
+                            # hot_apply like CFG_PATCH does.
+                            needs_reboot = True
+                            if target_path:
+                                from core import hot_apply
+                                needs_reboot = hot_apply.requires_reboot(
+                                    target_path, old_value_at_path,
+                                    value if target_path else None,
+                                )
+                                if not needs_reboot:
+                                    try:
+                                        hot_apply.apply_changes(target_path, config_manager.get_all())
+                                    except Exception as e:
+                                        log.error(f"[LORA] Config transfer {tid} hot-apply failed: {e}; rebooting to recover")
+                                        needs_reboot = True
+
+                            if not needs_reboot:
+                                log.info(f"[LORA] Config transfer {tid} applied (hot, no reboot)")
+                                if seq is not None:
+                                    lora_protocol.send("ACK", src, {
+                                        "ack_seq": seq, "ok": True, "rebooted": False,
+                                    })
+                                del _cfg_transfers[tid]
+                                return
+
                             log.info(f"[LORA] Config transfer {tid} applied. Rebooting.")
                             if seq is not None:
-                                lora_protocol.send("ACK", src, {"ack_seq": seq, "ok": True})
+                                lora_protocol.send("ACK", src, {
+                                    "ack_seq": seq, "ok": True, "rebooted": True,
+                                })
                             del _cfg_transfers[tid]
                             import machine
                             import asyncio

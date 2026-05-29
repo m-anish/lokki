@@ -770,9 +770,48 @@ async def handle_config_patch(unit_id, body):
     # Coord-local apply.
     if unit_id == 0:
         try:
+            # Snapshot the BEFORE value at this path so hot_apply's
+            # reboot decision can compare field-by-field on section/
+            # index patches. The base config was already built by
+            # cloning + json_path.set_at above; we re-fetch the live
+            # config and look up the same path for the "old" side.
+            ok_get, old_value = json_path.get_at(config_manager.get_all(), path)
+            if not ok_get:
+                old_value = None
+
             config_manager.replace(json.dumps(base))
             log.info(f"[API] Coord patch {path}={value!r} applied locally")
-            return _ok({"applied": "local", "path": path})
+
+            # Hot-apply or coord-reboot? Coord-local edits used to
+            # silently skip subsystem re-init, which meant a coord
+            # patch to e.g. led_channels[2].default_duty_percent
+            # only took effect on next boot. With hot_apply that's
+            # now fixed: non-reboot paths re-run the affected
+            # subsystems; reboot-required paths schedule a coord
+            # reset.
+            from core import hot_apply
+            needs_reboot = hot_apply.requires_reboot(path, old_value, value)
+            if needs_reboot:
+                # Schedule the reboot after the HTTP response flushes.
+                import asyncio, machine
+                async def do_reboot():
+                    await asyncio.sleep(1)
+                    machine.reset()
+                asyncio.create_task(do_reboot())
+                return _ok({"applied": "local", "path": path, "rebooted": True})
+            try:
+                hot_apply.apply_changes(path, config_manager.get_all())
+            except Exception as e:
+                # Subsystem re-init failed but the config is durably
+                # saved. Fall back to a coord reboot to recover.
+                log.error(f"[API] Coord patch {path} hot-apply failed: {e}; rebooting to recover")
+                import asyncio, machine
+                async def do_reboot():
+                    await asyncio.sleep(1)
+                    machine.reset()
+                asyncio.create_task(do_reboot())
+                return _ok({"applied": "local", "path": path, "rebooted": True})
+            return _ok({"applied": "local", "path": path, "rebooted": False})
         except Exception as e:
             return _err(str(e))
 
@@ -780,6 +819,7 @@ async def handle_config_patch(unit_id, body):
     # with target_path based on encoded payload size. The encoded
     # CFG_PATCH payload is `{"path": "...", "value": ...}`; if it fits
     # the budget, one packet does it.
+    rebooted = True   # default to conservative "reboot happened" if ACK lacks the flag
     patch_payload = {"path": path, "value": value}
     encoded_len = len(json.dumps(patch_payload).encode())
     if encoded_len <= _CFG_PATCH_PAYLOAD_BUDGET:
@@ -793,12 +833,20 @@ async def handle_config_patch(unit_id, body):
             reason = ack.get("reason", "UNKNOWN")
             errstr = ack.get("err", "")
             return _err(f"Leaf rejected patch ({reason}): {errstr}", 502)
+        # Forward leaf's hot-apply decision so the dashboard can show
+        # "Saved ✓ (applied)" instead of "Saved ✓ (rebooting)" when
+        # the leaf didn't actually reboot.
+        rebooted = ack.get("rebooted", True)
         method = "patch"
     else:
         # Value too big to fit a single packet — fall back to a
         # chunked transfer that targets the path. Only the bytes
         # of the value (not the whole config) ride the chunked
-        # pipeline.
+        # pipeline. The send_config helper doesn't currently surface
+        # the leaf's ACK payload (just ok/fail), so we conservatively
+        # report rebooted=true for chunked transfers — UX-wise the
+        # operator sees the slower path anyway since it's a bigger
+        # edit.
         value_str = json.dumps(value)
         ok_xfer = await lora_protocol.send_config(unit_id, value_str, target_path=path)
         if not ok_xfer:
@@ -808,12 +856,15 @@ async def handle_config_patch(unit_id, body):
             return _err(f"Chunked patch to unit {unit_id} failed", 502)
         method = "section"
 
-    # Leaf applied + rebooting. Update our cache so subsequent reads
-    # see the new state immediately, without waiting for the leaf to
-    # come back online and re-confirm via SRP.
+    # Leaf applied. Update our cache so subsequent reads see the new
+    # state immediately, without waiting for the leaf to come back
+    # online and re-confirm via SRP.
     _leaf_config_cache[unit_id] = base
     _persist_leaf_cfg(unit_id, base)
-    return _ok({"applied": method, "sent_to": unit_id, "path": path})
+    return _ok({
+        "applied": method, "sent_to": unit_id, "path": path,
+        "rebooted": rebooted,
+    })
 
 
 # ------------------------------------------------------------------
