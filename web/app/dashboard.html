@@ -2362,13 +2362,17 @@ async function saveAdvancedEdit(sectionKey) {
     onEditRowChanged(row);
     status.textContent = _savedCopy(currentUnitId, !r.data || r.data.rebooted !== false);
 
-    // After a system save, refresh user-visible labels immediately
-    // (no waiting for the 15 s fleet poll or the 30 s leaf HB). The
-    // coord pre-fills fleet_manager.u["name"] but the dashboard
-    // already has lastFleet in hand and several views key on it —
-    // update client-side optimistically so the operator sees the
-    // change land at click time, then `setTimeout(load, 800)` syncs
-    // with the server-side state as a safety net.
+    // After a system save, refresh user-visible labels immediately.
+    // To be precise about "immediately": by the time we get here,
+    // `await fetchJSON` has resolved with r.ok=true, which means the
+    // coord returned 200 — which it only does after the leaf has
+    // ACK'd the LoRa patch AND the leaf has durably written the new
+    // config to flash. So this isn't really "optimistic" — the
+    // change is committed; we're just refreshing client-side state
+    // ahead of the next 15 s fleet poll so the operator sees the
+    // sidebar / detail header / hero strip flip at click time
+    // instead of with a delay. `setTimeout(load, 800)` is the
+    // backup sync with server-side state.
     if (sectionKey === 'system') {
       const newName = newSnap.unit_name;
       if (typeof newName === 'string' && newName) {
