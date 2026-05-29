@@ -329,6 +329,61 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
 }
 .edit-row-actions .save-status.err { color:#dc2626; }
 
+/* ── 24-hour schedule strip (UX-3 visualizer, read-only) ─────── */
+.sched-strip {
+  position:relative; height:32px;
+  background:var(--bg); border:1px solid var(--border);
+  border-radius:6px; margin:8px 0 4px;
+  overflow:hidden;
+}
+.sched-strip-empty {
+  display:flex; align-items:center;
+  font-size:.78em; color:var(--muted); font-style:italic;
+  padding:0 10px; height:22px;
+  background:var(--bg); border:1px dashed var(--border);
+  border-radius:6px; margin:8px 0 4px;
+}
+.sched-seg {
+  position:absolute; top:2px; bottom:14px;
+  border-radius:2px; opacity:.92;
+}
+.sched-seg.sched-approx {
+  /* dashed border marks segments whose edge is sunrise/sunset
+     (variable by date and location, rendered at a default time) */
+  border:1px dashed rgba(255,255,255,0.55);
+  box-sizing:border-box;
+}
+.sched-now {
+  position:absolute; top:0; bottom:12px;
+  width:2px; background:#ef4444; z-index:3;
+  box-shadow:0 0 4px rgba(239,68,68,0.7);
+}
+.sched-tick {
+  position:absolute; bottom:0; height:12px;
+  font-size:.62em; color:var(--muted);
+  font-variant-numeric:tabular-nums;
+  transform:translateX(-50%);
+  line-height:12px; padding-top:1px;
+  pointer-events:none;
+}
+.sched-tick::before {
+  content:''; position:absolute; top:-3px; left:50%;
+  width:1px; height:4px; background:var(--border);
+}
+.sched-legend {
+  font-size:.72em; color:var(--muted);
+  display:flex; gap:10px; flex-wrap:wrap;
+  margin:4px 0 8px;
+}
+.sched-legend .sched-legend-dash {
+  display:inline-block; width:18px; height:8px; vertical-align:middle;
+  border:1px dashed var(--muted); margin-right:4px; border-radius:2px;
+}
+.sched-legend .sched-legend-now {
+  display:inline-block; width:2px; height:10px;
+  background:#ef4444; vertical-align:middle; margin-right:4px;
+}
+
 /* Bell + alerts */
 .bell-wrap { position:relative; }
 .bell-btn {
@@ -1186,6 +1241,91 @@ function swatchStyle(pct) {
   return `background:rgb(${r},${g},${b});box-shadow:0 0 ${glow}px rgba(255,200,50,0.6)`;
 }
 
+// ── 24h schedule visualizer (UX-3 mockup, read-only) ──────────────
+//
+// Parses time_window edges and returns a horizontal strip showing
+// where windows fall in the 24h day. Sunrise/sunset are placed at
+// 06:00 / 18:00 as approximations and marked with a dashed border —
+// the firmware resolves them per-day via sun_times.py, but the
+// dashboard doesn't have lat/long today. Cross-midnight windows
+// split into two segments. A red "now" line shows the current
+// browser-local time so the operator can see where they are in
+// the day.
+function _timeTokenToMinutes(tok) {
+  if (tok === 'sunrise') return { mins: 360,  approx: true, label: 'sunrise' };   // ~06:00
+  if (tok === 'sunset')  return { mins: 1080, approx: true, label: 'sunset'  };   // ~18:00
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(tok || '').trim());
+  if (m) {
+    const mins = (parseInt(m[1],10) * 60 + parseInt(m[2],10)) % 1440;
+    return { mins, approx: false, label: tok };
+  }
+  return { mins: 0, approx: false, label: String(tok || '') };
+}
+
+function _channelSegBg(duty) {
+  // Reuse the swatch palette so the strip segments match the row swatch.
+  const d = Math.max(0, Math.min(100, duty || 0));
+  const r = Math.round(100 + d * 1.55);
+  const g = Math.round(80  + d * 1.4);
+  const b = Math.round(30  + d * 0.7);
+  return `rgb(${r},${g},${b})`;
+}
+
+function renderScheduleStrip(windows, kind) {
+  if (!windows || !windows.length) {
+    return `<div class="sched-strip-empty">No schedule windows — uses default state all day</div>`;
+  }
+  let segs = '';
+  for (const w of windows) {
+    const s = _timeTokenToMinutes(w.start);
+    const e = _timeTokenToMinutes(w.end);
+    const approx = (s.approx || e.approx);
+    let pieces;
+    if (e.mins > s.mins) {
+      pieces = [[s.mins, e.mins]];
+    } else if (e.mins < s.mins) {
+      // cross-midnight: two segments
+      pieces = [[s.mins, 1440], [0, e.mins]];
+    } else {
+      // zero-length window — skip
+      continue;
+    }
+    let bg, title;
+    if (kind === 'channel') {
+      const duty = w.duty_percent || 0;
+      bg = _channelSegBg(duty);
+      title = `${s.label}–${e.label} @ ${duty}%${w.fade_ms ? ` · fade ${w.fade_ms}ms` : ''}`;
+    } else {
+      const state = w.state || 'off';
+      bg = state === 'on' ? 'var(--green)' : '#475569';
+      title = `${s.label}–${e.label} → ${state}`;
+    }
+    if (approx) title += ' (sunrise/sunset shown at default time)';
+    const cls = approx ? 'sched-seg sched-approx' : 'sched-seg';
+    for (const [a, b] of pieces) {
+      const left  = (a / 1440 * 100).toFixed(2);
+      const width = ((b - a) / 1440 * 100).toFixed(2);
+      segs += `<div class="${cls}" style="left:${left}%;width:${width}%;background:${bg}" title="${_escape(title)}"></div>`;
+    }
+  }
+  // Hour ticks at 0/6/12/18/24
+  let ticks = '';
+  for (let h = 0; h <= 24; h += 6) {
+    const left = (h / 24 * 100).toFixed(2);
+    ticks += `<div class="sched-tick" style="left:${left}%">${String(h).padStart(2,'0')}</div>`;
+  }
+  // "Now" marker — browser-local. Schedule on the device runs in
+  // device tz; if the operator's browser is in a different tz the
+  // line will lie. Acceptable for v1: the operator is almost always
+  // physically near the venue.
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const nowLeft = (nowMins / 1440 * 100).toFixed(2);
+  const nowLabel = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const nowMark = `<div class="sched-now" style="left:${nowLeft}%" title="Now: ${nowLabel} (browser local)"></div>`;
+  return `<div class="sched-strip" aria-label="24-hour schedule">${segs}${nowMark}${ticks}</div>`;
+}
+
 function updateSlider(id, val) {
   document.getElementById(`val_${id}`).textContent = val + "%";
   const sw = document.getElementById(`sw_${id}`);
@@ -1469,6 +1609,11 @@ async function renderChannelsTab() {
   h += '<div class="tab-section-hint">Edit a row and click Save to push the change over LoRa. ' +
        (isCoord(currentUnitId) ? 'Coordinator changes apply immediately.' : 'Leaf will reboot after saving (~30 s).') +
        '</div>';
+  h += '<div class="sched-legend">' +
+       '<span><span class="sched-legend-now"></span>Now (browser local)</span>' +
+       '<span><span class="sched-legend-dash"></span>Sunrise/sunset (shown at default time)</span>' +
+       '<span>Hover a segment for details.</span>' +
+       '</div>';
   for (let i = 1; i <= 8; i++) {
     const ch = channels.find(c => c.id === i) || {};
     const idx = channels.findIndex(c => c.id === i);   // for PATCH path
@@ -1504,8 +1649,9 @@ function renderChannelEditRow(channelId, idx, ch) {
   h += `<div class="edit-field"><label>Default duty %</label><input type="number" min="0" max="100" data-field="default_duty_percent" value="${dd}" /></div>`;
   h += `<div class="edit-field"><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-field="enabled"${enabled ? ' checked' : ''} /> Enabled</label></div>`;
   h += `</div>`;
+  h += renderScheduleStrip(tw, 'channel');
   if (tw.length) {
-    h += `<div class="config-readonly">Time windows (read-only — schedule editor in UX-3): ${tw.map(w => `<code>${_escape(w.start)}–${_escape(w.end)} @ ${w.duty_percent}%${w.fade_ms ? ' fade ' + w.fade_ms + 'ms' : ''}</code>`).join(' · ')}</div>`;
+    h += `<div class="config-readonly" style="font-size:.78em">Schedule (read-only — editor in UX-3): ${tw.map(w => `<code>${_escape(w.start)}–${_escape(w.end)} @ ${w.duty_percent}%${w.fade_ms ? ' fade ' + w.fade_ms + 'ms' : ''}</code>`).join(' · ')}</div>`;
   }
   h += `<div class="edit-row-actions" style="display:none">`;
   h += `<span class="save-status"></span>`;
@@ -1776,6 +1922,11 @@ async function renderRelaysTab() {
   h += '<div class="tab-section-hint">' +
        (isCoord(currentUnitId) ? 'Coordinator changes apply immediately.' : 'Leaf will reboot after saving (~30 s).') +
        '</div>';
+  h += '<div class="sched-legend">' +
+       '<span><span class="sched-legend-now"></span>Now (browser local)</span>' +
+       '<span><span class="sched-legend-dash"></span>Sunrise/sunset (shown at default time)</span>' +
+       '<span>Green = relay ON window.</span>' +
+       '</div>';
   for (let i = 1; i <= 2; i++) {
     const r = relays.find(x => x.id === i) || {};
     const idx = relays.findIndex(x => x.id === i);
@@ -1808,8 +1959,9 @@ function renderRelayEditRow(relayId, idx, r) {
   h += `<div class="edit-field"><label>Default state</label><select data-field="default_state"><option value="off"${ds === 'off' ? ' selected' : ''}>off</option><option value="on"${ds === 'on' ? ' selected' : ''}>on</option></select></div>`;
   h += `<div class="edit-field"><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-field="enabled"${enabled ? ' checked' : ''} /> Enabled</label></div>`;
   h += `</div>`;
+  h += renderScheduleStrip(tw, 'relay');
   if (tw.length) {
-    h += `<div class="config-readonly">Time windows (read-only — schedule editor in UX-3): ${tw.map(w => `<code>${_escape(w.start)}–${_escape(w.end)} → ${_escape(w.state)}</code>`).join(' · ')}</div>`;
+    h += `<div class="config-readonly" style="font-size:.78em">Schedule (read-only — editor in UX-3): ${tw.map(w => `<code>${_escape(w.start)}–${_escape(w.end)} → ${_escape(w.state)}</code>`).join(' · ')}</div>`;
   }
   h += `<div class="edit-row-actions" style="display:none">`;
   h += `<span class="save-status"></span>`;
