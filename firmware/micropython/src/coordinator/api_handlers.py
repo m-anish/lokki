@@ -861,10 +861,61 @@ async def handle_config_patch(unit_id, body):
     # online and re-confirm via SRP.
     _leaf_config_cache[unit_id] = base
     _persist_leaf_cfg(unit_id, base)
+
+    # Optimistic dashboard update: if this patch changed the leaf's
+    # unit_name, pre-fill fleet_manager._units[unit_id]["name"] so the
+    # next /api/fleet poll returns the new name without waiting for
+    # the leaf's actual HB (~30 s away). Same for other fields the
+    # dashboard pulls from the fleet entry — but unit_name is by far
+    # the most user-visible. Skipped silently if the field isn't in
+    # the patch (e.g. patching led_channels/2 doesn't affect name).
+    try:
+        new_name = _extract_leaf_name_from_patch(base, path, value)
+        if new_name:
+            u = fleet_manager.get(unit_id)
+            if u is not None:
+                u["name"] = new_name
+    except Exception:
+        # Pre-fill is best-effort; if anything goes wrong, the next
+        # real HB from the leaf will resync the name within ~30 s.
+        pass
+
     return _ok({
         "applied": method, "sent_to": unit_id, "path": path,
         "rebooted": rebooted,
     })
+
+
+def _extract_leaf_name_from_patch(merged_cfg, path, value):
+    """Pull the new unit_name out of a patch operation, if any. Returns
+    the new name or None.
+
+    Three shapes to handle:
+      - path == "system/unit_name" → value is the new name directly.
+      - path == "system"           → value is a dict; new name in value.unit_name.
+      - any other path             → unit_name unaffected.
+
+    For the second case the merged_cfg already has the new system
+    section spliced in, so we can fall back to reading
+    merged_cfg["system"]["unit_name"] if value isn't dict-shaped for
+    some reason — defensive against quirky patch shapes.
+    """
+    if path == "system/unit_name":
+        if isinstance(value, str) and value.strip():
+            return value
+        return None
+    if path == "system":
+        if isinstance(value, dict):
+            n = value.get("unit_name")
+            if isinstance(n, str) and n.strip():
+                return n
+        # Fallback: read off the merged config.
+        try:
+            n = merged_cfg.get("system", {}).get("unit_name")
+            return n if isinstance(n, str) and n.strip() else None
+        except Exception:
+            return None
+    return None
 
 
 # ------------------------------------------------------------------

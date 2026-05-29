@@ -249,7 +249,7 @@ async def time_sync_task():
         await asyncio.sleep(60 if not system_status.time_synced else 3600)
 
 
-async def schedule_task(interval_ms):
+async def schedule_task():
     """Drive scheduled output state.
 
     Gated behind system_status.time_synced — until we've confirmed a
@@ -260,6 +260,12 @@ async def schedule_task(interval_ms):
     outputs incorrectly until time arrives. The arbiter falls back to
     each channel's default_state when nothing populates the schedule
     layer, which is the right safe behaviour.
+
+    The tick interval is re-read from config_manager each loop so a
+    hot-applied `system.pwm_update_interval_ms` patch takes effect
+    without a reboot. Reading a config dict twice per second is
+    negligible cost vs. the alternative of caching the value here
+    (which silently strands operator edits until next boot).
     """
     while True:
         if system_status.time_synced:
@@ -269,6 +275,7 @@ async def schedule_task(interval_ms):
             except Exception as e:
                 log.error(f"[SCHEDULE] {e}")
                 system_status.record_error(f"schedule: {e}")
+        interval_ms = config_manager.get("system").get("pwm_update_interval_ms", 500)
         await asyncio.sleep_ms(interval_ms)
 
 
@@ -361,8 +368,12 @@ def _hb_flash_rgb():
     return FLASH_LORA_OK_RGB if getattr(_lt, "config_ok", False) else FLASH_LORA_FAIL_RGB
 
 
-async def heartbeat_broadcast_task(interval_s, unit_id):
+async def heartbeat_broadcast_task(unit_id):
     """Leaf task: send HB to coordinator at regular intervals with jitter.
+
+    The interval is re-read from config_manager each loop so a
+    hot-applied `system.heartbeat_interval_s` patch takes effect on
+    the next HB without a reboot.
 
     Wire format note — keys here are *short* to keep HB under the 200 B
     LoRa packet limit even with a long unit_name. They are deliberately
@@ -423,6 +434,10 @@ async def heartbeat_broadcast_task(interval_s, unit_id):
         except Exception as e:
             log.error(f"[HB] Broadcast error: {e}")
             system_status.record_error(f"hb: {e}")
+        # Re-read each iteration so a hot-applied
+        # system.heartbeat_interval_s patch takes effect on the next
+        # HB without a reboot.
+        interval_s = config_manager.get("system").get("heartbeat_interval_s", 30)
         await asyncio.sleep(interval_s)
 
 
@@ -1273,8 +1288,11 @@ async def main():
     # --- Task list ---
     tasks = []
 
-    interval_ms = sys.get("pwm_update_interval_ms", 500)
-    tasks.append(asyncio.create_task(schedule_task(interval_ms)))
+    # schedule_task and heartbeat_broadcast_task both re-read their
+    # cadence from config_manager each iteration, so a hot-applied
+    # pwm_update_interval_ms / heartbeat_interval_s patch takes
+    # effect without a reboot. No argument needed at task start.
+    tasks.append(asyncio.create_task(schedule_task()))
     tasks.append(asyncio.create_task(pir_manager.run_all()))
     tasks.append(asyncio.create_task(ldr_monitor.run()))
 
@@ -1304,13 +1322,6 @@ async def main():
 
     if sys.get("log_level") == "DEBUG":
         tasks.append(asyncio.create_task(ram_telemetry_task(60)))
-
-    # Pre-existing bug: this used to read from `lora` but the field
-    # has always lived under `system` in every shipped config, sample,
-    # and validator. The default `30` therefore always won, silently
-    # ignoring any operator override. Now reads from `system` as it
-    # should have all along.
-    hb_interval = sys.get("heartbeat_interval_s", 30)
 
     if role == "coordinator":
         tasks.append(asyncio.create_task(fleet_timeout_task(fleet_mgr)))
@@ -1348,7 +1359,7 @@ async def main():
         # send. Once the deferred retry brings LoRa up, real HBs
         # and forwarded events start flowing automatically.
         tasks.append(asyncio.create_task(
-            heartbeat_broadcast_task(hb_interval, cfg.unit_id)
+            heartbeat_broadcast_task(cfg.unit_id)
         ))
         tasks.append(asyncio.create_task(event_forward_task()))
         tasks.append(asyncio.create_task(leaf_status_task()))

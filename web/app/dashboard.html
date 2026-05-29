@@ -2355,6 +2355,30 @@ async function saveAdvancedEdit(sectionKey) {
     _setEditSnapshot('advanced', sectionKey, newSnap);
     onEditRowChanged(row);
     status.textContent = _savedCopy(currentUnitId, !r.data || r.data.rebooted !== false);
+
+    // After a system save, refresh user-visible labels immediately
+    // instead of waiting for the next 15 s fleet poll + 30 s leaf HB.
+    // On coord (unit_id=0) the coord-side handler already applied
+    // locally; on leaves the coord pre-fills fleet_manager.u["name"]
+    // (see api_handlers._extract_leaf_name_from_patch) so the next
+    // /api/fleet poll returns the new name without waiting for the
+    // leaf's HB.
+    if (sectionKey === 'system') {
+      const newName = newSnap.unit_name;
+      if (isCoord(currentUnitId)) {
+        // Update the hero strip + the global unitName var so
+        // subsequent re-renders show the new label.
+        if (typeof newName === 'string' && newName) {
+          unitName = newName;
+          const t = document.getElementById('heroTitle');
+          if (t) t.textContent = newName;
+        }
+      }
+      // Pull fresh fleet state to refresh sidebar entries + the
+      // detail-page header. ~800 ms gives the coord time to flush
+      // the pre-fill into the next /api/fleet response.
+      setTimeout(load, 800);
+    }
   } catch (e) {
     status.textContent = `Save failed: ${e.message || e}`;
     status.classList.add('err');

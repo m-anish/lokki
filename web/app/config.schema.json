@@ -100,8 +100,9 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled":            { "type": "boolean" },
-        "smoothing_window_s": { "type": "integer", "minimum": 1, "maximum": 3600 },
+        "enabled":                  { "type": "boolean" },
+        "smoothing_window_s":       { "type": "integer", "minimum": 1, "maximum": 3600 },
+        "calibration_max_percent":  { "type": "integer", "minimum": 1, "maximum": 100 },
         "cap_rules": {
           "type": "array",
           "items": {

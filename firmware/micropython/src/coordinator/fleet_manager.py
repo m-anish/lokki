@@ -33,9 +33,14 @@ class FleetManager:
         peers = config_manager.get("system").get("peers", [])
         for uid in peers:
             self._units[uid] = self._empty(uid)
-        t = config_manager.get("lora").get("heartbeat_timeout_s", _HEARTBEAT_TIMEOUT_S)
-        self._timeout_s = t
-        log.info(f"[FLEET] Tracking {len(peers)} peer(s), timeout={self._timeout_s}s")
+        # heartbeat_timeout_s lives in `system`, not `lora` — a long-
+        # standing latent bug. Read here only for the boot log; the
+        # actual timeout check in check_timeouts() consults
+        # config_manager dynamically so hot-applied changes take
+        # effect on the next tick.
+        boot_timeout = config_manager.get("system").get("heartbeat_timeout_s", _HEARTBEAT_TIMEOUT_S)
+        self._timeout_s = boot_timeout
+        log.info(f"[FLEET] Tracking {len(peers)} peer(s), timeout={boot_timeout}s")
 
     # ------------------------------------------------------------------
     # Heartbeat update
@@ -177,15 +182,19 @@ class FleetManager:
     # ------------------------------------------------------------------
 
     def check_timeouts(self):
+        # Read live so a hot-applied system.heartbeat_timeout_s patch
+        # takes effect on the next sweep without a reboot. Cheap —
+        # this runs every ~10 s.
+        timeout_s = config_manager.get("system").get("heartbeat_timeout_s", _HEARTBEAT_TIMEOUT_S)
         now = time.time()
         for uid, u in self._units.items():
-            if u["online"] and (now - u["last_seen"]) > self._timeout_s:
+            if u["online"] and (now - u["last_seen"]) > timeout_s:
                 self.mark_offline(uid)
         # Unclaimed leaves also time out — if we haven't heard from a
         # freshly-factory-reset device for a while, drop it from the
         # dashboard so stale "New device" cards don't accumulate.
         stale_uids = [k for k, v in self._unclaimed.items()
-                      if v["online"] and (now - v["last_seen"]) > self._timeout_s]
+                      if v["online"] and (now - v["last_seen"]) > timeout_s]
         for k in stale_uids:
             self._unclaimed[k]["online"] = False
             log.warn(f"[FLEET] Unclaimed chip UID {k} marked offline")

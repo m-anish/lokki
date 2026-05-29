@@ -725,6 +725,13 @@
               <span style="font-size:.82em;color:var(--muted)">seconds rolling average — reduces flicker from passing clouds</span>
             </div>
           </div>
+          <div class="field expert-only">
+            <label class="field-label">Calibration max %</label>
+            <div style="display:flex;align-items:center;gap:10px">
+              <input id="ldr_cal_max" type="number" value="100" min="1" max="100" style="width:100px" />
+              <span style="font-size:.82em;color:var(--muted)">Maps this raw reading → 100%. Use when the LDR is inside an enclosure that attenuates light. Default 100 (no calibration).</span>
+            </div>
+          </div>
           <div style="font-weight:600;font-size:.82em;margin:10px 0 4px;color:#374151">Brightness Cap Rules</div>
           <div style="font-size:.78em;color:var(--muted);margin-bottom:10px">
             When ambient light exceeds the threshold, LED output is capped at the level you set.
@@ -2087,6 +2094,7 @@ function buildConfig() {
     ldr: {
       enabled:            document.getElementById('ldr_enabled').checked,
       smoothing_window_s: parseInt(document.getElementById('ldr_smooth').value)||60,
+      calibration_max_percent: parseInt(document.getElementById('ldr_cal_max').value)||100,
       cap_rules:          ldrCapRules.map(r=>({...r})),
     },
     pir: pirState.map(p => {
@@ -2453,6 +2461,7 @@ function applyConfigToForm(cfg) {
   const ldr=cfg.ldr||{};
   setChk('ldr_enabled', ldr.enabled!==false);
   set('ldr_smooth', ldr.smoothing_window_s);
+  set('ldr_cal_max', ldr.calibration_max_percent != null ? ldr.calibration_max_percent : 100);
   if (ldr.cap_rules) { ldrCapRules=ldr.cap_rules.map(r=>({...r})); renderLdrRules(); }
 
   if (cfg.pir) {

@@ -52,10 +52,13 @@ _REBOOT_PATHS = (
     "notifications",
     "system/role",
     "system/unit_id",
-    "system/log_level",
-    "system/log_buffer_size",
-    "system/heartbeat_interval_s",
-    "system/pwm_update_interval_ms",
+    "system/log_level",          # Logger instances cache it at construction
+    "system/log_buffer_size",    # event_bus sized at boot
+    # NOTE: system/heartbeat_interval_s and system/pwm_update_interval_ms
+    # WERE here. Both tasks now re-read their cadence from config_manager
+    # each iteration so the changes hot-apply on the next tick. Same for
+    # system/heartbeat_timeout_s (read dynamically by fleet_timeout_task
+    # via config_manager.get("system")).
 )
 
 # Per-section fields that, when changed inside a section/index patch
@@ -72,6 +75,22 @@ def _matches_prefix(path, prefix):
     return path == prefix or path.startswith(prefix + "/")
 
 
+def _walk(value, parts):
+    """Walk a (potentially missing) nested dict by a list of keys.
+    Returns the leaf value or None if any key is missing / non-dict
+    encountered. Used by the parent-of-reboot-path descendant check
+    below: when the patch path is e.g. "system" we need to compare
+    the old/new dicts' "log_level", "heartbeat_interval_s", etc.
+    sub-fields against the reboot list."""
+    for p in parts:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(p)
+        if value is None:
+            return None
+    return value
+
+
 def requires_reboot(path, old_value, new_value):
     """True iff applying this patch needs a leaf reboot to fully take
     effect. Conservative — anything we can't analyse → reboot.
@@ -83,8 +102,23 @@ def requires_reboot(path, old_value, new_value):
     new_value: the value at that path AFTER the patch.
     """
     # 1. Whole-section / leaf-path matches against the reboot list.
+    #    Catches patches AT or BELOW a reboot-required path.
     for rp in _REBOOT_PATHS:
         if _matches_prefix(path, rp):
+            return True
+
+    # 2. Parent-of-reboot-path descendant check. Without this, a
+    #    section-level patch like path="system" with a bundled value
+    #    {role, unit_name, log_level, hb_interval_s, …} would
+    #    hot-apply even when reboot-required sub-fields changed —
+    #    log_level wouldn't actually update (Logger instances cache
+    #    it) and the operator would think the change took effect.
+    #    Compare each reboot path that lives strictly UNDER `path`.
+    for rp in _REBOOT_PATHS:
+        if rp == path or not rp.startswith(path + "/"):
+            continue
+        rel = rp[len(path) + 1:].split("/")
+        if _walk(old_value, rel) != _walk(new_value, rel):
             return True
 
     parts = path.split("/")
