@@ -712,17 +712,16 @@ function renderFleet(units) {
     const name = unitDisplayName(id, u);
     const roleLabel = id == 0 ? "Coordinator" : "Leaf";
     const up = u.online ? fmtUptime(u.uptime || 0) : "Offline";
-    const onclickName = name.replace(/'/g, "\\'");
     h += `<div class="unit-card">`;
     h += `<div class="unit-head">`;
-    h += `<span class="unit-name">${name}</span>`;
+    h += `<span class="unit-name">${_escape(name)}</span>`;
     h += `<span class="unit-role">${roleLabel}</span>`;
     h += `<div style="margin-left:auto;display:flex;gap:8px">`;
     // "Control" (modal) → "Configure" (detail page). Modal still
     // works if invoked directly; we'll retire it entirely when UX-2b
     // moves the manual-override sliders inline on the detail page.
     h += `<button class="btn" onclick="openUnit(${id})">⚙️ Configure</button>`;
-    h += `<button class="btn" onclick="openControlModal(${id},'${onclickName}')">Quick override</button>`;
+    h += `<button class="btn" onclick="openControlModal(${id})">Quick override</button>`;
     h += `<button class="btn" onclick="reqStatus(${id})">Refresh</button>`;
     h += `</div></div>`;
     h += `<div class="unit-body"><div class="status-grid">`;
@@ -733,7 +732,7 @@ function renderFleet(units) {
     const chNames = u.ch_names || [];
     const chEnabled = u.ch_enabled || [];
     (u.ch || []).forEach((v, i) => {
-      const label = chNames[i] || `ch${i+1}`;
+      const label = _escape(chNames[i] || `ch${i+1}`);
       const dim = chEnabled[i] === false ? ' row-disabled' : '';
       h += `<div class="led-row${dim}"><span class="bswatch" style="${swatchStyle(v)}" title="${label}: ${v}%"></span><span class="led-row-label">${i+1}: ${label}</span><span class="led-row-val">${v}%</span></div>`;
     });
@@ -745,7 +744,7 @@ function renderFleet(units) {
     const rlNames = u.rl_names || [];
     const rlEnabled = u.rl_enabled || [];
     (u.rl || []).forEach((v, i) => {
-      const label = rlNames[i] || `rl${i+1}`;
+      const label = _escape(rlNames[i] || `rl${i+1}`);
       const cls = v ? "on" : "off";
       const dim = rlEnabled[i] === false ? ' row-disabled' : '';
       h += `<div class="relay-row${dim}"><span class="relay-ind ${cls}" title="${label}: ${v?'ON':'OFF'}">${v?'ON':'OFF'}</span><span class="led-row-label">${i+1}: ${label}</span></div>`;
@@ -758,7 +757,7 @@ function renderFleet(units) {
     const pirNames = u.pir_names || [];
     const pirEnabled = u.pir_enabled || [];
     (u.pir || []).forEach((v, i) => {
-      const label = pirNames[i] || `pir${i+1}`;
+      const label = _escape(pirNames[i] || `pir${i+1}`);
       const cls = v ? "on" : "off";
       const dim = pirEnabled[i] === false ? ' row-disabled' : '';
       h += `<div class="pir-row${dim}"><span class="relay-ind ${cls}" title="${label}: ${v?'MOTION':'CLEAR'}">${v?'MOTION':'CLEAR'}</span><span class="led-row-label">${i+1}: ${label}</span></div>`;
@@ -988,8 +987,9 @@ async function reqStatus(id) {
   setTimeout(load, 2000);
 }
 
-async function openControlModal(id, name) {
+async function openControlModal(id) {
   currentUnitId = id;
+  const name = unitDisplayName(id, lastFleet[String(id)] || {});
   document.getElementById("modalTitle").textContent = "Control — " + name;
   document.getElementById("modalBody").innerHTML = '<p style="color:var(--muted)">Loading…</p>';
   document.getElementById("controlModal").style.display = "block";
@@ -1034,7 +1034,7 @@ async function openControlModal(id, name) {
     html += '<div class="control-group"><h3>Scene Presets</h3>';
     html += '<div class="preset-buttons">';
     unitScenes.forEach(s => {
-      html += `<button class="btn scene-btn" data-scene="${s}">${s}</button>`;
+      html += `<button class="btn scene-btn" data-scene="${_escape(s)}">${_escape(s)}</button>`;
     });
     html += "</div></div>";
   }
@@ -1059,7 +1059,7 @@ async function openControlModal(id, name) {
       const liveVal = liveCh[ch.id - 1];
       const val = liveVal != null ? liveVal : (ch.default_duty_percent || 0);
       html += `<div class="channel-control">`;
-      html += `<label>${ch.name} (${ch.id})</label>`;
+      html += `<label>${_escape(ch.name)} (${ch.id})</label>`;
       html += `<div class="slider-container">`;
       html += `<input type="range" class="slider" id="ch_${ch.id}" min="0" max="100" value="${val}" oninput="updateSlider('${ch.id}',this.value)">`;
       html += `<span class="bswatch" id="sw_${ch.id}" style="${swatchStyle(val)}"></span>`;
@@ -1077,7 +1077,7 @@ async function openControlModal(id, name) {
       const liveVal = liveRl[r.id - 1];
       const checked = liveVal != null ? (liveVal ? "checked" : "") : ((r.default_state || "off") === "on" ? "checked" : "");
       html += `<div class="relay-control">`;
-      html += `<label>${r.name} (${r.id})</label>`;
+      html += `<label>${_escape(r.name)} (${r.id})</label>`;
       html += `<label class="relay-toggle">`;
       html += `<input type="checkbox" id="rly_${r.id}" ${checked}>`;
       html += `<span class="toggle-slider"></span>`;
@@ -1230,18 +1230,24 @@ async function applyOverride() {
 
 async function revertToSchedule() {
   if (!confirm("Clear manual overrides and resume schedule?")) return;
-  await fetch(`/api/units/${currentUnitId}/manual`, { method: "DELETE" });
-  closeModal();
-  load();
+  try {
+    const r = await fetchJSON(`/api/units/${currentUnitId}/manual`, { method: "DELETE" });
+    if (!r.ok) { alert("Revert failed: " + (r.error || "unknown")); return; }
+    closeModal();
+    load();
+  } catch (e) {
+    alert("Revert failed: " + (e.message || e));
+  }
 }
 
 async function rebootDevice() {
   if (!confirm("Reboot the coordinator? This will disconnect all clients briefly.")) return;
   try {
-    await fetch("/api/reboot", { method: "POST" });
+    const r = await fetchJSON("/api/reboot", { method: "POST" });
+    if (!r.ok) { alert("Reboot failed: " + (r.error || "unknown")); return; }
     alert("Rebooting... The page will reload in 10 seconds.");
     setTimeout(() => window.location.reload(), 10000);
-  } catch (e) { alert("Reboot request failed: " + e); }
+  } catch (e) { alert("Reboot request failed: " + (e.message || e)); }
 }
 
 // Manual time-sync from the time-waiting banner. Uses the browser's
@@ -1439,10 +1445,10 @@ async function renderChannelsTab() {
     // normal schedule" but it stays interactive.
     const rowCls = enabled ? '' : ' row-disabled';
     h += `<div class="override-row${rowCls}">`;
-    h += `<span class="ov-swatch" style="${swatchStyle(currentDuty)}"></span>`;
-    h += `<span class="ov-label">${i}: ${_escape(name)}</span>`;
+    h += `<span class="ov-swatch" id="ov-ch-sw-${i}" style="${swatchStyle(currentDuty)}"></span>`;
+    h += `<span class="ov-label" id="ov-ch-label-${i}">${i}: ${_escape(name)}</span>`;
     h += `<input type="range" class="ov-slider" id="ov-ch-${i}" min="0" max="100" value="${currentDuty}" `;
-    h += `oninput="document.getElementById('ov-ch-val-${i}').textContent = this.value + '%'" />`;
+    h += `oninput="document.getElementById('ov-ch-val-${i}').textContent=this.value+'%';document.getElementById('ov-ch-sw-${i}').setAttribute('style',swatchStyle(parseInt(this.value)))" />`;
     h += `<span class="ov-value" id="ov-ch-val-${i}">${currentDuty}%</span>`;
     h += `<span class="ov-buttons">`;
     h += `<button class="btn" onclick="applyChannelOverride(${i})">Apply</button>`;
@@ -1659,7 +1665,17 @@ async function saveChannelEdit(channelId, idx) {
       default_duty_percent: merged.default_duty_percent,
     });
     onEditRowChanged(row);    // recompute dirty (everything matches snapshot now)
+    const lbl = row.querySelector('.row-name-label');
+    if (lbl) lbl.textContent = merged.name || '';
+    // Manual-Override row above shares this name. Update its label
+    // too so a rename is reflected in both halves of the Channels
+    // tab without a full re-render.
+    const ovLbl = document.getElementById(`ov-ch-label-${channelId}`);
+    if (ovLbl) ovLbl.textContent = `${channelId}: ${merged.name || ''}`;
     status.textContent = _savedCopy(currentUnitId, !r.data || r.data.rebooted !== false);
+    // Pull fresh fleet state so the Overview tab + fleet cards
+    // reflect the new name within ~1 s instead of the next 15 s poll.
+    setTimeout(load, 800);
   } catch (e) {
     status.textContent = `Save failed: ${e.message || e}`;
     status.classList.add('err');
@@ -1744,7 +1760,7 @@ async function renderRelaysTab() {
     const rowCls = enabled ? '' : ' row-disabled';
     h += `<div class="relay-toggle-row${rowCls}">`;
     h += `<span class="relay-ind ${state}">${state.toUpperCase()}</span>`;
-    h += `<span style="flex:1">${i}: ${_escape(name)}</span>`;
+    h += `<span style="flex:1" id="ov-rl-label-${i}">${i}: ${_escape(name)}</span>`;
     h += `<button class="btn" onclick="applyRelayOverride(${i}, 'on')">Turn ON</button>`;
     h += `<button class="btn" onclick="applyRelayOverride(${i}, 'off')">Turn OFF</button>`;
     h += `</div>`;
@@ -1855,7 +1871,13 @@ async function saveRelayEdit(relayId, idx) {
       default_state: merged.default_state,
     });
     onEditRowChanged(row);
+    const lbl = row.querySelector('.row-name-label');
+    if (lbl) lbl.textContent = merged.name || '';
+    // Manual-Override row above shares this name.
+    const ovLbl = document.getElementById(`ov-rl-label-${relayId}`);
+    if (ovLbl) ovLbl.textContent = `${relayId}: ${merged.name || ''}`;
     status.textContent = _savedCopy(currentUnitId, !r.data || r.data.rebooted !== false);
+    setTimeout(load, 800);
   } catch (e) {
     status.textContent = `Save failed: ${e.message || e}`;
     status.classList.add('err');
@@ -2115,7 +2137,10 @@ async function savePirEdit(pirId, idx) {
     delete _unitConfigCache[currentUnitId];
     _setEditSnapshot('pir', pirId, _pirSnapshot(pirId, merged));
     onEditRowChanged(row);
+    const lbl = row.querySelector('.row-name-label');
+    if (lbl) lbl.textContent = merged.name || '';
     status.textContent = _savedCopy(currentUnitId, !r.data || r.data.rebooted !== false);
+    setTimeout(load, 800);
   } catch (e) {
     status.textContent = `Save failed: ${e.message || e}`;
     status.classList.add('err');
@@ -2380,6 +2405,17 @@ async function saveAdvancedEdit(sectionKey) {
         if (lastFleet[idKey]) {
           lastFleet[idKey].name = newName;
         }
+        // Coord case: flip the global `unitName` FIRST so the
+        // unitDisplayName() call below (which falls back to it for
+        // id=0) reads the new value, not the stale one.
+        if (isCoord(currentUnitId)) {
+          unitName = newName;
+          const heroEl = document.getElementById('heroTitle');
+          if (heroEl) heroEl.textContent = newName;
+          document.title = "Lokki — " + newName;
+          const navEl = document.getElementById('navUnitName');
+          if (navEl) navEl.textContent = "— " + newName;
+        }
         // Rebuild the sidebar entries (label "🍃 Leaf N: <name>")
         // so the user sees the new label without a fleet round-trip.
         rebuildSidebarUnits();
@@ -2391,13 +2427,6 @@ async function saveAdvancedEdit(sectionKey) {
         if (titleEl) {
           const u = lastFleet[idKey] || { name: newName };
           titleEl.textContent = unitDisplayName(currentUnitId, u);
-        }
-        // Coord case: also flip the hero strip + the global
-        // `unitName` so subsequent re-renders pick up the new label.
-        if (isCoord(currentUnitId)) {
-          unitName = newName;
-          const heroEl = document.getElementById('heroTitle');
-          if (heroEl) heroEl.textContent = newName;
         }
       }
       // Backup sync: pull fresh fleet state ~800 ms later in case
@@ -2432,7 +2461,7 @@ function renderUnitView() {
   const isCoord = currentUnitId === 0;
   const name = unitDisplayName(currentUnitId, u);
   const roleLabel = isCoord ? "Coordinator" : "Leaf";
-  title.textContent = name;
+  title.textContent = name;   // textContent is safe
   const up = u.online ? fmtUptime(u.uptime || 0) : "Offline";
   const lastSeen = u.last_seen_ago_s !== undefined ? fmtAgoS(u.last_seen_ago_s) : "—";
   sub.innerHTML =
@@ -2450,7 +2479,7 @@ function renderUnitView() {
   const chNames = u.ch_names || [];
   const chEnabled = u.ch_enabled || [];
   (u.ch || []).forEach((v, i) => {
-    const label = chNames[i] || `ch${i+1}`;
+    const label = _escape(chNames[i] || `ch${i+1}`);
     const dim = chEnabled[i] === false ? ' row-disabled' : '';
     h += `<div class="led-row${dim}"><span class="bswatch" style="${swatchStyle(v)}" title="${label}: ${v}%"></span><span class="led-row-label">${i+1}: ${label}</span><span class="led-row-val">${v}%</span></div>`;
   });
@@ -2462,7 +2491,7 @@ function renderUnitView() {
   const rlNames = u.rl_names || [];
   const rlEnabled = u.rl_enabled || [];
   (u.rl || []).forEach((v, i) => {
-    const label = rlNames[i] || `rl${i+1}`;
+    const label = _escape(rlNames[i] || `rl${i+1}`);
     const cls = v ? "on" : "off";
     const dim = rlEnabled[i] === false ? ' row-disabled' : '';
     h += `<div class="relay-row${dim}"><span class="relay-ind ${cls}">${v?'ON':'OFF'}</span><span class="led-row-label">${i+1}: ${label}</span></div>`;
@@ -2475,7 +2504,7 @@ function renderUnitView() {
   const pirNames = u.pir_names || [];
   const pirEnabled = u.pir_enabled || [];
   (u.pir || []).forEach((v, i) => {
-    const label = pirNames[i] || `pir${i+1}`;
+    const label = _escape(pirNames[i] || `pir${i+1}`);
     const cls = v ? "on" : "off";
     const dim = pirEnabled[i] === false ? ' row-disabled' : '';
     h += `<div class="pir-row${dim}"><span class="relay-ind ${cls}">${v?'MOTION':'CLEAR'}</span><span class="led-row-label">${i+1}: ${label}</span></div>`;
@@ -2504,8 +2533,8 @@ function renderUnitView() {
   if (!isCoord && u.rssi != null) {
     h += `<div>Signal: ${signalBarHTML(u.rssi)} <b>${fmtRssi(u.rssi)}</b></div>`;
   }
-  if (u.err) h += `<div>Errors: <b style="color:#dc2626">${u.err}</b></div>`;
-  if (u.uid) h += `<div style="color:var(--muted);font-size:.85em">Chip UID: <code>${u.uid}</code></div>`;
+  if (u.err) h += `<div>Errors: <b style="color:#dc2626">${_escape(u.err)}</b></div>`;
+  if (u.uid) h += `<div style="color:var(--muted);font-size:.85em">Chip UID: <code>${_escape(u.uid)}</code></div>`;
   h += `</div></div>`;
 
   h += `</div>`;   // /status-grid
@@ -2538,7 +2567,7 @@ function rebuildSidebarUnits() {
     const label = isCoord ? "Coordinator" : `Leaf ${id}: ${u.name || "(no name)"}`;
     const klass = isCoord ? "unit-coord" : "unit-leaf";
     const activeClass = (currentUnitId === id && document.getElementById("view-unit").classList.contains("active")) ? " active" : "";
-    html += `<a class="rail-link ${klass}${activeClass}" data-unitid="${id}" title="${label.replace(/"/g, '&quot;')}" href="javascript:void(0)" onclick="openUnit(${id})">${icon}</a>`;
+    html += `<a class="rail-link ${klass}${activeClass}" data-unitid="${id}" title="${_escape(label)}" href="javascript:void(0)" onclick="openUnit(${id})">${icon}</a>`;
   }
   container.innerHTML = html;
 }

@@ -207,6 +207,10 @@ class LoRaProtocol:
         the entire `led_channels` array (~1.5 KB) without touching
         `system`, `lora`, etc. Path syntax matches core.json_path:
         slash-separated, numeric segments index lists.
+
+        Returns the leaf's CFG_END ACK dict on success (truthy; the
+        dict contains at least `ok: True` and a `rebooted` flag), or
+        False on failure. Callers checking `if ok:` continue to work.
         """
         data    = config_str.encode()
         total   = len(data)
@@ -274,7 +278,7 @@ class LoRaProtocol:
                     log.info(f"[LORA_PROTO] Config transfer {transfer_id} complete")
                     self.cfg_progress["phase"]   = "success"
                     self.cfg_progress["message"] = ""
-                    return True
+                    return ack
 
                 # If the leaf could not apply the config (validator rejected it,
                 # flash write failed, etc.), retrying the same payload won't help.
@@ -328,7 +332,7 @@ class LoRaProtocol:
                             log.info(f"[LORA_PROTO] Config transfer {transfer_id} complete after smart retry")
                             self.cfg_progress["phase"]   = "success"
                             self.cfg_progress["message"] = ""
-                            return True
+                            return ack
                         if ack and ack.get("reason") == "APPLY_FAILED":
                             err_str = ack.get("err", "")
                             self.cfg_progress["phase"]   = "failed"

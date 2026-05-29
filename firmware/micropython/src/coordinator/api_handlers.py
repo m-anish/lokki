@@ -842,18 +842,18 @@ async def handle_config_patch(unit_id, body):
         # Value too big to fit a single packet — fall back to a
         # chunked transfer that targets the path. Only the bytes
         # of the value (not the whole config) ride the chunked
-        # pipeline. The send_config helper doesn't currently surface
-        # the leaf's ACK payload (just ok/fail), so we conservatively
-        # report rebooted=true for chunked transfers — UX-wise the
-        # operator sees the slower path anyway since it's a bigger
-        # edit.
+        # pipeline. send_config returns the leaf's CFG_END ACK
+        # dict on success (or False on failure), so we can forward
+        # the leaf's hot-apply decision the same way the single-
+        # packet path does.
         value_str = json.dumps(value)
-        ok_xfer = await lora_protocol.send_config(unit_id, value_str, target_path=path)
-        if not ok_xfer:
+        ack = await lora_protocol.send_config(unit_id, value_str, target_path=path)
+        if not ack:
             prog = lora_protocol.cfg_progress
             if prog.get("phase") == "failed" and prog.get("message"):
                 return _err(prog["message"], 502)
             return _err(f"Chunked patch to unit {unit_id} failed", 502)
+        rebooted = ack.get("rebooted", True) if isinstance(ack, dict) else True
         method = "section"
 
     # Leaf applied. Update our cache so subsequent reads see the new
