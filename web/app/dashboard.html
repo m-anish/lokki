@@ -1368,7 +1368,8 @@ function switchUnitTab(tab) {
   else if (tab === "channels")  renderChannelsTab();
   else if (tab === "relays")    renderRelaysTab();
   else if (tab === "pirs")      renderPirsTab();
-  // schedule, scenes, advanced — placeholders until UX-2c / UX-3.
+  else if (tab === "advanced")  renderAdvancedTab();
+  // schedule, scenes — placeholders until UX-3.
 }
 
 // ============================================================
@@ -1522,10 +1523,44 @@ function isCoord(unitId) { return unitId === 0 || unitId === '0'; }
 // Compare the row's current form values against the cached config
 // snapshot. If anything differs, mark the input "dirty" and reveal
 // the action buttons. Called on every input/change event in the row.
+//
+// PIR rows have nested on_motion / on_vacancy action objects so they
+// use a deep equality check on the assembled current state; channels
+// and relays use simple top-level field comparison.
 function onEditRowChanged(row) {
   const kind = row.dataset.rowKind;
   const id = parseInt(row.dataset.rowId, 10);
   const snapshot = _editSnapshotFor(kind, id);
+
+  if (kind === 'pir') {
+    if (!snapshot) return;
+    // Only the flat fields get the dirty-border treatment — action-
+    // editor inputs change layout when the enum picker changes, so
+    // a uniform amber border across all of them would be noisy.
+    ['name', 'enabled', 'vacancy_timeout_s'].forEach(f => {
+      const el = row.querySelector(`[data-field="${f}"]`);
+      if (!el) return;
+      const v = el.type === 'checkbox' ? el.checked
+              : el.type === 'number'   ? Number(el.value || 0)
+              : el.value;
+      el.classList.toggle('dirty', v !== snapshot[f]);
+    });
+    const cur = {
+      name: row.querySelector('[data-field="name"]').value,
+      enabled: row.querySelector('[data-field="enabled"]').checked,
+      vacancy_timeout_s: Number(row.querySelector('[data-field="vacancy_timeout_s"]').value || 60),
+      on_motion: _readPirActionFromRow(row, 'on_motion'),
+      on_vacancy: _readPirActionFromRow(row, 'on_vacancy'),
+    };
+    const dirty = JSON.stringify(cur) !== JSON.stringify(snapshot);
+    const actions = row.querySelector('.edit-row-actions');
+    if (actions) actions.style.display = dirty ? 'flex' : 'none';
+    const status = row.querySelector('.save-status');
+    if (status) { status.textContent = ''; status.classList.remove('err'); }
+    return;
+  }
+
+  // Channels and relays — flat top-level field comparison.
   let anyDirty = false;
   row.querySelectorAll('[data-field]').forEach(inp => {
     const field = inp.dataset.field;
@@ -1539,7 +1574,6 @@ function onEditRowChanged(row) {
   });
   const actions = row.querySelector('.edit-row-actions');
   if (actions) actions.style.display = anyDirty ? 'flex' : 'none';
-  // Clear stale success/error status when user resumes editing.
   const status = row.querySelector('.save-status');
   if (status) { status.textContent = ''; status.classList.remove('err'); }
 }
@@ -1832,6 +1866,13 @@ async function applyRelayOverride(relayId, state) {
 
 // ---- PIRs tab ----
 
+const PIR_ACTIONS = [
+  ['revert_to_schedule', 'Revert to schedule'],
+  ['set_scene',          'Apply scene'],
+  ['set_led_channels',   'Set LED channels'],
+  ['set_relay',          'Set relay'],
+];
+
 async function renderPirsTab() {
   if (currentUnitId == null) return;
   const panel = document.getElementById("tab-pirs");
@@ -1843,42 +1884,467 @@ async function renderPirsTab() {
   }
   const live = lastFleet[String(currentUnitId)] || {};
   const pirs = cfg.pir || [];
+  // List of scene names for the set_scene picker. Empty list if scenes
+  // section is absent (cached configs that pre-date scenes will have []
+  // and the picker still works as a free-text input).
+  const sceneNames = (cfg.scenes || []).map(s => s.name).filter(Boolean);
 
   let h = '<div class="tab-section">';
-  h += '<h3 class="tab-section-title">PIR Sensors (read-only — inline editing coming in UX-2c)</h3>';
-  h += '<div class="tab-section-hint">PIRs are inputs — they have no manual override. Live state shows current motion detection; configuration shows what action fires on each transition.</div>';
+  h += '<h3 class="tab-section-title">PIR Sensors</h3>';
+  h += '<div class="tab-section-hint">PIRs are inputs — no manual override. Edit any field and click Save to push over LoRa. ' +
+       (isCoord(currentUnitId) ? 'Coordinator changes apply immediately.' : 'Leaf will reboot after saving (~30 s).') +
+       '</div>';
   for (let i = 1; i <= 4; i++) {
-    const p = pirs.find(x => x.id === i);
-    const enabled = p && p.enabled;
-    const name = p && p.name ? p.name : `PIR ${i}`;
-    const liveState = (live.pir || [])[i-1] ? 'MOTION' : 'CLEAR';
-    const rowCls = enabled ? '' : ' row-disabled';
-    h += `<div class="config-row${rowCls}" style="padding:12px 0;border-bottom:1px solid var(--border)">`;
-    h += `<div style="display:flex;align-items:center;gap:10px">`;
-    h += `<span class="relay-ind ${enabled && (live.pir || [])[i-1] ? 'on' : 'off'}">${liveState}</span>`;
-    h += `<strong>${i}: ${_escape(name)}</strong>`;
-    h += enabled ? ' <span style="color:var(--green);font-size:.85em">enabled</span>' : ' <span class="ov-value">disabled</span>';
-    h += `</div>`;
-    if (p && p.gpio_pin !== undefined) {
-      h += `<div class="config-readonly">GPIO <code>${p.gpio_pin}</code> · vacancy timeout <code>${p.vacancy_timeout_s ?? 60}s</code></div>`;
-    }
-    if (p && p.on_motion) {
-      const m = p.on_motion;
-      let desc = `action=<code>${_escape(m.action)}</code>`;
-      if (m.action === 'set_scene' && m.scene_name) desc += ` scene=<code>${_escape(m.scene_name)}</code>`;
-      if (m.action === 'set_led_channels') desc += ` channels=<code>${JSON.stringify(m.channels)}</code> duty=<code>${m.duty_percent}%</code>${m.fade_ms ? ' fade=<code>'+m.fade_ms+'ms</code>' : ''}`;
-      if (m.action === 'set_relay') desc += ` relay=<code>${m.relay_id}</code> state=<code>${_escape(m.state)}</code>`;
-      h += `<div class="config-readonly">on_motion: ${desc}</div>`;
-    }
-    if (p && p.on_vacancy) {
-      const v = p.on_vacancy;
-      h += `<div class="config-readonly">on_vacancy: action=<code>${_escape(v.action)}</code></div>`;
-    }
-    h += `</div>`;
+    const p = pirs.find(x => x.id === i) || {};
+    const idx = pirs.findIndex(x => x.id === i);
+    h += renderPirEditRow(i, idx, p, live, sceneNames);
+    _setEditSnapshot('pir', i, _pirSnapshot(i, p));
   }
   h += '</div>';
   panel.innerHTML = h;
+
+  for (let i = 1; i <= 4; i++) bindPirEditListeners(i);
 }
+
+// Snapshot the full PIR config entry for dirty-comparison.
+function _pirSnapshot(pirId, p) {
+  return {
+    name: p.name != null ? p.name : `PIR ${pirId}`,
+    enabled: p.enabled === true,
+    vacancy_timeout_s: p.vacancy_timeout_s != null ? p.vacancy_timeout_s : 60,
+    on_motion:  _normPirAction(p.on_motion),
+    on_vacancy: _normPirAction(p.on_vacancy),
+  };
+}
+function _normPirAction(a) {
+  if (!a || typeof a !== 'object') return { action: 'revert_to_schedule' };
+  const out = { action: a.action || 'revert_to_schedule' };
+  if (a.action === 'set_scene')        out.scene_name  = a.scene_name || '';
+  if (a.action === 'set_led_channels') {
+    out.channels     = Array.isArray(a.channels) ? a.channels.slice() : [];
+    out.duty_percent = a.duty_percent != null ? a.duty_percent : 100;
+    out.fade_ms      = a.fade_ms      != null ? a.fade_ms      : 0;
+  }
+  if (a.action === 'set_relay') {
+    out.relay_id = a.relay_id != null ? a.relay_id : 1;
+    out.state    = a.state    != null ? a.state    : 'on';
+  }
+  return out;
+}
+
+function renderPirEditRow(pirId, idx, p, live, sceneNames) {
+  const enabled = p.enabled === true;
+  const rowCls = enabled ? '' : ' row-disabled';
+  const name = p.name != null ? p.name : `PIR ${pirId}`;
+  const timeout = p.vacancy_timeout_s != null ? p.vacancy_timeout_s : 60;
+  const gpio = p.gpio_pin != null ? p.gpio_pin : '—';
+  const liveOn = enabled && (live.pir || [])[pirId-1];
+  const liveLabel = liveOn ? 'MOTION' : 'CLEAR';
+
+  let h = `<div class="edit-row${rowCls}" data-row-kind="pir" data-row-id="${pirId}" data-row-idx="${idx}">`;
+  h += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">`;
+  h += `<span class="relay-ind ${liveOn ? 'on' : 'off'}">${liveLabel}</span>`;
+  h += `<strong>${pirId}. <span class="row-name-label">${_escape(name)}</span></strong>`;
+  h += `<span style="color:var(--muted);font-weight:400;font-size:.85em">GPIO ${gpio}</span>`;
+  h += `</div>`;
+
+  h += `<div class="edit-fields">`;
+  h += `<div class="edit-field"><label>Name</label><input type="text" data-field="name" value="${_escape(name)}" /></div>`;
+  h += `<div class="edit-field"><label>Vacancy timeout (s)</label><input type="number" min="1" max="3600" data-field="vacancy_timeout_s" value="${timeout}" /></div>`;
+  h += `<div class="edit-field"><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-field="enabled"${enabled ? ' checked' : ''} /> Enabled</label></div>`;
+  h += `</div>`;
+
+  // Action editors — wrapped so the renderPirActionEditor result can
+  // be re-rendered when the action enum changes (extra fields appear
+  // and disappear by action type).
+  h += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:10px">`;
+  h += `<div><div style="font-size:.78em;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">On motion</div><div data-pir-action="on_motion">${renderPirActionEditor(pirId, 'on_motion', p.on_motion || {action:'revert_to_schedule'}, sceneNames)}</div></div>`;
+  h += `<div><div style="font-size:.78em;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">On vacancy</div><div data-pir-action="on_vacancy">${renderPirActionEditor(pirId, 'on_vacancy', p.on_vacancy || {action:'revert_to_schedule'}, sceneNames)}</div></div>`;
+  h += `</div>`;
+
+  h += `<div class="edit-row-actions" style="display:none">`;
+  h += `<span class="save-status"></span>`;
+  h += `<button class="btn" onclick="discardPirEdit(${pirId})">Discard</button>`;
+  h += `<button class="btn btn-save" onclick="savePirEdit(${pirId}, ${idx})">Save</button>`;
+  h += `</div>`;
+  h += `</div>`;
+  return h;
+}
+
+// Action editor returns the inner HTML for one of {on_motion, on_vacancy}.
+// Action picker is always present; extra fields show conditionally by
+// action type. data-field paths embed the trigger ("on_motion") so a
+// single onEditRowChanged() walk can compare against the snapshot.
+function renderPirActionEditor(pirId, trigger, a, sceneNames) {
+  a = a || {action: 'revert_to_schedule'};
+  const cur = a.action || 'revert_to_schedule';
+  let h = `<div class="edit-fields" style="grid-template-columns:1fr">`;
+  h += `<div class="edit-field"><label>Action</label><select data-field="${trigger}.action" data-pir-action-trigger="${trigger}" onchange="onPirActionChanged(${pirId},'${trigger}',this)">`;
+  PIR_ACTIONS.forEach(([v, label]) => {
+    h += `<option value="${v}"${v === cur ? ' selected' : ''}>${label}</option>`;
+  });
+  h += `</select></div>`;
+
+  if (cur === 'set_scene') {
+    const scn = a.scene_name || '';
+    if (sceneNames.length) {
+      h += `<div class="edit-field"><label>Scene</label><select data-field="${trigger}.scene_name">`;
+      h += `<option value=""${scn === '' ? ' selected' : ''}>(choose…)</option>`;
+      sceneNames.forEach(n => { h += `<option value="${_escape(n)}"${n === scn ? ' selected' : ''}>${_escape(n)}</option>`; });
+      // Allow current value even if it's not in the scenes list (stale config).
+      if (scn && !sceneNames.includes(scn)) h += `<option value="${_escape(scn)}" selected>${_escape(scn)} (not configured)</option>`;
+      h += `</select></div>`;
+    } else {
+      h += `<div class="edit-field"><label>Scene name</label><input type="text" data-field="${trigger}.scene_name" value="${_escape(scn)}" /></div>`;
+    }
+  }
+  if (cur === 'set_led_channels') {
+    const chs = Array.isArray(a.channels) ? a.channels.join(', ') : '';
+    const duty = a.duty_percent != null ? a.duty_percent : 100;
+    const fade = a.fade_ms != null ? a.fade_ms : 0;
+    h += `<div class="edit-field"><label>Channels (comma-sep, 1–8)</label><input type="text" data-field="${trigger}.channels" value="${chs}" /></div>`;
+    h += `<div class="edit-field"><label>Duty %</label><input type="number" min="0" max="100" data-field="${trigger}.duty_percent" value="${duty}" /></div>`;
+    h += `<div class="edit-field"><label>Fade (ms)</label><input type="number" min="0" max="60000" data-field="${trigger}.fade_ms" value="${fade}" /></div>`;
+  }
+  if (cur === 'set_relay') {
+    const rid = a.relay_id != null ? a.relay_id : 1;
+    const st = a.state || 'on';
+    h += `<div class="edit-field"><label>Relay</label><select data-field="${trigger}.relay_id"><option value="1"${rid === 1 ? ' selected' : ''}>1</option><option value="2"${rid === 2 ? ' selected' : ''}>2</option></select></div>`;
+    h += `<div class="edit-field"><label>State</label><select data-field="${trigger}.state"><option value="on"${st === 'on' ? ' selected' : ''}>on</option><option value="off"${st === 'off' ? ' selected' : ''}>off</option></select></div>`;
+  }
+  h += `</div>`;
+  return h;
+}
+
+function onPirActionChanged(pirId, trigger, sel) {
+  // Re-render just the action editor block for the changed trigger
+  // — the extra fields depend on which action is selected.
+  const row = document.querySelector(`[data-row-kind="pir"][data-row-id="${pirId}"]`);
+  if (!row) return;
+  const cfg = _unitConfigCache[currentUnitId] ? _unitConfigCache[currentUnitId].cfg : null;
+  const sceneNames = cfg ? (cfg.scenes || []).map(s => s.name).filter(Boolean) : [];
+  // Build a synthetic action object reflecting the new selection so
+  // re-render seeds sensible defaults for the new shape.
+  const newAction = { action: sel.value };
+  const container = row.querySelector(`[data-pir-action="${trigger}"]`);
+  if (container) {
+    container.innerHTML = renderPirActionEditor(pirId, trigger, newAction, sceneNames);
+    bindPirEditListeners(pirId);          // re-bind on the newly-injected inputs
+  }
+  onEditRowChanged(row);
+}
+
+function bindPirEditListeners(pirId) {
+  const row = document.querySelector(`[data-row-kind="pir"][data-row-id="${pirId}"]`);
+  if (!row) return;
+  row.querySelectorAll('input, select').forEach(inp => {
+    // Skip elements that already have an onchange handler from
+    // renderPirActionEditor (the action-enum selects re-render in
+    // place and have their own change wiring).
+    if (inp.dataset.pirActionTrigger) return;
+    const handler = () => onEditRowChanged(row);
+    inp.addEventListener('input', handler);
+    inp.addEventListener('change', handler);
+  });
+}
+
+async function savePirEdit(pirId, idx) {
+  const row = document.querySelector(`[data-row-kind="pir"][data-row-id="${pirId}"]`);
+  if (!row) return;
+  const status = row.querySelector('.save-status');
+  status.classList.remove('err');
+  status.textContent = isCoord(currentUnitId) ? 'Saving…' : 'Saving (leaf will reboot)…';
+
+  const cfg = await getUnitConfig(currentUnitId, true);
+  if (!cfg) {
+    status.textContent = 'Could not refresh config';
+    status.classList.add('err');
+    return;
+  }
+  const existing = (cfg.pir || []).find(x => x.id === pirId) || {};
+
+  // Assemble both action objects from the current form state.
+  const merged = {
+    id: pirId,
+    name: row.querySelector('[data-field="name"]').value,
+    gpio_pin: existing.gpio_pin,    // PCB-fixed
+    enabled: row.querySelector('[data-field="enabled"]').checked,
+    vacancy_timeout_s: Number(row.querySelector('[data-field="vacancy_timeout_s"]').value || 60),
+    on_motion:  _readPirActionFromRow(row, 'on_motion'),
+    on_vacancy: _readPirActionFromRow(row, 'on_vacancy'),
+  };
+
+  try {
+    const r = await fetchJSON(`/api/units/${currentUnitId}/config`, {
+      method: 'PATCH',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({path: `pir/${idx}`, value: merged}),
+    });
+    if (!r.ok) {
+      status.textContent = `Save failed: ${r.error || 'unknown'}`;
+      status.classList.add('err');
+      return;
+    }
+    delete _unitConfigCache[currentUnitId];
+    _setEditSnapshot('pir', pirId, _pirSnapshot(pirId, merged));
+    onEditRowChanged(row);
+    status.textContent = isCoord(currentUnitId) ? 'Saved ✓' : 'Saved ✓ (leaf rebooting…)';
+  } catch (e) {
+    status.textContent = `Save failed: ${e.message || e}`;
+    status.classList.add('err');
+  }
+}
+
+function _readPirActionFromRow(row, trigger) {
+  const actSel = row.querySelector(`[data-field="${trigger}.action"]`);
+  if (!actSel) return { action: 'revert_to_schedule' };
+  const act = actSel.value;
+  const out = { action: act };
+  const $ = sel => row.querySelector(`[data-field="${trigger}.${sel}"]`);
+  if (act === 'set_scene') {
+    out.scene_name = $('scene_name') ? $('scene_name').value : '';
+  } else if (act === 'set_led_channels') {
+    const raw = $('channels') ? $('channels').value : '';
+    out.channels = raw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => Number.isInteger(n) && n >= 1 && n <= 8);
+    out.duty_percent = Number($('duty_percent') ? $('duty_percent').value : 100);
+    out.fade_ms = Number($('fade_ms') ? $('fade_ms').value : 0);
+  } else if (act === 'set_relay') {
+    out.relay_id = Number($('relay_id') ? $('relay_id').value : 1);
+    out.state    = $('state') ? $('state').value : 'on';
+  }
+  return out;
+}
+
+function discardPirEdit(pirId) {
+  // Simplest reliable discard: re-render the row from the snapshot.
+  // Action enum changes need re-render anyway, so it's cleaner than
+  // hand-rebinding individual inputs.
+  renderPirsTab();
+}
+
+// ============================================================
+// UX-2c.2: Advanced tab
+// ============================================================
+// Top-level config sections that don't fit Channels/Relays/PIRs:
+// system (unit_name, log_level, heartbeats), timezone (name, utc
+// offset, NTP), lora (channel, crypt, power, lbt — fleet-wide
+// settings the operator occasionally tunes), and on the coordinator
+// only: wifi (ssid/password/hostname) + dashboard (auth_username/
+// auth_password). hardware pins are NOT editable here — they're
+// PCB-fixed and editing them via dashboard would brick the unit.
+//
+// Each section saves independently via PATCH against its top-level
+// path (e.g. `system`, `lora`). On a leaf, system/timezone/lora
+// edits trigger a reboot; on the coord, they apply via
+// config_manager.replace() without a reboot.
+
+async function renderAdvancedTab() {
+  if (currentUnitId == null) return;
+  const panel = document.getElementById("tab-advanced");
+  panel.innerHTML = '<p class="tab-stub">Loading…</p>';
+  const cfg = await getUnitConfig(currentUnitId, true);
+  if (!cfg) {
+    panel.innerHTML = '<p class="tab-stub">Could not load config — try Refresh.</p>';
+    return;
+  }
+  const coord = isCoord(currentUnitId);
+  const rebootNote = coord ? 'Coordinator changes apply immediately.' : 'Leaf will reboot after saving (~30 s).';
+
+  let h = '';
+
+  // ----- System -----
+  h += renderAdvancedSection({
+    title: 'System',
+    hint: 'Identity, logging, heartbeat cadence. ' + rebootNote,
+    sectionKey: 'system',
+    fields: [
+      ['unit_name',              'Unit name',                  'text'],
+      ['log_level',              'Log level',                  'select', ['FATAL','ERROR','WARN','INFO','DEBUG']],
+      ['heartbeat_interval_s',   'Heartbeat interval (s)',     'number'],
+      ['heartbeat_timeout_s',    'Heartbeat timeout (s)',      'number'],
+    ],
+    value: cfg.system || {},
+  });
+
+  // ----- Timezone -----
+  h += renderAdvancedSection({
+    title: 'Timezone',
+    hint: 'Used for schedule windows and log timestamps. ' + rebootNote,
+    sectionKey: 'timezone',
+    fields: [
+      ['name',             'TZ label (e.g. IST)',     'text'],
+      ['utc_offset_hours', 'UTC offset (hours)',      'number', null, {step: 0.5, min: -12, max: 14}],
+      ['ntp_enabled',      'NTP enabled (coord only)','checkbox'],
+    ],
+    value: cfg.timezone || {},
+  });
+
+  // ----- LoRa -----
+  h += renderAdvancedSection({
+    title: 'LoRa Radio',
+    hint: 'Channel and crypt MUST match across every unit in the fleet or modules silently drop each other’s frames. Default 73 / 0x0793. ' + rebootNote,
+    sectionKey: 'lora',
+    fields: [
+      ['enabled',          'Enabled',           'checkbox'],
+      ['channel',          'Channel (0–80)',    'number',   null, {min: 0, max: 80}],
+      ['tx_power_dbm',     'TX power (dBm)',    'select',   [10, 13, 17, 22]],
+      ['air_data_rate',    'Air data rate',     'select',   [300, 1200, 2400, 4800, 9600, 19200, 38400, 62500]],
+      ['crypt_h',          'CRYPT_H (0–255)',   'number',   null, {min: 0, max: 255}],
+      ['crypt_l',          'CRYPT_L (0–255)',   'number',   null, {min: 0, max: 255}],
+      ['lbt_enable',       'Listen-before-talk','checkbox'],
+    ],
+    value: cfg.lora || {},
+  });
+
+  // ----- WiFi (coord only) -----
+  if (coord) {
+    h += renderAdvancedSection({
+      title: 'WiFi',
+      hint: 'Coordinator only. Password is masked when displayed; leave the field as ******** to keep the current password. mDNS hostname becomes <hostname>.local.',
+      sectionKey: 'wifi',
+      fields: [
+        ['ssid',     'SSID',                 'text'],
+        ['password', 'Password',             'password'],
+        ['hostname', 'mDNS hostname',        'text'],
+      ],
+      value: cfg.wifi || {},
+    });
+
+    // ----- Dashboard auth (coord only) -----
+    h += renderAdvancedSection({
+      title: 'Dashboard Auth',
+      hint: 'Optional HTTP Basic auth on the dashboard. Leave password blank to disable. Password is masked when displayed — leave as ******** to keep the current value.',
+      sectionKey: 'dashboard',
+      fields: [
+        ['auth_username', 'Username (default: admin)', 'text'],
+        ['auth_password', 'Password (blank = no auth)', 'password'],
+      ],
+      value: cfg.dashboard || {},
+    });
+  }
+
+  panel.innerHTML = h;
+
+  // Bind change listeners on every advanced-section block.
+  document.querySelectorAll('[data-row-kind="advanced"]').forEach(row => {
+    row.querySelectorAll('input, select').forEach(inp => {
+      const handler = () => onEditRowChanged(row);
+      inp.addEventListener('input', handler);
+      inp.addEventListener('change', handler);
+    });
+  });
+}
+
+function renderAdvancedSection({ title, hint, sectionKey, fields, value }) {
+  const snapshot = {};
+  fields.forEach(([key]) => { snapshot[key] = value[key] != null ? value[key] : ''; });
+  _setEditSnapshot('advanced', sectionKey, snapshot);
+
+  let h = '<div class="tab-section">';
+  h += `<h3 class="tab-section-title">${_escape(title)}</h3>`;
+  if (hint) h += `<div class="tab-section-hint">${_escape(hint)}</div>`;
+  h += `<div class="edit-row" data-row-kind="advanced" data-row-id="${sectionKey}">`;
+  h += `<div class="edit-fields">`;
+  fields.forEach(([key, label, kind, opts, extra]) => {
+    const cur = value[key] != null ? value[key] : '';
+    h += `<div class="edit-field"><label>${_escape(label)}</label>`;
+    if (kind === 'text' || kind === 'password') {
+      h += `<input type="${kind}" data-field="${key}" value="${_escape(cur)}" />`;
+    } else if (kind === 'number') {
+      const e = extra || {};
+      h += `<input type="number" data-field="${key}" value="${cur}"`;
+      if (e.min  != null) h += ` min="${e.min}"`;
+      if (e.max  != null) h += ` max="${e.max}"`;
+      if (e.step != null) h += ` step="${e.step}"`;
+      h += ` />`;
+    } else if (kind === 'select') {
+      h += `<select data-field="${key}">`;
+      (opts || []).forEach(v => { h += `<option value="${_escape(String(v))}"${String(v) === String(cur) ? ' selected' : ''}>${_escape(String(v))}</option>`; });
+      h += `</select>`;
+    } else if (kind === 'checkbox') {
+      // Wrap so the checkbox sits next to the label, not below.
+      h = h.replace(/<label>[^<]*<\/label>$/, '');   // drop the auto-label we just emitted
+      h += `<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-field="${key}"${cur === true ? ' checked' : ''} /> ${_escape(label)}</label>`;
+    }
+    h += `</div>`;
+  });
+  h += `</div>`;
+  h += `<div class="edit-row-actions" style="display:none">`;
+  h += `<span class="save-status"></span>`;
+  h += `<button class="btn" onclick="discardAdvancedEdit('${sectionKey}')">Discard</button>`;
+  h += `<button class="btn btn-save" onclick="saveAdvancedEdit('${sectionKey}')">Save</button>`;
+  h += `</div>`;
+  h += `</div>`;
+  h += '</div>';
+  return h;
+}
+
+async function saveAdvancedEdit(sectionKey) {
+  const row = document.querySelector(`[data-row-kind="advanced"][data-row-id="${sectionKey}"]`);
+  if (!row) return;
+  const status = row.querySelector('.save-status');
+  status.classList.remove('err');
+  status.textContent = isCoord(currentUnitId) ? 'Saving…' : 'Saving (leaf will reboot)…';
+
+  const cfg = await getUnitConfig(currentUnitId, true);
+  if (!cfg) {
+    status.textContent = 'Could not refresh config';
+    status.classList.add('err');
+    return;
+  }
+  // Merge form values over the existing section so we don't drop
+  // fields the form doesn't expose (e.g. hardware pins, internal
+  // keys, sample-rate fields the operator never touches).
+  const existing = cfg[sectionKey] || {};
+  const merged = Object.assign({}, existing);
+  row.querySelectorAll('[data-field]').forEach(inp => {
+    const field = inp.dataset.field;
+    let v;
+    if (inp.type === 'checkbox') v = inp.checked;
+    else if (inp.type === 'number') v = inp.value === '' ? undefined : Number(inp.value);
+    else if (inp.tagName === 'SELECT') {
+      // Coerce numeric strings back to numbers when the canonical
+      // schema expects an integer (e.g. tx_power_dbm).
+      const raw = inp.value;
+      v = (/^-?\d+$/.test(raw)) ? Number(raw) : raw;
+    } else v = inp.value;
+    if (v !== undefined) merged[field] = v;
+  });
+
+  try {
+    const r = await fetchJSON(`/api/units/${currentUnitId}/config`, {
+      method: 'PATCH',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({path: sectionKey, value: merged}),
+    });
+    if (!r.ok) {
+      status.textContent = `Save failed: ${r.error || 'unknown'}`;
+      status.classList.add('err');
+      return;
+    }
+    delete _unitConfigCache[currentUnitId];
+    // Refresh snapshot from the form so dirty-state zeroes correctly.
+    const newSnap = {};
+    row.querySelectorAll('[data-field]').forEach(inp => {
+      const f = inp.dataset.field;
+      newSnap[f] = inp.type === 'checkbox' ? inp.checked
+                 : inp.type === 'number'   ? Number(inp.value || 0)
+                 : inp.value;
+    });
+    _setEditSnapshot('advanced', sectionKey, newSnap);
+    onEditRowChanged(row);
+    status.textContent = isCoord(currentUnitId) ? 'Saved ✓' : 'Saved ✓ (leaf rebooting…)';
+  } catch (e) {
+    status.textContent = `Save failed: ${e.message || e}`;
+    status.classList.add('err');
+  }
+}
+
+function discardAdvancedEdit(sectionKey) {
+  // Re-render the whole tab is the simplest reliable way to undo.
+  renderAdvancedTab();
+}
+
 
 
 function renderUnitView() {
