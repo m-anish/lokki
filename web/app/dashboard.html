@@ -285,6 +285,50 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
   border-radius:4px; padding:1px 5px; font-size:.95em;
 }
 
+/* ── INLINE CONFIG EDIT (UX-2c) ────────────────────────────────── */
+.edit-row {
+  padding:12px 0; border-bottom:1px solid var(--border);
+}
+.edit-row:last-child { border-bottom:0; }
+.edit-row.row-disabled { opacity:.55; }
+.edit-row .edit-fields {
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+  gap:10px 14px; align-items:end;
+  margin-bottom:8px;
+}
+.edit-field { display:flex; flex-direction:column; gap:3px; }
+.edit-field label {
+  font-size:.78em; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.04em;
+}
+.edit-field input[type=text],
+.edit-field input[type=number],
+.edit-field select {
+  padding:6px 8px; border:1px solid var(--border);
+  background:var(--card); color:var(--text);
+  border-radius:6px; font-size:.95em;
+}
+.edit-field input.dirty,
+.edit-field select.dirty {
+  border-color:#f59e0b; background:rgba(245,158,11,0.06);
+}
+.edit-field input[type=checkbox] {
+  width:18px; height:18px;
+}
+.edit-row-actions {
+  display:flex; gap:6px; justify-content:flex-end;
+  min-height:32px;
+}
+.edit-row-actions .btn { padding:5px 12px; font-size:.85em; }
+.edit-row-actions .btn-save { background:var(--brand); color:#fff; border-color:var(--brand); }
+.edit-row-actions .btn-save:hover { background:var(--brand-d); }
+.edit-row-actions .save-status {
+  font-size:.85em; color:var(--green);
+  display:flex; align-items:center;
+  margin-right:auto;
+}
+.edit-row-actions .save-status.err { color:#dc2626; }
+
 /* Bell + alerts */
 .bell-wrap { position:relative; }
 .bell-btn {
@@ -1407,30 +1451,173 @@ async function renderChannelsTab() {
   h += '</div>';
   h += '</div>';
 
-  // Section 2: Read-only config view. Inline editing of these
-  // fields lands in UX-2c via CFG_PATCH.
+  // Section 2: Inline editing of per-channel config. Each row has
+  // its own Save / Discard buttons that PATCH the entry path
+  // (`led_channels/<idx>`) with the merged value. Time windows are
+  // displayed read-only here — schedule editing is UX-3's domain.
   h += '<div class="tab-section">';
-  h += '<h3 class="tab-section-title">Configuration (read-only — inline editing coming in UX-2c)</h3>';
+  h += '<h3 class="tab-section-title">Configuration</h3>';
+  h += '<div class="tab-section-hint">Edit a row and click Save to push the change over LoRa. ' +
+       (isCoord(currentUnitId) ? 'Coordinator changes apply immediately.' : 'Leaf will reboot after saving (~30 s).') +
+       '</div>';
   for (let i = 1; i <= 8; i++) {
     const ch = channels.find(c => c.id === i) || {};
-    const enabled = ch.enabled === true;
-    const rowCls = enabled ? '' : ' row-disabled';
-    h += `<div class="config-row${rowCls}" style="padding:10px 0;border-bottom:1px solid var(--border)">`;
-    h += `<div><strong>${i}: ${_escape(ch.name || `Channel ${i}`)}</strong>`;
-    h += enabled ? ' <span style="color:var(--green);font-size:.85em">enabled</span>' : ' <span class="ov-value">disabled</span>';
-    h += `</div>`;
-    if (ch.gpio_pin !== undefined) {
-      h += `<div class="config-readonly">GPIO <code>${ch.gpio_pin}</code> · default duty <code>${ch.default_duty_percent ?? 0}%</code></div>`;
-    }
-    const tw = ch.time_windows || [];
-    if (tw.length) {
-      h += `<div class="config-readonly">Time windows: ${tw.map(w => `<code>${_escape(w.start)}–${_escape(w.end)} @ ${w.duty_percent}%${w.fade_ms ? ' fade ' + w.fade_ms + 'ms' : ''}</code>`).join(' · ')}</div>`;
-    }
-    h += `</div>`;
+    const idx = channels.findIndex(c => c.id === i);   // for PATCH path
+    h += renderChannelEditRow(i, idx, ch);
+    // Seed snapshot from the loaded config so dirty tracking compares
+    // against "what's currently saved on the device".
+    _setEditSnapshot('channel', i, {
+      name: ch.name != null ? ch.name : `Channel ${i}`,
+      enabled: ch.enabled === true,
+      default_duty_percent: ch.default_duty_percent != null ? ch.default_duty_percent : 0,
+    });
   }
   h += '</div>';
 
   panel.innerHTML = h;
+
+  // After DOM is set, bind change listeners that toggle dirty styling.
+  for (let i = 1; i <= 8; i++) bindChannelEditListeners(i);
+}
+
+function renderChannelEditRow(channelId, idx, ch) {
+  const enabled = ch.enabled === true;
+  const rowCls = enabled ? '' : ' row-disabled';
+  const name = ch.name != null ? ch.name : `Channel ${channelId}`;
+  const dd = ch.default_duty_percent != null ? ch.default_duty_percent : 0;
+  const gpio = ch.gpio_pin != null ? ch.gpio_pin : '—';
+  const tw = ch.time_windows || [];
+
+  let h = `<div class="edit-row${rowCls}" data-row-kind="channel" data-row-id="${channelId}" data-row-idx="${idx}">`;
+  h += `<div style="font-size:.95em;font-weight:600;margin-bottom:8px">${channelId}. <span class="row-name-label">${_escape(name)}</span> <span style="color:var(--muted);font-weight:400;font-size:.85em">GPIO ${gpio}</span></div>`;
+  h += `<div class="edit-fields">`;
+  h += `<div class="edit-field"><label>Name</label><input type="text" data-field="name" value="${_escape(name)}" /></div>`;
+  h += `<div class="edit-field"><label>Default duty %</label><input type="number" min="0" max="100" data-field="default_duty_percent" value="${dd}" /></div>`;
+  h += `<div class="edit-field"><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-field="enabled"${enabled ? ' checked' : ''} /> Enabled</label></div>`;
+  h += `</div>`;
+  if (tw.length) {
+    h += `<div class="config-readonly">Time windows (read-only — schedule editor in UX-3): ${tw.map(w => `<code>${_escape(w.start)}–${_escape(w.end)} @ ${w.duty_percent}%${w.fade_ms ? ' fade ' + w.fade_ms + 'ms' : ''}</code>`).join(' · ')}</div>`;
+  }
+  h += `<div class="edit-row-actions" style="display:none">`;
+  h += `<span class="save-status"></span>`;
+  h += `<button class="btn" onclick="discardChannelEdit(${channelId})">Discard</button>`;
+  h += `<button class="btn btn-save" onclick="saveChannelEdit(${channelId}, ${idx})">Save</button>`;
+  h += `</div>`;
+  h += `</div>`;
+  return h;
+}
+
+function bindChannelEditListeners(channelId) {
+  const row = document.querySelector(`[data-row-kind="channel"][data-row-id="${channelId}"]`);
+  if (!row) return;
+  row.querySelectorAll('input').forEach(inp => {
+    const handler = () => onEditRowChanged(row);
+    inp.addEventListener('input', handler);
+    inp.addEventListener('change', handler);
+  });
+}
+
+function isCoord(unitId) { return unitId === 0 || unitId === '0'; }
+
+// Compare the row's current form values against the cached config
+// snapshot. If anything differs, mark the input "dirty" and reveal
+// the action buttons. Called on every input/change event in the row.
+function onEditRowChanged(row) {
+  const kind = row.dataset.rowKind;
+  const id = parseInt(row.dataset.rowId, 10);
+  const snapshot = _editSnapshotFor(kind, id);
+  let anyDirty = false;
+  row.querySelectorAll('[data-field]').forEach(inp => {
+    const field = inp.dataset.field;
+    const cur = inp.type === 'checkbox' ? inp.checked
+              : inp.type === 'number'   ? (inp.value === '' ? null : Number(inp.value))
+              : inp.value;
+    const orig = snapshot != null ? snapshot[field] : undefined;
+    const dirty = cur !== orig && !(cur === '' && orig == null) && !(cur == null && orig === '');
+    inp.classList.toggle('dirty', dirty);
+    if (dirty) anyDirty = true;
+  });
+  const actions = row.querySelector('.edit-row-actions');
+  if (actions) actions.style.display = anyDirty ? 'flex' : 'none';
+  // Clear stale success/error status when user resumes editing.
+  const status = row.querySelector('.save-status');
+  if (status) { status.textContent = ''; status.classList.remove('err'); }
+}
+
+// Per-row snapshots of "the values currently saved on the device"
+// keyed by `<kind>-<id>`. Set when the tab renders, updated on
+// successful save, used for diff and Discard.
+const _editSnapshots = {};
+function _editSnapshotFor(kind, id) { return _editSnapshots[`${kind}-${id}`]; }
+function _setEditSnapshot(kind, id, snap) { _editSnapshots[`${kind}-${id}`] = snap; }
+
+async function saveChannelEdit(channelId, idx) {
+  const row = document.querySelector(`[data-row-kind="channel"][data-row-id="${channelId}"]`);
+  if (!row) return;
+  const status = row.querySelector('.save-status');
+  status.classList.remove('err');
+  status.textContent = isCoord(currentUnitId) ? 'Saving…' : 'Saving (leaf will reboot)…';
+
+  // Fetch the current channel entry to preserve fields we don't expose
+  // in the form (gpio_pin, time_windows). Always refresh — the snapshot
+  // could be stale if another operator touched the leaf.
+  const cfg = await getUnitConfig(currentUnitId, true);
+  if (!cfg) {
+    status.textContent = 'Could not refresh config';
+    status.classList.add('err');
+    return;
+  }
+  const existing = (cfg.led_channels || []).find(c => c.id === channelId) || {};
+  const merged = {
+    id: channelId,
+    name: row.querySelector('[data-field="name"]').value,
+    gpio_pin: existing.gpio_pin,
+    enabled: row.querySelector('[data-field="enabled"]').checked,
+    default_duty_percent: Number(row.querySelector('[data-field="default_duty_percent"]').value || 0),
+    time_windows: existing.time_windows || [],
+  };
+
+  // PATCH the whole entry at `led_channels/<idx>`. The smart-dispatch
+  // on the coord will pick CFG_PATCH or CFG_SECTION based on encoded
+  // payload size — for a single-entry config this is usually one
+  // packet on the wire.
+  try {
+    const r = await fetchJSON(`/api/units/${currentUnitId}/config`, {
+      method: 'PATCH',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({path: `led_channels/${idx}`, value: merged}),
+    });
+    if (!r.ok) {
+      status.textContent = `Save failed: ${r.error || 'unknown'}`;
+      status.classList.add('err');
+      return;
+    }
+    // Bust the cache and snapshot the new "last saved" state so dirty
+    // tracking re-zeroes. The next renderChannelsTab() (manual or via
+    // poll) will refetch.
+    delete _unitConfigCache[currentUnitId];
+    _setEditSnapshot('channel', channelId, {
+      name: merged.name,
+      enabled: merged.enabled,
+      default_duty_percent: merged.default_duty_percent,
+    });
+    onEditRowChanged(row);    // recompute dirty (everything matches snapshot now)
+    status.textContent = isCoord(currentUnitId) ? 'Saved ✓' : 'Saved ✓ (leaf rebooting…)';
+  } catch (e) {
+    status.textContent = `Save failed: ${e.message || e}`;
+    status.classList.add('err');
+  }
+}
+
+function discardChannelEdit(channelId) {
+  const row = document.querySelector(`[data-row-kind="channel"][data-row-id="${channelId}"]`);
+  if (!row) return;
+  const snap = _editSnapshotFor('channel', channelId);
+  if (!snap) return;
+  row.querySelector('[data-field="name"]').value = snap.name || '';
+  row.querySelector('[data-field="enabled"]').checked = !!snap.enabled;
+  row.querySelector('[data-field="default_duty_percent"]').value = snap.default_duty_percent != null ? snap.default_duty_percent : 0;
+  onEditRowChanged(row);
 }
 
 async function applyChannelOverride(channelId) {
@@ -1506,29 +1693,123 @@ async function renderRelaysTab() {
   h += '</div>';
   h += '</div>';
 
-  // Read-only config section
+  // Inline editing section — same pattern as Channels.
   h += '<div class="tab-section">';
-  h += '<h3 class="tab-section-title">Configuration (read-only — inline editing coming in UX-2c)</h3>';
+  h += '<h3 class="tab-section-title">Configuration</h3>';
+  h += '<div class="tab-section-hint">' +
+       (isCoord(currentUnitId) ? 'Coordinator changes apply immediately.' : 'Leaf will reboot after saving (~30 s).') +
+       '</div>';
   for (let i = 1; i <= 2; i++) {
     const r = relays.find(x => x.id === i) || {};
-    const enabled = r.enabled === true;
-    const rowCls = enabled ? '' : ' row-disabled';
-    h += `<div class="config-row${rowCls}" style="padding:10px 0;border-bottom:1px solid var(--border)">`;
-    h += `<div><strong>${i}: ${_escape(r.name || `Relay ${i}`)}</strong>`;
-    h += enabled ? ' <span style="color:var(--green);font-size:.85em">enabled</span>' : ' <span class="ov-value">disabled</span>';
-    h += `</div>`;
-    if (r.gpio_pin !== undefined) {
-      h += `<div class="config-readonly">GPIO <code>${r.gpio_pin}</code> · default <code>${r.default_state || 'off'}</code></div>`;
-    }
-    const tw = r.time_windows || [];
-    if (tw.length) {
-      h += `<div class="config-readonly">Time windows: ${tw.map(w => `<code>${_escape(w.start)}–${_escape(w.end)} → ${_escape(w.state)}</code>`).join(' · ')}</div>`;
-    }
-    h += `</div>`;
+    const idx = relays.findIndex(x => x.id === i);
+    h += renderRelayEditRow(i, idx, r);
+    _setEditSnapshot('relay', i, {
+      name: r.name != null ? r.name : `Relay ${i}`,
+      enabled: r.enabled === true,
+      default_state: r.default_state || 'off',
+    });
   }
   h += '</div>';
 
   panel.innerHTML = h;
+
+  for (let i = 1; i <= 2; i++) bindRelayEditListeners(i);
+}
+
+function renderRelayEditRow(relayId, idx, r) {
+  const enabled = r.enabled === true;
+  const rowCls = enabled ? '' : ' row-disabled';
+  const name = r.name != null ? r.name : `Relay ${relayId}`;
+  const ds = r.default_state || 'off';
+  const gpio = r.gpio_pin != null ? r.gpio_pin : '—';
+  const tw = r.time_windows || [];
+
+  let h = `<div class="edit-row${rowCls}" data-row-kind="relay" data-row-id="${relayId}" data-row-idx="${idx}">`;
+  h += `<div style="font-size:.95em;font-weight:600;margin-bottom:8px">${relayId}. <span class="row-name-label">${_escape(name)}</span> <span style="color:var(--muted);font-weight:400;font-size:.85em">GPIO ${gpio}</span></div>`;
+  h += `<div class="edit-fields">`;
+  h += `<div class="edit-field"><label>Name</label><input type="text" data-field="name" value="${_escape(name)}" /></div>`;
+  h += `<div class="edit-field"><label>Default state</label><select data-field="default_state"><option value="off"${ds === 'off' ? ' selected' : ''}>off</option><option value="on"${ds === 'on' ? ' selected' : ''}>on</option></select></div>`;
+  h += `<div class="edit-field"><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-field="enabled"${enabled ? ' checked' : ''} /> Enabled</label></div>`;
+  h += `</div>`;
+  if (tw.length) {
+    h += `<div class="config-readonly">Time windows (read-only — schedule editor in UX-3): ${tw.map(w => `<code>${_escape(w.start)}–${_escape(w.end)} → ${_escape(w.state)}</code>`).join(' · ')}</div>`;
+  }
+  h += `<div class="edit-row-actions" style="display:none">`;
+  h += `<span class="save-status"></span>`;
+  h += `<button class="btn" onclick="discardRelayEdit(${relayId})">Discard</button>`;
+  h += `<button class="btn btn-save" onclick="saveRelayEdit(${relayId}, ${idx})">Save</button>`;
+  h += `</div>`;
+  h += `</div>`;
+  return h;
+}
+
+function bindRelayEditListeners(relayId) {
+  const row = document.querySelector(`[data-row-kind="relay"][data-row-id="${relayId}"]`);
+  if (!row) return;
+  row.querySelectorAll('input, select').forEach(inp => {
+    const handler = () => onEditRowChanged(row);
+    inp.addEventListener('input', handler);
+    inp.addEventListener('change', handler);
+  });
+}
+
+async function saveRelayEdit(relayId, idx) {
+  const row = document.querySelector(`[data-row-kind="relay"][data-row-id="${relayId}"]`);
+  if (!row) return;
+  const status = row.querySelector('.save-status');
+  status.classList.remove('err');
+  status.textContent = isCoord(currentUnitId) ? 'Saving…' : 'Saving (leaf will reboot)…';
+
+  const cfg = await getUnitConfig(currentUnitId, true);
+  if (!cfg) {
+    status.textContent = 'Could not refresh config';
+    status.classList.add('err');
+    return;
+  }
+  const existing = (cfg.relays || []).find(x => x.id === relayId) || {};
+  const merged = {
+    id: relayId,
+    name: row.querySelector('[data-field="name"]').value,
+    gpio_pin: existing.gpio_pin,
+    enabled: row.querySelector('[data-field="enabled"]').checked,
+    default_state: row.querySelector('[data-field="default_state"]').value,
+    time_windows: existing.time_windows || [],
+  };
+
+  try {
+    const r = await fetchJSON(`/api/units/${currentUnitId}/config`, {
+      method: 'PATCH',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({path: `relays/${idx}`, value: merged}),
+    });
+    if (!r.ok) {
+      status.textContent = `Save failed: ${r.error || 'unknown'}`;
+      status.classList.add('err');
+      return;
+    }
+    delete _unitConfigCache[currentUnitId];
+    _setEditSnapshot('relay', relayId, {
+      name: merged.name,
+      enabled: merged.enabled,
+      default_state: merged.default_state,
+    });
+    onEditRowChanged(row);
+    status.textContent = isCoord(currentUnitId) ? 'Saved ✓' : 'Saved ✓ (leaf rebooting…)';
+  } catch (e) {
+    status.textContent = `Save failed: ${e.message || e}`;
+    status.classList.add('err');
+  }
+}
+
+function discardRelayEdit(relayId) {
+  const row = document.querySelector(`[data-row-kind="relay"][data-row-id="${relayId}"]`);
+  if (!row) return;
+  const snap = _editSnapshotFor('relay', relayId);
+  if (!snap) return;
+  row.querySelector('[data-field="name"]').value = snap.name || '';
+  row.querySelector('[data-field="enabled"]').checked = !!snap.enabled;
+  row.querySelector('[data-field="default_state"]').value = snap.default_state || 'off';
+  onEditRowChanged(row);
 }
 
 async function applyRelayOverride(relayId, state) {
