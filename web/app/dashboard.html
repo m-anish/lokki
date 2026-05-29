@@ -1431,19 +1431,21 @@ async function renderChannelsTab() {
     const enabled = ch && ch.enabled;
     const name = ch && ch.name ? ch.name : `Channel ${i}`;
     const currentDuty = (live.ch || [])[i-1] || 0;
+    // Override means override: render the slider + Apply button
+    // even for disabled channels. The leaf's priority_arbiter has
+    // an entry for every configured channel regardless of enabled
+    // state, so the override lands cleanly on the hardware Pin. The
+    // row is dimmed visually to communicate "this isn't part of the
+    // normal schedule" but it stays interactive.
     const rowCls = enabled ? '' : ' row-disabled';
     h += `<div class="override-row${rowCls}">`;
     h += `<span class="ov-swatch" style="${swatchStyle(currentDuty)}"></span>`;
     h += `<span class="ov-label">${i}: ${_escape(name)}</span>`;
     h += `<input type="range" class="ov-slider" id="ov-ch-${i}" min="0" max="100" value="${currentDuty}" `;
-    h += `oninput="document.getElementById('ov-ch-val-${i}').textContent = this.value + '%'" `;
-    h += enabled ? '' : 'disabled ';
-    h += `/>`;
+    h += `oninput="document.getElementById('ov-ch-val-${i}').textContent = this.value + '%'" />`;
     h += `<span class="ov-value" id="ov-ch-val-${i}">${currentDuty}%</span>`;
     h += `<span class="ov-buttons">`;
-    if (enabled) {
-      h += `<button class="btn" onclick="applyChannelOverride(${i})">Apply</button>`;
-    }
+    h += `<button class="btn" onclick="applyChannelOverride(${i})">Apply</button>`;
     h += `</span>`;
     h += `</div>`;
   }
@@ -1733,14 +1735,18 @@ async function renderRelaysTab() {
     const enabled = r && r.enabled;
     const name = r && r.name ? r.name : `Relay ${i}`;
     const state = (live.rl || [])[i-1] ? 'on' : 'off';
+    // Override means override: show the Turn ON / Turn OFF buttons
+    // regardless of `enabled`. The leaf's relay_controller and
+    // priority_arbiter both initialise every configured relay; an
+    // override drives the Pin directly, bypassing the schedule layer
+    // that the `enabled` flag gates. Row is dimmed visually but
+    // stays interactive.
     const rowCls = enabled ? '' : ' row-disabled';
     h += `<div class="relay-toggle-row${rowCls}">`;
     h += `<span class="relay-ind ${state}">${state.toUpperCase()}</span>`;
     h += `<span style="flex:1">${i}: ${_escape(name)}</span>`;
-    if (enabled) {
-      h += `<button class="btn" onclick="applyRelayOverride(${i}, 'on')">Turn ON</button>`;
-      h += `<button class="btn" onclick="applyRelayOverride(${i}, 'off')">Turn OFF</button>`;
-    }
+    h += `<button class="btn" onclick="applyRelayOverride(${i}, 'on')">Turn ON</button>`;
+    h += `<button class="btn" onclick="applyRelayOverride(${i}, 'off')">Turn OFF</button>`;
     h += `</div>`;
   }
   h += '<div style="margin-top:12px;text-align:right">';
@@ -2357,26 +2363,41 @@ async function saveAdvancedEdit(sectionKey) {
     status.textContent = _savedCopy(currentUnitId, !r.data || r.data.rebooted !== false);
 
     // After a system save, refresh user-visible labels immediately
-    // instead of waiting for the next 15 s fleet poll + 30 s leaf HB.
-    // On coord (unit_id=0) the coord-side handler already applied
-    // locally; on leaves the coord pre-fills fleet_manager.u["name"]
-    // (see api_handlers._extract_leaf_name_from_patch) so the next
-    // /api/fleet poll returns the new name without waiting for the
-    // leaf's HB.
+    // (no waiting for the 15 s fleet poll or the 30 s leaf HB). The
+    // coord pre-fills fleet_manager.u["name"] but the dashboard
+    // already has lastFleet in hand and several views key on it —
+    // update client-side optimistically so the operator sees the
+    // change land at click time, then `setTimeout(load, 800)` syncs
+    // with the server-side state as a safety net.
     if (sectionKey === 'system') {
       const newName = newSnap.unit_name;
-      if (isCoord(currentUnitId)) {
-        // Update the hero strip + the global unitName var so
-        // subsequent re-renders show the new label.
-        if (typeof newName === 'string' && newName) {
+      if (typeof newName === 'string' && newName) {
+        const idKey = String(currentUnitId);
+        if (lastFleet[idKey]) {
+          lastFleet[idKey].name = newName;
+        }
+        // Rebuild the sidebar entries (label "🍃 Leaf N: <name>")
+        // so the user sees the new label without a fleet round-trip.
+        rebuildSidebarUnits();
+        // The detail-page header is normally set only by
+        // renderUnitView, which load() invokes only on the Overview
+        // tab. Touching it directly here means renaming from
+        // Advanced also flips the big title at the top.
+        const titleEl = document.getElementById('unitDetailTitle');
+        if (titleEl) {
+          const u = lastFleet[idKey] || { name: newName };
+          titleEl.textContent = unitDisplayName(currentUnitId, u);
+        }
+        // Coord case: also flip the hero strip + the global
+        // `unitName` so subsequent re-renders pick up the new label.
+        if (isCoord(currentUnitId)) {
           unitName = newName;
-          const t = document.getElementById('heroTitle');
-          if (t) t.textContent = newName;
+          const heroEl = document.getElementById('heroTitle');
+          if (heroEl) heroEl.textContent = newName;
         }
       }
-      // Pull fresh fleet state to refresh sidebar entries + the
-      // detail-page header. ~800 ms gives the coord time to flush
-      // the pre-fill into the next /api/fleet response.
+      // Backup sync: pull fresh fleet state ~800 ms later in case
+      // anything raced past the optimistic update.
       setTimeout(load, 800);
     }
   } catch (e) {

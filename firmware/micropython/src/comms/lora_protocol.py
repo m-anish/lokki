@@ -393,7 +393,14 @@ class LoRaProtocol:
                 return
             msg = json.loads(text[start:end])
         except Exception as e:
-            log.error(f"[LORA_PROTO] Parse error: {e}")
+            # Bytes-dropped-on-the-wire is a normal-life condition on
+            # a flaky LoRa link, not a firmware bug. The receiver
+            # might see two frames glued together in the UART buffer,
+            # or a frame with a few middle bytes missing — JSON
+            # rejects either, and the next intact frame recovers
+            # without operator action. WARN (not ERROR) so the
+            # dashboard bell doesn't fire on every transient.
+            log.warn(f"[LORA_PROTO] Parse error (frame dropped): {e}")
             return
 
         msg_type = msg.get("t")
