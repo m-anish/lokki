@@ -402,7 +402,7 @@ if [ "$FRESH" = "1" ]; then
                       lora:     .lora,
                       timezone: .timezone,
                       hardware: .hardware,
-                      ldr:      { enabled: false, smoothing_window_s: 60, cap_rules: [] },
+                      ldr:      { enabled: false, smoothing_window_s: 60, calibration_max_percent: 37, cap_rules: [] },
                       pir:      [],
                       relays:   [],
                       led_channels: [
@@ -488,7 +488,7 @@ if [ "$FRESH" = "1" ]; then
     "lora_m1_pin": 3,
     "lora_aux_pin": 4
   },
-  "ldr": { "enabled": false, "smoothing_window_s": 60, "cap_rules": [] },
+  "ldr": { "enabled": false, "smoothing_window_s": 60, "calibration_max_percent": 37, "cap_rules": [] },
   "pir": [],
   "relays": [],
   "led_channels": [

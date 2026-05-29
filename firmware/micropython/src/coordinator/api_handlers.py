@@ -629,7 +629,7 @@ def _build_blank_slate_config(new_unit_id, new_unit_name):
         "lora":     dict(coord.get("lora", {})),
         "timezone": dict(coord.get("timezone", {"name": "UTC", "utc_offset_hours": 0})),
         "hardware": dict(coord.get("hardware", {})),
-        "ldr":      {"enabled": False, "smoothing_window_s": 60, "cap_rules": []},
+        "ldr":      {"enabled": False, "smoothing_window_s": 60, "calibration_max_percent": 37, "cap_rules": []},
         "pir":      [],
         "relays":   [],
         "led_channels": [

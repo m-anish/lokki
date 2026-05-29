@@ -58,6 +58,7 @@
   "ldr": {
     "enabled": true,
     "smoothing_window_s": 60,
+    "calibration_max_percent": 37,
     "cap_rules": [
       { "above_percent": 70, "cap_percent": 20 },
       { "above_percent": 90, "cap_percent": 5 }

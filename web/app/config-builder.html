@@ -728,8 +728,8 @@
           <div class="field expert-only">
             <label class="field-label">Calibration max %</label>
             <div style="display:flex;align-items:center;gap:10px">
-              <input id="ldr_cal_max" type="number" value="100" min="1" max="100" style="width:100px" />
-              <span style="font-size:.82em;color:var(--muted)">Maps this raw reading → 100%. Use when the LDR is inside an enclosure that attenuates light. Default 100 (no calibration).</span>
+              <input id="ldr_cal_max" type="number" value="37" min="1" max="100" style="width:100px" />
+              <span style="font-size:.82em;color:var(--muted)">Maps this raw reading → 100%. Default <code>37</code> matches the project's standard enclosure characterisation; raise to <code>100</code> if the LDR is mounted exposed.</span>
             </div>
           </div>
           <div style="font-weight:600;font-size:.82em;margin:10px 0 4px;color:#374151">Brightness Cap Rules</div>
@@ -2094,7 +2094,7 @@ function buildConfig() {
     ldr: {
       enabled:            document.getElementById('ldr_enabled').checked,
       smoothing_window_s: parseInt(document.getElementById('ldr_smooth').value)||60,
-      calibration_max_percent: parseInt(document.getElementById('ldr_cal_max').value)||100,
+      calibration_max_percent: parseInt(document.getElementById('ldr_cal_max').value)||37,
       cap_rules:          ldrCapRules.map(r=>({...r})),
     },
     pir: pirState.map(p => {
@@ -2461,7 +2461,7 @@ function applyConfigToForm(cfg) {
   const ldr=cfg.ldr||{};
   setChk('ldr_enabled', ldr.enabled!==false);
   set('ldr_smooth', ldr.smoothing_window_s);
-  set('ldr_cal_max', ldr.calibration_max_percent != null ? ldr.calibration_max_percent : 100);
+  set('ldr_cal_max', ldr.calibration_max_percent != null ? ldr.calibration_max_percent : 37);
   if (ldr.cap_rules) { ldrCapRules=ldr.cap_rules.map(r=>({...r})); renderLdrRules(); }
 
   if (cfg.pir) {

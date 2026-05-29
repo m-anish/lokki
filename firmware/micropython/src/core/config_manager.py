@@ -122,7 +122,7 @@ class ConfigManager:
             "lora":          old.get("lora", {}),
             "timezone":      old.get("timezone", {"name": "UTC", "utc_offset_hours": 0}),
             "hardware":      old.get("hardware", {}),
-            "ldr":           {"enabled": False, "smoothing_window_s": 60, "cap_rules": []},
+            "ldr":           {"enabled": False, "smoothing_window_s": 60, "calibration_max_percent": 37, "cap_rules": []},
             "pir":           [],
             "relays":        [],
             "led_channels":  [dict(ch) for ch in self._UNCLAIMED_LED_CHANNELS],

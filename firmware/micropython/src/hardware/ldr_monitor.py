@@ -19,8 +19,10 @@ class LDRMonitor:
         # the maximum brightness: if "exposed = 70%, enclosed = 26%"
         # then set calibration_max_percent = 37 (= 26/70 × 100) so the
         # 26% raw maps back to ~70% for downstream cap rules. Default
-        # 100 means no calibration. Range 1..100.
-        self._cal_max_percent = 100
+        # 37 reflects the project's standard enclosure characterisation
+        # (see firmware/hardware/PCB.md); operators with different
+        # enclosures override per-unit. Range 1..100.
+        self._cal_max_percent = 37
 
     def init_from_config(self, ldr_cfg, hardware_cfg):
         from shared.simple_logger import Logger
@@ -32,8 +34,10 @@ class LDRMonitor:
         self._window_size = ldr_cfg.get("smoothing_window_s", 60)
 
         # Calibration. Clamped to [1, 100] — 0 would divide by zero,
-        # >100 would be a no-op compression.
-        cal = ldr_cfg.get("calibration_max_percent", 100)
+        # >100 would be a no-op compression. Default 37 matches the
+        # project's standard enclosure characterisation; raise to 100
+        # only if the LDR is mounted exposed (no enclosure attenuation).
+        cal = ldr_cfg.get("calibration_max_percent", 37)
         if not isinstance(cal, int) or cal < 1:
             cal = 100
         elif cal > 100:
