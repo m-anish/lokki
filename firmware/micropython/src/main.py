@@ -602,7 +602,7 @@ def _register_lora_handlers(role, fleet_manager=None):
             # the activity stream of motion events across the fleet.
             event_bus.push(
                 "INFO",
-                f"pir{pid} {st}",
+                f"[PIR] pir{pid} {st}",
                 src=src, tag="pir",
             )
             log.info(f"[LORA] PIR_EV from unit {src}: pir{pid} → {st}")
