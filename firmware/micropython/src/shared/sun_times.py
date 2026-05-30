@@ -158,8 +158,13 @@ def get_sunrise_sunset(month, day, year=None):
         lon = loc.get("lon")
         if lat is not None and lon is not None:
             from shared import sun_calc
+            from shared import tz as _tz
             tz_cfg = config_manager.get("timezone") or {}
-            tz_offset = tz_cfg.get("utc_offset_hours", 0)
+            # DST-aware offset so sunrise/sunset segments on the
+            # dashboard strip and the firmware's `sunrise`/`sunset`
+            # token resolution shift with the seasonal flip.
+            import time as _t
+            tz_offset = _tz.effective_offset_hours(tz_cfg, _t.localtime())
             if year is None:
                 # Read year from the device's wall clock. If the clock
                 # is bogus (no NTP / no RTC), `year` lands in 1970 or

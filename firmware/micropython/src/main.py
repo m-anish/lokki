@@ -405,7 +405,8 @@ async def time_sync_task():
             log.info("[MAIN] Wall-clock looks sane; unblocking schedule")
         if system_status.time_synced:
             try:
-                tz_offset = tz_config.get("utc_offset_hours", 0)
+                from shared import tz as _tz
+                tz_offset = _tz.effective_offset_hours(tz_config, time.localtime())
                 lora_protocol.broadcast_time_sync(time.time(), tz_offset)
             except Exception as e:
                 log.warn(f"[MAIN] TS broadcast failed: {e}")
@@ -499,7 +500,9 @@ async def lora_deferred_retry_task():
             if config_manager.role == "coordinator" and system_status.time_synced:
                 try:
                     import time as _t
-                    tz_offset = (config_manager.get("timezone") or {}).get("utc_offset_hours", 0)
+                    from shared import tz as _tz
+                    tz_cfg = config_manager.get("timezone") or {}
+                    tz_offset = _tz.effective_offset_hours(tz_cfg, _t.localtime())
                     lora_protocol.broadcast_time_sync(_t.time(), tz_offset)
                     log.info("[MAIN] Catch-up TS broadcast (LoRa just came up)")
                 except Exception as e:
@@ -870,7 +873,9 @@ def _register_lora_handlers(role, fleet_manager=None):
                 return
             try:
                 import time
-                tz_offset = (config_manager.get("timezone") or {}).get("utc_offset_hours", 0)
+                from shared import tz as _tz
+                tz_cfg = config_manager.get("timezone") or {}
+                tz_offset = _tz.effective_offset_hours(tz_cfg, time.localtime())
                 lora_protocol.broadcast_time_sync(time.time(), tz_offset)
                 log.info(f"[LORA] TS_REQ from {src} — broadcast TS")
             except Exception as e:

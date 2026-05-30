@@ -126,7 +126,16 @@ def sync_time_ntp():
     the clock is already correct at that point — the rest of the
     system (schedule gate, log timestamps) needs to learn that.
     """
-    tz_offset = config_manager.get("timezone").get("utc_offset_hours", 0)
+    # Effective offset accounts for DST when `timezone.dst` is configured.
+    # We need a local time tuple to evaluate the DST rule. ntptime.settime
+    # hasn't run yet, so today's UTC clock may be wrong — but the offset
+    # only changes month-day, not year, so a roughly-correct date is
+    # enough to pick the right side of a DST transition. localtime() with
+    # whatever value is on the MCU is fine here (post-NTP we recompute
+    # for the DS3231 write below using a now-trustworthy clock).
+    tz_cfg = config_manager.get("timezone") or {}
+    from shared import tz as _tz
+    tz_offset = _tz.effective_offset_hours(tz_cfg, time.localtime())
     servers = ["pool.ntp.org", "time.google.com"]
 
     for server in servers:
@@ -157,11 +166,17 @@ def sync_time_ntp():
         # Secondary: mirror to the DS3231 so the time survives a power
         # cycle. Tolerated to fail — a flaky I2C bus shouldn't lose us
         # the freshly-synced MCU clock.
+        # Re-evaluate the DST offset now that we have a trustworthy UTC
+        # clock — the localtime() reading above was from whatever the
+        # MCU thought the time was before NTP, which can be 2000-01-01
+        # on a fresh boot. After settime() we can pick the right side
+        # of a DST transition for sure.
         try:
+            tz_offset = _tz.effective_offset_hours(tz_cfg, time.localtime())
             local_sec = utc_sec + int(tz_offset * 3600)
             dt_tuple  = urtc.seconds2tuple(local_sec)
             rtc.datetime(dt_tuple)
-            log.info("[NTP] DS3231 updated with local time")
+            log.info(f"[NTP] DS3231 updated with local time (offset={tz_offset:+g}h)")
         except Exception as e:
             log.warn(f"[NTP] DS3231 write failed (MCU clock still set): {e}")
 

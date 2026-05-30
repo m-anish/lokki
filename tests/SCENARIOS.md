@@ -81,6 +81,35 @@ is the documented flake — see `main.py` boot comment).
 
 ## 2. WiFi / AP Fallback
 
+### 1.5 DST preset applied via dashboard
+**Setup**: Coord with NTP enabled, valid `wifi`, and `config.timezone` set
+to a region that observes DST (e.g. `name: "EST", utc_offset_hours: -5`).
+**Steps**:
+1. Configure → Advanced → DST section → pick "US/Canada" preset → Save.
+2. Watch coord REPL.
+3. Wait for next NTP sync (or trigger one by rebooting if you don't want
+   to wait the hour).
+4. Outside DST window: log shows `DS3231 updated with local time (offset=-5h)`.
+   Inside DST window (e.g. mid-July): same line with `offset=-4h`.
+5. Re-open dashboard → Advanced → DST. The preset dropdown reflects the
+   saved selection.
+6. Pick "None" → Save. Subsequent NTP writes use the base offset only.
+**Expected**:
+- Save status `Saved ✓ (applied instantly)` — DST is hot-applied (no
+  reboot needed since the offset is read fresh on every NTP write).
+- Sun-times API output (`GET /api/sun-times`) shifts by an hour at the
+  DST transition without intervention.
+- Schedule windows in local HH:MM continue to fire at the correct
+  local wall-clock time — the underlying MCU clock has been rewritten
+  by the NTP-with-effective-offset write.
+
+**Edge**: For a region whose preset doesn't match any of the three
+shipped (US, EU, AU East) — e.g. Iran's quirky rule — the dashboard
+shows "Custom (from config.json)" in the dropdown and a warning that
+picking another preset will overwrite. Operator edits `timezone.dst`
+in config-builder.html or via direct JSON.
+**Last verified**: not yet.
+
 ### 2.1 Boot with no SSID configured (fresh install → AP mode)
 **Setup**: Flash coord with `./utils/update.sh --fresh --role=coordinator` (no
 `--wifi` flag). `config.json` has `wifi.ssid = ""` (placeholder).

@@ -36,7 +36,6 @@ Concrete next-up engineering items. Some are issue-track-grade, others are polis
 
 ### Known gaps
 
-- **DST handling for `timezone.utc_offset_hours`** — currently manual; needs either an in-config DST rule table or seasonal-flip documentation in the user guide.
 - **AUX-disciplined transmit deadlock stress test** — no observed issue but never specifically driven hard (e.g. coordinator broadcasting TS while a leaf is mid-SRP under high LDR change rate).
 
 ### Deferred features (Phase-4-shaped)

@@ -70,7 +70,36 @@
       "properties": {
         "name":             { "type": "string", "minLength": 1 },
         "utc_offset_hours": { "type": "number", "minimum": -12, "maximum": 14 },
-        "ntp_enabled":      { "type": "boolean" }
+        "ntp_enabled":      { "type": "boolean" },
+        "dst": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["offset_hours", "start", "end"],
+          "description": "Optional. If absent, no seasonal adjustment is applied. day_of_week is 0=Sun..6=Sat; week_of_month is 1..4 for the nth occurrence, -1 for last.",
+          "properties": {
+            "offset_hours": { "type": "number", "minimum": 0, "maximum": 2 },
+            "start": {
+              "type": "object", "additionalProperties": false,
+              "required": ["month", "day_of_week", "hour"],
+              "properties": {
+                "month":         { "type": "integer", "minimum": 1, "maximum": 12 },
+                "week_of_month": { "type": "integer", "enum": [-1, 1, 2, 3, 4] },
+                "day_of_week":   { "type": "integer", "minimum": 0, "maximum": 6 },
+                "hour":          { "type": "integer", "minimum": 0, "maximum": 23 }
+              }
+            },
+            "end": {
+              "type": "object", "additionalProperties": false,
+              "required": ["month", "day_of_week", "hour"],
+              "properties": {
+                "month":         { "type": "integer", "minimum": 1, "maximum": 12 },
+                "week_of_month": { "type": "integer", "enum": [-1, 1, 2, 3, 4] },
+                "day_of_week":   { "type": "integer", "minimum": 0, "maximum": 6 },
+                "hour":          { "type": "integer", "minimum": 0, "maximum": 23 }
+              }
+            }
+          }
+        }
       }
     },
 

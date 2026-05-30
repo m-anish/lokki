@@ -3498,6 +3498,13 @@ async function renderAdvancedTab() {
     value: cfg.timezone || {},
   });
 
+  // DST preset dropdown — kept separate from renderAdvancedSection
+  // because its save semantics are "splice a known-good preset into
+  // timezone.dst" rather than a flat field PATCH. Most operators
+  // want one of three standard regimes; arbitrary-rule editing is
+  // available via the config-builder for the rare exception.
+  h += renderDstPresetSection(cfg.timezone || {});
+
   // ----- Location (lat/lon for on-device sunrise/sunset compute) -----
   h += renderAdvancedSection({
     title: 'Location',
@@ -3724,6 +3731,146 @@ async function saveAdvancedEdit(sectionKey) {
     status.textContent = `Save failed: ${e.message || e}`;
     status.classList.add('err');
   }
+}
+
+// ===== DST preset (Advanced → Timezone) =====
+// Most operators sit in one of US/Canada, EU/UK, or AU eastern. They
+// don't need 8 fields and a Zeller's-congruence intuition; they need
+// a dropdown. The firmware does the heavy lifting once a preset is
+// saved — see shared/tz.py.
+const _DST_PRESETS = {
+  none: null,
+  us:   {
+    label: 'US/Canada (2nd Sun Mar → 1st Sun Nov)',
+    rule: {
+      offset_hours: 1,
+      start: { month: 3,  week_of_month: 2,  day_of_week: 0, hour: 2 },
+      end:   { month: 11, week_of_month: 1,  day_of_week: 0, hour: 2 },
+    },
+  },
+  eu:   {
+    label: 'EU/UK (last Sun Mar → last Sun Oct)',
+    rule: {
+      offset_hours: 1,
+      start: { month: 3,  week_of_month: -1, day_of_week: 0, hour: 1 },
+      end:   { month: 10, week_of_month: -1, day_of_week: 0, hour: 2 },
+    },
+  },
+  au:   {
+    label: 'Australia East (1st Sun Oct → 1st Sun Apr)',
+    rule: {
+      offset_hours: 1,
+      start: { month: 10, week_of_month: 1,  day_of_week: 0, hour: 2 },
+      end:   { month: 4,  week_of_month: 1,  day_of_week: 0, hour: 3 },
+    },
+  },
+};
+
+function _matchDstPreset(rule) {
+  if (!rule) return 'none';
+  const cur = JSON.stringify(rule);
+  for (const [key, val] of Object.entries(_DST_PRESETS)) {
+    if (!val) continue;
+    if (JSON.stringify(val.rule) === cur) return key;
+  }
+  return 'custom';
+}
+
+function renderDstPresetSection(tzCfg) {
+  const cur = _matchDstPreset(tzCfg.dst);
+  const customNote = cur === 'custom'
+    ? '<div class="tab-section-hint" style="color:#d97706"><strong>Custom DST rule detected.</strong> Picking a preset below will overwrite it.</div>'
+    : '';
+  let h = '';
+  h += `<div class="tab-section" data-row-kind="advanced" data-row-id="dst-preset">`;
+  h += `<h3 class="tab-section-title">DST</h3>`;
+  h += `<div class="tab-section-hint">Optional. Adjust local time by an hour twice a year for the configured region. "None" means no seasonal adjustment.</div>`;
+  h += customNote;
+  h += `<div class="edit-field" style="max-width:480px"><label>Preset</label>`;
+  h += `<select id="dstPresetSelect">`;
+  h += `<option value="none"${cur === 'none' ? ' selected' : ''}>None — no DST</option>`;
+  for (const [key, val] of Object.entries(_DST_PRESETS)) {
+    if (!val) continue;
+    h += `<option value="${key}"${cur === key ? ' selected' : ''}>${_escape(val.label)}</option>`;
+  }
+  if (cur === 'custom') {
+    h += `<option value="custom" selected>Custom (from config.json)</option>`;
+  }
+  h += `</select></div>`;
+  h += `<div class="edit-row-actions" id="dstPresetActions" style="display:none;margin-top:10px">`;
+  h += `<span class="save-status" id="dstPresetStatus"></span>`;
+  h += `<button class="btn" onclick="discardDstPreset()">Discard</button>`;
+  h += `<button class="btn btn-save" onclick="saveDstPreset()">Save</button>`;
+  h += `</div>`;
+  h += `</div>`;
+  // Bind change listener after innerHTML is set.
+  setTimeout(() => {
+    const sel = document.getElementById('dstPresetSelect');
+    if (!sel) return;
+    const initial = sel.value;
+    sel.addEventListener('change', () => {
+      document.getElementById('dstPresetActions').style.display =
+        sel.value === initial ? 'none' : 'flex';
+    });
+  }, 0);
+  return h;
+}
+
+async function saveDstPreset() {
+  const sel = document.getElementById('dstPresetSelect');
+  const status = document.getElementById('dstPresetStatus');
+  if (!sel || !status) return;
+  const key = sel.value;
+  if (key === 'custom') {
+    status.textContent = 'Save failed: edit Custom rules in config-builder.html';
+    status.classList.add('err');
+    return;
+  }
+  status.classList.remove('err');
+  status.textContent = _savingCopy(currentUnitId);
+
+  const cfg = await getUnitConfig(currentUnitId, true);
+  if (!cfg) {
+    status.textContent = 'Could not refresh config';
+    status.classList.add('err');
+    return;
+  }
+  // Build the new timezone object: keep existing fields, splice in
+  // or remove `dst` based on the preset choice.
+  const newTz = Object.assign({}, cfg.timezone || {});
+  if (key === 'none') {
+    delete newTz.dst;
+  } else {
+    newTz.dst = _DST_PRESETS[key].rule;
+  }
+  try {
+    const r = await fetchJSON(`/api/units/${currentUnitId}/config`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'timezone', value: newTz }),
+    });
+    if (!r.ok) {
+      status.textContent = `Save failed: ${r.error || 'unknown'}`;
+      status.classList.add('err');
+      return;
+    }
+    delete _unitConfigCache[currentUnitId];
+    status.textContent = _savedCopy(currentUnitId, !r.data || r.data.rebooted !== false);
+    document.getElementById('dstPresetActions').style.display = 'none';
+    // Sun-times depends on the offset → refresh the cached values
+    // so the schedule strip's sun-relative segments slide if
+    // we're inside a DST window.
+    setTimeout(refreshSunTimes, 800);
+  } catch (e) {
+    status.textContent = `Save failed: ${e.message || e}`;
+    status.classList.add('err');
+  }
+}
+
+function discardDstPreset() {
+  // Re-render the Advanced tab; cheapest way to revert the select
+  // back to its on-load value.
+  renderAdvancedTab();
 }
 
 function discardAdvancedEdit(sectionKey) {
