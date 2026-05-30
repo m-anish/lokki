@@ -175,15 +175,28 @@ def _try_seed_time_from_rtc():
 
 
 def _ok_led_state():
-    """Return the appropriate steady LED state depending on LoRa connectivity.
+    """Return the appropriate steady LED state for the current health
+    snapshot.
 
-    Time sync takes precedence: if we haven't confirmed a real wall-clock
-    yet, the LED stays on `time_waiting` (slow cyan pulse) so the operator
-    sees that the schedule is paused. Otherwise fall back to the normal
-    green-solid running state.
+    Precedence (highest first):
+      1. time_waiting     — no sane wall-clock; schedule is paused.
+                            Most user-visible failure.
+      2. wifi_disconnected (coord only) — WiFi dropped after boot;
+                            dashboard unreachable. Schedule still
+                            runs from RTC and LoRa still works, so
+                            this is a degraded but functional state.
+      3. running_lora_ok / running_ok — happy path.
+
+    LoRa-down on its own doesn't take the steady LED — it's surfaced
+    via the lora_status_flash_task (red-vs-blue periodic flash) so
+    operators can distinguish "LoRa quiet because no peers right now"
+    from "LoRa hardware itself is broken." Folding it in here would
+    flatten that distinction.
     """
     if not system_status.time_synced:
         return "time_waiting"
+    if config_manager.role == "coordinator" and not system_status.wifi_connected:
+        return "wifi_disconnected"
     return "running_lora_ok" if system_status.lora_connected else "running_ok"
 
 
@@ -195,6 +208,95 @@ async def leaf_status_task():
         else:
             status_led.set_state(_ok_led_state())
         await asyncio.sleep(2)
+
+
+async def wifi_monitor_task():
+    """Coordinator task: detect WiFi disconnects and reconnect.
+
+    Flaky APs are routine in venue networks (hospitality routers
+    rebooting at 03:00, mesh roaming hiccups, etc.). Without this
+    task the coord stays in a dead-WiFi state forever — dashboard
+    unreachable, NTP can't refresh, mDNS goes stale. Schedule still
+    runs from RTC and LoRa still works, so the device is degraded
+    but functional; this monitor restores full service silently.
+
+    Cadence:
+      - Connected: poll every 5 s. Lightweight `wlan.isconnected()`
+        call; no socket traffic.
+      - Disconnected: attempt reconnect, then sleep 30 s before the
+        next attempt. 30 s is intentionally above any router's
+        client-blacklist window for rapid-reconnect storms.
+
+    On reconnect:
+      - `connect_wifi()` re-asserts `network.hostname()` at the top
+        of every call, which is what tells lwIP's mDNS responder to
+        re-announce. So <hostname>.local resolves again without
+        any other plumbing.
+      - MQTT gets a reconnect kick — its socket dropped when WiFi
+        did, and it doesn't auto-recover.
+    """
+    if config_manager.role != "coordinator":
+        return  # leaves don't use WiFi
+
+    import network
+    from comms.wifi_connect import connect_wifi, sync_time_ntp
+    wlan = network.WLAN(network.STA_IF)
+
+    while True:
+        connected = False
+        try:
+            connected = wlan.isconnected()
+        except Exception as e:
+            log.warn(f"[WIFI-MON] isconnected() raised: {e}")
+
+        # Reconcile observed state with system_status. Edge transitions
+        # are interesting; steady-state isn't.
+        if connected and not system_status.wifi_connected:
+            ip = None
+            try:
+                ip = wlan.ifconfig()[0]
+            except Exception:
+                pass
+            log.info(f"[WIFI-MON] WiFi recovered (IP {ip})")
+            system_status.set_connection_status(wifi=True)
+            status_led.set_state(_ok_led_state())
+            # MQTT socket dropped with the WiFi; nudge it to reconnect.
+            try:
+                from comms.mqtt_notifier import mqtt_notifier
+                if mqtt_notifier.connect():
+                    log.info("[WIFI-MON] MQTT reconnected")
+            except Exception as e:
+                log.warn(f"[WIFI-MON] MQTT reconnect failed: {e}")
+            # Try to refresh NTP opportunistically — drift over a long
+            # outage is the most visible recovery artifact.
+            try:
+                if sync_time_ntp():
+                    log.info("[WIFI-MON] NTP resync after recovery OK")
+            except Exception as e:
+                log.warn(f"[WIFI-MON] NTP resync failed: {e}")
+
+        elif not connected and system_status.wifi_connected:
+            log.warn("[WIFI-MON] WiFi lost — entering reconnect loop")
+            system_status.set_connection_status(wifi=False)
+            system_status.record_error("wifi_lost")
+            status_led.set_state(_ok_led_state())
+
+        if not connected:
+            # Attempt reconnect. connect_wifi() re-sets hostname and
+            # runs up to 3 internal retries with 4 s spacing — if it
+            # returns False, give the AP a longer breather before the
+            # next outer attempt.
+            try:
+                if connect_wifi():
+                    # The connected branch above will fire next iter
+                    # and do the recovery side-effects. We don't dupe
+                    # the work here.
+                    pass
+            except Exception as e:
+                log.warn(f"[WIFI-MON] reconnect attempt raised: {e}")
+            await asyncio.sleep(30)
+        else:
+            await asyncio.sleep(5)
 
 
 async def time_sync_task():
@@ -536,18 +638,37 @@ async def lora_status_flash_task(interval_s=10):
 
 
 async def fleet_timeout_task(fleet_manager, interval_s=10):
-    """Coordinator task: mark leaves offline on heartbeat timeout."""
+    """Coordinator task: mark leaves offline on heartbeat timeout.
+
+    Also reasserts the steady LED state on each tick so it stays
+    coherent with whichever degraded condition is most severe.
+    Precedence ladder:
+        time_waiting / wifi_disconnected   (critical — set by _ok_led_state)
+      > manual_override                    (operator-driven)
+      > leaf_offline                       (a leaf hasn't HB'd in time)
+      > running_lora_ok / running_ok       (happy path)
+    """
     while True:
         fleet_manager.check_timeouts()
         any_offline = any(
             not u["online"] for u in fleet_manager.get_all().values()
         )
-        if any_offline:
-            status_led.set_state("leaf_offline")
+        # _ok_led_state() returns "time_waiting" or "wifi_disconnected"
+        # when one of those critical conditions holds; otherwise the
+        # appropriate running_* state. Critical conditions outrank
+        # leaf_offline because losing the dashboard / pausing the
+        # schedule blocks diagnosis itself, whereas one offline leaf
+        # is something the operator can investigate from a working
+        # coord.
+        base = _ok_led_state()
+        if base in ("time_waiting", "wifi_disconnected"):
+            status_led.set_state(base)
         elif priority_arbiter.has_manual():
             status_led.set_state("manual_override")
+        elif any_offline:
+            status_led.set_state("leaf_offline")
         else:
-            status_led.set_state(_ok_led_state())
+            status_led.set_state(base)
         await asyncio.sleep(interval_s)
 
 
@@ -1334,6 +1455,12 @@ async def main():
         # while transport isn't ready; once deferred retry brings LoRa
         # up, periodic TS resumes naturally.
         tasks.append(asyncio.create_task(time_sync_task()))
+        # Detect WiFi drops at runtime and reconnect. Spawn this even
+        # if boot-time connect_wifi() failed — the monitor's first
+        # iteration will find !connected and start the retry loop,
+        # which is exactly the recovery path for "coord booted before
+        # the AP came up."
+        tasks.append(asyncio.create_task(wifi_monitor_task()))
         if wifi_ok:
             # MQTT notifications (if enabled)
             try:
