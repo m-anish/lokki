@@ -102,14 +102,18 @@ def _route(path, method):
         return None
 
     if p == "/api/status":
-        # Mirror the firmware's status shape including the new AP
-        # fields so the dashboard can render the AP-mode banner. To
-        # preview AP fallback locally: set DEV_AP_MODE=1 in the env.
+        # Mirror the firmware's status shape including AP + auth
+        # fields so the dashboard can render the AP-mode and
+        # open-auth-warning banners. Preview flags:
+        #   DEV_AP_MODE=1   → force ap_active=true
+        #   DEV_NO_AUTH=1   → force auth_enabled=false (loud warning)
         ap_active = os.environ.get("DEV_AP_MODE") == "1"
+        auth_enabled = os.environ.get("DEV_NO_AUTH") != "1"
         return _ok({
-            "unit_name":   COORD_CFG["system"]["unit_name"],
-            "time_synced": True,
-            "uptime":      f"{int(time.time() - BOOT_TIME)}s",
+            "unit_name":    COORD_CFG["system"]["unit_name"],
+            "time_synced":  True,
+            "uptime":       f"{int(time.time() - BOOT_TIME)}s",
+            "auth_enabled": auth_enabled,
             "connections": {
                 "wifi":      not ap_active,
                 "lora":      True,

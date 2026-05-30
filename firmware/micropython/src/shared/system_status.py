@@ -102,12 +102,20 @@ class SystemStatus:
         from hardware.ldr_monitor import ldr_monitor
         from hardware.i2c_sensors import i2c_sensors
         from core.config_manager import config_manager
+        # Whether dashboard.auth_password is configured (presence-only;
+        # we never expose the password itself). Surfaced via /api/status
+        # so the dashboard can render a loud warning when the SoftAP is
+        # open AND no auth is set — that's the real "anyone can drive
+        # this device" state, not just "the SSID is unprotected."
+        dash_cfg = config_manager.get("dashboard") or {}
+        auth_enabled = bool((dash_cfg.get("auth_password") or "").strip())
         return {
             "unit_name": config_manager.unit_name,
             "unit_id":   config_manager.unit_id,
             "role":      config_manager.role,
             "uptime_s": self.get_uptime(),
             "uptime": self.get_uptime_string(),
+            "auth_enabled": auth_enabled,
             "connections": {
                 "wifi": self.wifi_connected,
                 "lora": self.lora_connected,

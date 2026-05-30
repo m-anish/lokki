@@ -715,10 +715,14 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
         </div>
         <div id="apModeBanner" style="display:none;margin-bottom:16px;padding:12px 16px;background:#fdf2f8;border:1px solid #f0abfc;border-left:4px solid #a21caf;border-radius:6px;color:#581c87">
           <strong>📡 SoftAP fallback active.</strong>
-          You're connected to the coordinator's own access point — the venue's WiFi is either unreachable or hasn't been configured yet. The dashboard is fully usable, but MQTT and NTP won't sync until the coordinator rejoins your network. <span id="apModeIp"></span>
+          You're connected to the coordinator's own access point — the venue's WiFi is either unreachable or hasn't been configured yet. The dashboard is fully usable, but MQTT and NTP won't sync until the coordinator rejoins your network. The SoftAP itself is <strong>open / no password</strong> (a Pico W cyw43 quirk we couldn't work around — see commit log). <span id="apModeIp"></span>
           <div style="margin-top:8px;font-size:.85em">
             Configure WiFi via <strong>Configure</strong> → <strong>Advanced</strong> → <strong>WiFi</strong>. The coord reboots after saving and will rejoin your network on next boot; the SoftAP comes down 60 s after STA is stable.
           </div>
+        </div>
+        <div id="apOpenAuthWarning" style="display:none;margin-bottom:16px;padding:12px 16px;background:#fef2f2;border:1px solid #fca5a5;border-left:4px solid #dc2626;border-radius:6px;color:#7f1d1d">
+          <strong>⚠ Unprotected dashboard exposure.</strong>
+          The SoftAP is open AND <code>dashboard.auth_password</code> isn't set, so anyone within WiFi range can join <code>Lokki-Setup</code> and reach this page with no credentials. <strong>Set a dashboard password now</strong> — Configure → Advanced → Dashboard Auth. Then close this AP by configuring real WiFi.
         </div>
         <div id="unclaimedSection" style="display:none;margin-bottom:24px">
           <h2 style="font-size:1.2em;margin:0 0 4px;font-weight:700">New Devices</h2>
@@ -1998,9 +2002,9 @@ async function updateStatus() {
     // AP-mode banner: shown when the SoftAP fallback is up. Either
     // venue WiFi failed, or fresh install with no SSID configured.
     const apBanner = document.getElementById("apModeBanner");
+    const c = s.data.connections || {};
+    const apOn = c.ap_active === true;
     if (apBanner) {
-      const c = s.data.connections || {};
-      const apOn = c.ap_active === true;
       apBanner.style.display = apOn ? "" : "none";
       const ipEl = document.getElementById("apModeIp");
       if (ipEl) {
@@ -2008,6 +2012,16 @@ async function updateStatus() {
           ? `If the hostname doesn't resolve, try http://${c.ap_ip}/.`
           : "";
       }
+    }
+    // Loud warning when AP is open AND dashboard auth isn't set —
+    // that's the actual "anyone can drive this device" state. The
+    // AP-open-but-auth-set case still has the access gate (HTTP
+    // Basic auth), so the warning collapses; the AP-down case is
+    // also fine because random WiFi clients can't reach the dashboard.
+    const authWarn = document.getElementById("apOpenAuthWarning");
+    if (authWarn) {
+      const authEnabled = s.data.auth_enabled === true;
+      authWarn.style.display = (apOn && !authEnabled) ? "" : "none";
     }
   } catch (e) { /* swallow polling errors */ }
 }

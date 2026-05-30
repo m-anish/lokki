@@ -30,11 +30,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "ssid":        { "type": "string" },
-        "password":    { "type": "string" },
-        "hostname":    { "type": "string" },
-        "ap_ssid":     { "type": "string" },
-        "ap_password": { "type": "string", "minLength": 8 }
+        "ssid":     { "type": "string" },
+        "password": { "type": "string" },
+        "hostname": { "type": "string" },
+        "ap_ssid":  { "type": "string" }
       }
     },
 

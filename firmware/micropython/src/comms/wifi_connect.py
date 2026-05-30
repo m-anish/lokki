@@ -220,44 +220,43 @@ def get_network_status():
 # runs a built-in DHCP server. No extra plumbing needed.
 _AP_GATEWAY_IP = "192.168.4.1"
 
-# WPA2 needs >=8 chars. Anything shorter and ap.active(True) silently
-# refuses to come up. We refuse loudly instead.
-_AP_MIN_PASSWORD_LEN = 8
-
 
 def ap_start():
     """Bring up the SoftAP. Idempotent — safe to call when AP is
     already active. Returns True if the AP is up afterwards, False
     on any config / activation failure.
 
-    Reads wifi.ap_ssid / wifi.ap_password from config. Sensible
-    fallback for ssid (so a fresh install with no AP config still
-    comes up reachable); password has no fallback because shipping
-    a hardcoded password to every device in the wild would be a
-    real security hole.
+    AP mode is currently OPEN (no WPA2). Background:
+      We tried security=4 (intended as WPA/WPA2 mixed) and security=3
+      (intended as WPA2-PSK), both of which produced a malformed
+      beacon that macOS interpreted as WEP — prompting for a WEP key
+      that couldn't possibly match. Turns out the rp2 cyw43 driver in
+      MicroPython expects raw `cyw43_auth_t` flag values (e.g.
+      0x00400004 for WPA2-AES-PSK), not the 0–4 enum I was assuming.
+      Rather than burn more flash cycles iterating on the right magic
+      number, we ship open mode. Access control is provided by the
+      dashboard's HTTP Basic auth gate (`dashboard.auth_password`),
+      which is the real security boundary anyway — anyone in WiFi
+      range could observe a WPA2-PSK pre-shared key over time, but
+      the auth password is per-session and (in real deployments)
+      operator-rotated.
+
+      To re-attempt WPA2 in the future: pass `security=0x00400004`
+      (WPA2-AES-PSK) instead of removing the parameter. Verify with
+      a non-macOS client (Android / iOS / Linux) since macOS aggres-
+      sively caches per-SSID security mode and may stay confused.
+
+    Reads wifi.ap_ssid from config; falls back to "Lokki-Setup" so a
+    fresh install with no AP config still comes up reachable.
     """
     wifi_cfg = config_manager.get("wifi") or {}
     ap_ssid = wifi_cfg.get("ap_ssid") or "Lokki-Setup"
-    ap_password = wifi_cfg.get("ap_password") or ""
-
-    if len(ap_password) < _AP_MIN_PASSWORD_LEN:
-        log.error(
-            f"[AP] wifi.ap_password is {len(ap_password)} chars; need "
-            f">={_AP_MIN_PASSWORD_LEN} for WPA2. AP mode disabled — set "
-            "a longer password via the dashboard or config-builder."
-        )
-        return False
 
     ap = network.WLAN(network.AP_IF)
     try:
-        # security=3 = pure WPA2-PSK on the Pico W's cyw43. We
-        # previously used security=4 (WPA/WPA2 mixed mode) which
-        # caused macOS to misinterpret the beacon as WEP and prompt
-        # for a WEP key. Pure WPA2 is what every modern client
-        # expects; we don't need WPA1 compatibility for setup.
-        # Values reference (MicroPython cyw43 driver):
-        #   0 = open, 2 = WPA-PSK, 3 = WPA2-PSK, 4 = WPA/WPA2 mixed.
-        ap.config(essid=ap_ssid, password=ap_password, security=3)
+        # security=0 = open. No password. See header comment for the
+        # full story on why we're not running WPA2 here right now.
+        ap.config(essid=ap_ssid, security=0)
     except Exception as e:
         log.error(f"[AP] config() failed: {e}")
         return False
@@ -279,7 +278,10 @@ def ap_start():
                 ip = ap.ifconfig()[0]
             except Exception:
                 pass
-            log.info(f"[AP] Up: SSID='{ap_ssid}' IP={ip or _AP_GATEWAY_IP}")
+            log.info(f"[AP] Up: SSID='{ap_ssid}' (open, no password) "
+                     f"IP={ip or _AP_GATEWAY_IP}")
+            log.warn("[AP] SoftAP is OPEN. Set dashboard.auth_password "
+                     "to gate the dashboard surface.")
             return True
         time.sleep_ms(100)
 

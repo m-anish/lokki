@@ -87,12 +87,26 @@ is the documented flake — see `main.py` boot comment).
 **Steps**: Power on, watch.
 **Expected**:
 - Log: `[MAIN] No wifi.ssid configured — coming up in SoftAP mode`.
-- AP comes up; log: `[AP] Up: SSID='Lokki-Setup' IP=192.168.4.1`.
+- AP comes up; log: `[AP] Up: SSID='Lokki-Setup' (open, no password) IP=192.168.4.1`.
+- Warning log: `[AP] SoftAP is OPEN. Set dashboard.auth_password to gate the dashboard surface.`
 - LED settles at `ap_mode` (magenta pulse) once time is sane.
-- `Lokki-Setup` SSID visible from a phone. Joining with password
-  `lokki-setup-1234` works.
+- `Lokki-Setup` SSID visible from a phone — joins with **no password**
+  (open network — see Regression guard below).
 - Dashboard reachable at `http://lokki.local/` and `http://192.168.4.1/`.
 - Dashboard shows the **SoftAP fallback** banner with IP fallback link.
+- If `dashboard.auth_password` is empty: the loud red
+  **Unprotected dashboard exposure** warning shows above the fleet.
+
+**Regression guard**: We previously tried `security=4` (WPA/WPA2 mixed)
+and `security=3` (intended WPA2-PSK) on the Pico W cyw43 driver — both
+produced malformed beacons that macOS interpreted as WEP, prompting for
+a WEP key that couldn't possibly match. The rp2 cyw43 driver expects
+raw `cyw43_auth_t` flag values (e.g. `0x00400004` for WPA2-AES-PSK),
+not the simple 0–4 enum. We ship open mode to keep setup working
+across all client OSes; access control lives at the dashboard's HTTP
+Basic auth gate. If you re-attempt WPA2 in `wifi_connect.ap_start()`,
+verify with iOS/Android/Linux (not just macOS — macOS caches the
+detected security per-SSID and may stay stuck even after a real fix).
 **Last verified**: not yet.
 
 ### 2.2 First-time setup wizard via AP
@@ -139,14 +153,18 @@ is the documented flake — see `main.py` boot comment).
   This must not recur.
 **Last verified**: not yet.
 
-### 2.5 AP refusal on short password
-**Setup**: Coord config with `wifi.ap_password = "short"` (<8 chars).
-**Steps**: Trigger AP bring-up (boot with no STA, or fail STA 3×).
+### 2.5 Open-AP exposure warning when no dashboard auth set
+**Setup**: Coord in AP-fallback mode (see 2.1 or 2.3). `config.dashboard`
+has no `auth_password` set, or it's empty.
+**Steps**: Join `Lokki-Setup`, open `http://192.168.4.1/`.
 **Expected**:
-- Log: `[AP] wifi.ap_password is N chars; need >=8 for WPA2. AP mode disabled`.
-- AP does NOT come up. LED stays at `wifi_disconnected`.
-- Dashboard remains unreachable until the operator fixes the config (via
-  REPL — that's the only access path in this failure mode).
+- Dashboard loads with NO credentials prompt (auth not configured).
+- Loud red banner: **⚠ Unprotected dashboard exposure** — explains
+  the SoftAP is open AND `dashboard.auth_password` isn't set, anyone
+  in WiFi range can reach the dashboard.
+- Operator navigates **Configure → Advanced → Dashboard Auth**, sets
+  a password, saves. Banner disappears on next status poll (~5 s);
+  subsequent page loads show an HTTP Basic auth prompt.
 **Last verified**: not yet.
 
 ---
