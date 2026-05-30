@@ -54,6 +54,37 @@ main { max-width:1000px; margin:0 auto; padding:24px 20px 60px; }
   border-radius:var(--radius); margin-bottom:16px;
   box-shadow:0 1px 3px rgba(0,0,0,.05);
 }
+.unit-card.selected {
+  border-color:var(--brand);
+  box-shadow:0 0 0 2px rgba(79,70,229,.18);
+}
+.unit-select {
+  /* Checkbox before the unit name on each fleet card. 18×18 hits
+     iOS touch-target territory once we account for label hit area. */
+  width:18px; height:18px; cursor:pointer; flex-shrink:0;
+}
+/* Bulk-action toolbar above the fleet list. Sticky so it doesn't
+   scroll out of reach while the operator works through a tall list
+   of cards. Mirrors the dashboard's other "above-content" affordances
+   (timeWaitingBanner / apModeBanner) in vertical rhythm. */
+.fleet-toolbar {
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  margin-bottom:16px; padding:10px 14px;
+  background:var(--card); border:1px solid var(--brand);
+  border-left:4px solid var(--brand);
+  border-radius:6px;
+  position:sticky; top:56px; z-index:6;
+}
+.fleet-toolbar-count {
+  font-weight:600; color:var(--brand);
+}
+.fleet-toolbar-scene {
+  padding:6px 10px; font-size:.9em;
+  border:1px solid var(--border); border-radius:6px;
+  background:var(--bg); color:var(--text);
+  min-width:160px;
+}
+.fleet-toolbar .btn { padding:6px 12px; font-size:.9em; }
 .unit-head {
   display:flex; align-items:center; gap:12px; padding:16px 20px;
   border-bottom:1px solid var(--border);
@@ -876,6 +907,17 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
           <div id="unclaimed"></div>
         </div>
         <h2 style="font-size:1.2em;margin:0 0 16px;font-weight:700">Fleet Status</h2>
+        <!-- UX-4.1 bulk-select toolbar. Hidden by default; renderFleet
+             reveals it whenever ≥1 unit card has its checkbox ticked.
+             Sticky so it stays visible while the operator scrolls a
+             tall fleet card list. -->
+        <div id="fleetSelectionToolbar" class="fleet-toolbar" style="display:none">
+          <span id="fleetSelectionCount" class="fleet-toolbar-count">0 selected</span>
+          <select id="fleetSelectionSceneSelect" class="fleet-toolbar-scene"></select>
+          <button class="btn" onclick="bulkApplyScene()">Apply scene</button>
+          <button class="btn btn-danger" onclick="bulkReboot()">Reboot selected</button>
+          <button class="btn" onclick="clearFleetSelection()" style="margin-left:auto">Clear</button>
+        </div>
         <div id="fleet">Loading…</div>
         <div style="margin-top:40px;padding-top:20px;border-top:1px solid var(--border);font-size:.85em;color:var(--muted);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
           <div>
@@ -1090,8 +1132,15 @@ function renderFleet(units) {
     const name = unitDisplayName(id, u);
     const roleLabel = id == 0 ? "Coordinator" : "Leaf";
     const up = u.online ? fmtUptime(u.uptime || 0) : "Offline";
-    h += `<div class="unit-card">`;
+    const selected = _fleetSelection.has(parseInt(id, 10));
+    h += `<div class="unit-card${selected ? ' selected' : ''}">`;
     h += `<div class="unit-head">`;
+    // Multi-select checkbox for UX-4 bulk operations. Pure UI —
+    // selection state lives in _fleetSelection, no server round-trip
+    // until the operator clicks a toolbar button.
+    h += `<input type="checkbox" class="unit-select" data-unit-id="${id}" ` +
+         `${selected ? 'checked' : ''} onchange="toggleFleetSelect(${id}, this.checked)" ` +
+         `title="Select this unit for bulk operations" />`;
     h += `<span class="unit-name">${_escape(name)}</span>`;
     h += `<span class="unit-role">${roleLabel}</span>`;
     h += `<div style="margin-left:auto;display:flex;gap:8px">`;
@@ -1178,6 +1227,137 @@ function renderFleet(units) {
     h = '<p style="color:var(--muted)">No units detected</p>';
   }
   document.getElementById("fleet").innerHTML = h;
+  // Drop selection entries for units that no longer exist (claim
+  // revert, factory reset, etc.) so the toolbar count stays honest.
+  for (const id of [..._fleetSelection]) {
+    if (!units[String(id)]) _fleetSelection.delete(id);
+  }
+  refreshFleetToolbar();
+}
+
+// ============================================================
+// UX-4.1 — fleet multi-select + bulk operations
+// ------------------------------------------------------------
+// Tracks a Set of selected unit_ids. The toolbar above the fleet
+// list reveals itself once anything is selected, offering bulk
+// Apply Scene and bulk Reboot. Scenes are pulled from the coord's
+// config (it's where the operator manages them); a leaf without a
+// matching scene name just no-ops on the broadcast — handle_scene's
+// lookup miss is silent on the leaf side. No new backend endpoints
+// needed: /api/scenes/{name}/apply already accepts unit_ids, and
+// reboot fans out as N parallel POSTs (small enough not to overwhelm
+// the coord's HTTP server).
+// ============================================================
+
+const _fleetSelection = new Set();
+
+function toggleFleetSelect(id, checked) {
+  const uid = parseInt(id, 10);
+  if (checked) _fleetSelection.add(uid);
+  else         _fleetSelection.delete(uid);
+  // Reflect the visual border-highlight without a full fleet
+  // re-render — keeps the page from flickering on every checkbox
+  // click. Next load() will reconcile if anything else changed.
+  const card = document.querySelector(`.unit-select[data-unit-id="${id}"]`)?.closest('.unit-card');
+  if (card) card.classList.toggle('selected', checked);
+  refreshFleetToolbar();
+}
+
+function clearFleetSelection() {
+  _fleetSelection.clear();
+  document.querySelectorAll('.unit-select').forEach(el => { el.checked = false; });
+  document.querySelectorAll('.unit-card.selected').forEach(el => el.classList.remove('selected'));
+  refreshFleetToolbar();
+}
+
+function refreshFleetToolbar() {
+  const bar = document.getElementById('fleetSelectionToolbar');
+  const cnt = document.getElementById('fleetSelectionCount');
+  if (!bar || !cnt) return;
+  const n = _fleetSelection.size;
+  bar.style.display = n > 0 ? '' : 'none';
+  cnt.textContent = `${n} selected`;
+  if (n > 0) _populateBulkSceneSelect();
+}
+
+// Scene picker is populated from the COORD's scene list — coord is
+// the canonical source per the dashboard's existing scene editor
+// (Scenes tab on the coord card). Cached after first fetch.
+let _bulkSceneCache = null;
+async function _populateBulkSceneSelect() {
+  const sel = document.getElementById('fleetSelectionSceneSelect');
+  if (!sel) return;
+  if (_bulkSceneCache === null) {
+    try {
+      const r = await fetchJSON('/api/units/0/scenes');
+      _bulkSceneCache = r.ok && Array.isArray(r.data) ? r.data : [];
+    } catch (e) {
+      _bulkSceneCache = [];
+    }
+  }
+  if (sel.options.length === _bulkSceneCache.length + 1) return;   // already populated
+  sel.innerHTML = '<option value="">Pick a scene…</option>' +
+    _bulkSceneCache.map(n => `<option value="${_escape(n)}">${_escape(n)}</option>`).join('');
+}
+
+async function bulkApplyScene() {
+  const sel = document.getElementById('fleetSelectionSceneSelect');
+  const name = sel.value;
+  if (!name) { alert('Pick a scene from the dropdown first.'); return; }
+  const ids = [..._fleetSelection];
+  if (!ids.length) return;
+  try {
+    const r = await fetchJSON(`/api/scenes/${encodeURIComponent(name)}/apply`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ unit_ids: ids }),
+    });
+    if (!r.ok) { alert(`Apply failed: ${r.error || 'unknown'}`); return; }
+    // Result dict is keyed by unit_id with values "applied_local",
+    // "sent", or "send_failed". Surface any failures explicitly so
+    // the operator doesn't assume "no popup = all worked."
+    const failed = Object.entries(r.data || {})
+      .filter(([_, v]) => v === 'send_failed')
+      .map(([uid]) => uid);
+    if (failed.length) {
+      alert(`Applied to ${ids.length - failed.length} unit(s). Failed: ${failed.join(', ')}.`);
+    }
+    setTimeout(load, 800);
+  } catch (e) {
+    alert(`Apply failed: ${e.message || e}`);
+  }
+}
+
+async function bulkReboot() {
+  const ids = [..._fleetSelection];
+  if (!ids.length) return;
+  const includesCoord = ids.includes(0);
+  const msg = includesCoord
+    ? `Reboot ${ids.length} unit(s) — INCLUDING the coordinator? ` +
+      `Dashboard will disconnect for ~10 s while coord restarts.`
+    : `Reboot ${ids.length} leaf(s)? Each takes ~30 s to come back online.`;
+  if (!confirm(msg)) return;
+  // Fire all reboots in parallel — the coord's HTTP server can
+  // handle a handful of concurrent requests. Don't await each one
+  // serially or we'd wait minutes for 8 leaves.
+  const results = await Promise.allSettled(ids.map(id =>
+    fetchJSON(`/api/units/${id}/reboot`, { method: 'POST' })
+  ));
+  const failed = results
+    .map((r, i) => ({ r, id: ids[i] }))
+    .filter(({ r }) => r.status !== 'fulfilled' || !r.value.ok)
+    .map(({ id }) => id);
+  if (failed.length) {
+    alert(`Reboot sent to ${ids.length - failed.length} unit(s). Failed: ${failed.join(', ')}.`);
+  }
+  clearFleetSelection();
+  if (includesCoord) {
+    // Same UX as the single-coord reboot in rebootDevice().
+    alert('Coordinator rebooting. Page will reload in 12 seconds.');
+    setTimeout(() => window.location.reload(), 12000);
+  } else {
+    setTimeout(load, 1500);
+  }
 }
 
 function renderUnclaimed(unclaimed) {
