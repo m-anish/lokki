@@ -165,6 +165,48 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
 @media (max-width:768px) {
   .status-grid { grid-template-columns:1fr; }
   .unit-head { flex-wrap:wrap; }
+  /* Tighten the page chrome on tablets/landscape phones. Nav was
+     padding:0 24px → 0 14px, hero was 40/24/36 → 28/14/24, main was
+     24/20/60 → 18/12/40. Saves ~28 px of horizontal real estate
+     across the whole content column without any HTML changes. */
+  nav { padding:0 14px; }
+  .hero { padding:28px 14px 24px; }
+  main { padding:18px 12px 40px; }
+  /* Per-unit detail view: same tightening. The tab bar already
+     scrolls horizontally on overflow (overflow-x:auto), so a long
+     row of tabs becomes swipeable rather than wrapping ugly. */
+  .unit-detail-header { padding:16px 14px 10px; }
+  .tab-bar { padding:0 14px; }
+  .tab-panels { padding:16px 14px 40px; }
+  /* Fleet card head: when buttons wrap, the Configure / Quick
+     override / Refresh group should hug the right side on a new
+     line rather than indenting from the unit-role chip. */
+  .unit-head > div[style*="margin-left:auto"] {
+    margin-left:0 !important; width:100%; justify-content:flex-end;
+  }
+}
+@media (max-width:480px) {
+  /* Phone-sized viewports — push padding tighter, scale typography
+     down a touch so cards don't dominate a 360-px screen. */
+  nav { padding:0 10px; height:52px; }
+  .nav-logo { font-size:1em; }
+  .hero { padding:22px 12px 18px; }
+  .hero h1 { font-size:clamp(1.2em,5vw,1.6em); }
+  .hero p { font-size:.9em; }
+  main { padding:14px 10px 32px; }
+  .unit-card { margin-bottom:12px; }
+  .unit-head { padding:12px 14px; gap:8px; }
+  .unit-name { font-size:1em; }
+  .unit-body { padding:12px 14px; }
+  .unit-detail-header { padding:14px 12px 8px; }
+  .tab-bar { padding:0 10px; gap:0; top:52px; }
+  .tab-bar .tab { padding:8px 10px; font-size:.9em; }
+  .tab-panels { padding:14px 12px 36px; }
+  /* Make sure no element forces horizontal page scroll on small
+     phones. Critical for the layout container — anything that's
+     `display:flex` without min-width:0 will refuse to shrink past
+     its content. */
+  .layout, .content { min-width:0; }
 }
 
 /* ============================================================
