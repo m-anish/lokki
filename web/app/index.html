@@ -207,6 +207,63 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
      `display:flex` without min-width:0 will refuse to shrink past
      its content. */
   .layout, .content { min-width:0; }
+
+  /* ── Forms responsive pass (UX-5.2) ──────────────────────────── */
+  /* Modal-content was max-width:500px with no horizontal margin →
+     could overflow a 320 px screen if any child forced its
+     natural width up. Explicit gutter both sides + reduced top
+     margin. */
+  .modal-content { width:auto; margin:14px 12px; padding:14px; max-width:none; }
+
+  /* Schedule editor — desktop had 4 fixed-width input columns +
+     actions, totalling ~310 px on its own. Reflow to 2 columns
+     (Start | End on row 1, Duty | Fade on row 2) with the
+     ↑/↓/× actions on a full-width row 3. Header row hidden on
+     phone — the input placeholders + numeric ranges convey enough
+     without the column labels. */
+  .sched-editor.kind-channel,
+  .sched-editor.kind-relay { grid-template-columns: 1fr 1fr; gap:6px 8px; }
+  .sched-editor .sched-editor-head { display:none; }
+  .sched-editor .win-actions {
+    grid-column: 1 / -1; justify-content:flex-end;
+  }
+  /* The relay select needs both columns on its own row (no Fade
+     companion to share row 2 with) to look balanced. */
+  .sched-editor.kind-relay select[data-win-field="state"] {
+    grid-column: 1 / -1;
+  }
+
+  /* Scene editor: shrink the duty/fade/state columns. Channel/
+     relay-name 1fr handles itself via text-overflow:ellipsis. */
+  .scene-row.kind-ch { grid-template-columns: 24px 1fr 54px 60px; gap:4px 8px; }
+  .scene-row.kind-rl { grid-template-columns: 24px 1fr 72px;        gap:4px 8px; }
+
+  /* Touch targets — iOS HIG asks for 44 px minimum on tappable
+     elements. ↑/↓/× action buttons in the schedule + scene editors
+     were 24 px on desktop; bump to 36 px on phone (compromise:
+     enough for finger-tap, not so tall that an 8-window editor
+     becomes a scrollfest). */
+  .sched-editor .win-actions button { width:36px; height:36px; font-size:1em; }
+
+  /* The schedule overview "stacked rows" view had a fixed 160 px
+     label column — on phone that eats > 40 % of horizontal space.
+     Shrink so the strip itself stays legible. */
+  .sched-overview-row { grid-template-columns: 110px 1fr; gap:6px; }
+  .sched-overview-label { font-size:.78em; }
+  .sched-tick-row { margin-left:116px; }
+
+  /* Quick override sliders: on the Channels tab override section,
+     the row's label + slider + value + Apply button at desktop
+     widths fits one row. On phone, let it wrap — slider stays
+     full-width on its own row, label and Apply share row 1.
+     Already a flex row in the markup; we just remove the
+     no-wrap constraint and let flex-wrap do the work. */
+  .override-row { flex-wrap:wrap; }
+  .override-row .ov-slider { flex:1 1 100%; order:99; }
+  .override-row .ov-buttons { margin-left:auto; }
+
+  /* Relay-toggle-row similarly */
+  .relay-toggle-row { flex-wrap:wrap; }
 }
 
 /* ============================================================
