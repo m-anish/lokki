@@ -394,14 +394,13 @@
 <body>
 
 <nav>
-  <a class="nav-logo" href="./index.html">Lokki <span>Setup</span></a>
+  <a class="nav-logo" href="./index.html">Lokki <span>Config Builder</span></a>
   <div class="nav-right">
     <label class="expert-toggle" title="Show advanced settings like GPIO pins, LoRa parameters and timing intervals">
       <input type="checkbox" id="expertToggle" />
       Expert mode
     </label>
-    <a class="nav-back" href="./index.html">← All tools</a>
-    <a class="nav-back" href="/" id="dashboardLink" style="display:none">← Dashboard</a>
+    <a class="nav-back" href="./index.html">← Dashboard</a>
   </div>
 </nav>
 
@@ -975,10 +974,6 @@ document.getElementById('saveDeviceBtn').style.display = '';
 document.getElementById('saveDeviceBtn2').style.display = '';
 document.getElementById('loadFromDeviceBtn').style.display = '';
 document.getElementById('loadTargetUnit').style.display = '';
-// dashboardLink in the top nav is now redundant — the left rail's
-// 🌿 Fleet icon (added in UX-1) handles "back to dashboard". Keeping
-// the element in the markup as a hidden no-op so any old bookmarks
-// referencing #dashboardLink don't break.
 populateUnitSelector();
 
 // ============================================================

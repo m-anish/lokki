@@ -79,7 +79,7 @@ Order: provisioning → schema → patch protocol. Each is independently useful 
 Five sub-phases. Each leaves the app *better-shaped* than before — never a "redesign halfway done and everything is worse" state.
 
 - **UX-1 — Unification foundation** (~1 week).
-  - Merge `config-builder.html` into `dashboard.html` as a hidden view, route the sidebar to it. Old `/config-builder.html` URL kept as a redirect for backward compat with bookmarks.
+  - Merge `config-builder.html` into `index.html` (the dashboard) as a hidden view, route the sidebar to it. Old `/config-builder.html` URL kept as a redirect for backward compat with bookmarks.
   - Sidebar gains Coordinator + Leaf N entries (one per claimed leaf, generated from `/api/fleet`).
   - Dark mode pass — honor `prefers-color-scheme` throughout.
   - **Drop offline-only Config Builder mode** — keep "Load from file" (lightweight, useful for review/backup); drop everything else that pretended the page worked without a coord. ~150 LOC of conditional logic gone.

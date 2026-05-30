@@ -2,7 +2,12 @@
 
 This guide is for venue managers and on-site staff who operate a deployed Lokki installation. It covers day-to-day use, reading the status LED, and what to do when something looks wrong.
 
-For initial setup and config building, see the [web setup tools](../web/app/index.html) and the main [README](../README.md).
+First-time setup uses the coordinator's own SoftAP boot wizard — power
+on a freshly-flashed coord, join its `Lokki-Setup` WiFi network, open
+`http://lokki.local/` (or `http://192.168.4.1/`), and configure WiFi
+and location from the dashboard's Advanced tab. See the main
+[README](../README.md) for bench-bringup; project docs are at
+[lokki.starstucklab.com](https://lokki.starstucklab.com).
 
 ---
 

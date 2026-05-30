@@ -32,9 +32,8 @@ _MIME = {
 }
 
 _STATIC_PATHS = {
-    "/index.html",
+    "/index.html",      # the dashboard (formerly /dashboard.html — renamed May 2026)
     "/config-builder.html",
-    "/dashboard.html",
 }
 
 
@@ -293,9 +292,10 @@ class WebServer:
         return False
 
     async def _serve_static(self, conn, path):
-        # GET / serves the dashboard. All dynamic content (unit_name, fleet, etc.)
-        # comes from API calls — the page itself is a static file in /www/.
-        file_path = _STATIC_DIR + ("/dashboard.html" if path == "/" else path)
+        # GET / serves the dashboard (now named index.html). All dynamic
+        # content (unit_name, fleet, etc.) comes from API calls — the
+        # page itself is a static file in /www/.
+        file_path = _STATIC_DIR + ("/index.html" if path == "/" else path)
         ext = file_path.rsplit(".", 1)[-1] if "." in file_path else ""
         ctype = _MIME.get(ext, "application/octet-stream")
         try:

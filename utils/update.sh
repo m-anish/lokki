@@ -225,7 +225,6 @@ done
 echo "[update] Flashing web assets $WEB_DIR -> :/www ..."
 mk_remote_dir "www"
 mpremote connect auto fs cp "$WEB_DIR/index.html" :www/
-mpremote connect auto fs cp "$WEB_DIR/dashboard.html" :www/
 mpremote connect auto fs cp "$WEB_DIR/config-builder.html" :www/
 mpremote connect auto fs cp "$WEB_DIR/config.schema.json" :www/
 # Also flash the schema to /config.schema.json (filesystem root, not

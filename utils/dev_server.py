@@ -7,7 +7,7 @@ Just enough to render the UI and iterate on visual changes
 (e.g. UX-3 schedule strip mockup) without flashing a Pico.
 
     python3 utils/dev_server.py
-    open http://localhost:8088/dashboard.html
+    open http://localhost:8088/
 
 Stop with Ctrl-C. This script is intentionally not wired into
 update.sh — it's a local-only preview, never goes on device.
@@ -194,9 +194,8 @@ class DevHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self._serve_api():
             return
-        # Redirect "/" to "/dashboard.html" so the user doesn't have to type it.
-        if self.path == "/" or self.path == "":
-            self.path = "/dashboard.html"
+        # Standard SimpleHTTPRequestHandler already serves /index.html
+        # for "/", so no rewrite needed since the dashboard is index.html.
         return super().do_GET()
 
     def do_POST(self):
@@ -223,7 +222,7 @@ class DevHandler(http.server.SimpleHTTPRequestHandler):
 def main():
     with socketserver.TCPServer(("127.0.0.1", PORT), DevHandler) as srv:
         srv.allow_reuse_address = True
-        print(f"Dev server: http://localhost:{PORT}/dashboard.html")
+        print(f"Dev server: http://localhost:{PORT}/")
         print("Stop with Ctrl-C.")
         try:
             srv.serve_forever()

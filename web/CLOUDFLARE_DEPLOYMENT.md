@@ -6,10 +6,13 @@ This folder used to be the Cloudflare Pages build output for
 - **`lokki.starstucklab.com`** now serves the marketing site at
   [`site/`](../site/) — see [`site/CLOUDFLARE_DEPLOYMENT.md`](../site/CLOUDFLARE_DEPLOYMENT.md)
   for the current Pages configuration.
-- The contents of this folder (`dashboard.html`, `config-builder.html`,
-  `_headers`, `_redirects`, `vendor/`, etc.) are still flashed to each
-  coordinator unit by `utils/update.sh` and served locally by the
-  coordinator's on-device web server at `http://<coordinator-ip>/`.
+- The contents of this folder (`index.html` — the dashboard, formerly
+  `dashboard.html`; `config-builder.html`; `vendor/`; etc.) are still
+  flashed to each coordinator unit by `utils/update.sh` and served
+  locally by the coordinator's on-device web server at
+  `http://<hostname>.local/`. `_headers` and `_redirects` were
+  Cloudflare-specific and removed when this directory stopped being
+  deployed publicly.
 
 In other words: this is **device firmware UI**, not a public website
 anymore. The files here are bundled into the firmware image and

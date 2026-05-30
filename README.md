@@ -1,5 +1,7 @@
 # Lokki
 
+[**lokki.starstucklab.com**](https://lokki.starstucklab.com) — project home, docs, demos.
+
 A campus-scale LED lighting automation system for wellness and hospitality venues — meditation centers, retreats, and resorts.
 
 Lokki units are self-contained lighting controllers that coordinate via LoRa radio. Each unit runs its schedule autonomously. Multiple units on the same campus share state and respond to each other's events without cloud dependency.
