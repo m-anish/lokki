@@ -772,6 +772,18 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
   color:var(--muted); transition:all .15s;
 }
 .logs-controls .chip.active { background:var(--brand); color:#fff; border-color:var(--brand); }
+/* Activity toggle: distinct outline so it reads as a separate
+   filter axis from the mutually-exclusive level chips. When
+   active, it inherits the brand fill from the .active rule above. */
+.logs-controls .chip-toggle { border-style:dashed; }
+/* ⚡ marker prepended to activity-tagged log lines. Subtle amber
+   tint so it doesn't compete with the level chip but is glanceable. */
+.log-activity {
+  color:#d97706; font-weight:700; margin-right:2px;
+}
+@media (prefers-color-scheme: dark) {
+  .log-activity { color:#fbbf24; }
+}
 .logs-controls select, .logs-controls input[type=text] {
   font-size:.85em; padding:5px 8px; border:1px solid var(--border);
   border-radius:6px; background:var(--card); color:var(--text);
@@ -939,6 +951,12 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
           <span class="chip" data-level="INFO"  onclick="setLogLevel(event,'INFO')">Info</span>
           <span class="chip" data-level="WARN"  onclick="setLogLevel(event,'WARN')">Warn</span>
           <span class="chip" data-level="ERROR" onclick="setLogLevel(event,'ERROR')">Error</span>
+          <!-- UX-4.2: orthogonal "Activity" filter. Composes with the
+               level chip — toggling Activity on top of "Warn" gives
+               "WARN+ activity events only." Tagged events come from
+               log.activity() in firmware (config patches, overrides,
+               scene applies, reboots, claims, time-set). -->
+          <span class="chip chip-toggle" data-toggle="activity" onclick="toggleActivityFilter(event)" title="Show only fleet-state-changing events: config pushes, manual overrides, scene applies, reboots, claims.">⚡ Activity</span>
           <select id="logUnitFilter" onchange="refreshLogs(true)">
             <option value="">All units</option>
           </select>
@@ -4330,11 +4348,22 @@ let logBuffer = [];
 let lastSeq = 0;
 let readSeq = parseInt(localStorage.getItem("lokki.readSeq") || "0", 10) || 0;
 let activeLogLevel = "";          // "", INFO, WARN, ERROR
+let activeActivityFilter = false;  // UX-4.2: orthogonal to activeLogLevel
 
 function setLogLevel(ev, level) {
   activeLogLevel = level;
-  document.querySelectorAll(".logs-controls .chip").forEach(c => c.classList.remove("active"));
+  // Only reset the level-chip group, not orthogonal toggle chips
+  // like ⚡ Activity. Pre-UX-4.2 this was a blanket reset; that
+  // would clobber the Activity chip's active state on every
+  // level click.
+  document.querySelectorAll(".logs-controls .chip[data-level]").forEach(c => c.classList.remove("active"));
   ev.currentTarget.classList.add("active");
+  renderLogs();
+}
+
+function toggleActivityFilter(ev) {
+  activeActivityFilter = !activeActivityFilter;
+  ev.currentTarget.classList.toggle("active", activeActivityFilter);
   renderLogs();
 }
 
@@ -4345,6 +4374,7 @@ function _matchesFilters(evt) {
     const order = { DEBUG:0, INFO:1, WARN:2, ERROR:3, FATAL:4 };
     if ((order[evt.level] || 0) < (order[activeLogLevel] || 0)) return false;
   }
+  if (activeActivityFilter && evt.tag !== "activity") return false;
   const u = document.getElementById("logUnitFilter").value;
   if (u !== "" && String(evt.src) !== u) return false;
   const q = document.getElementById("logSearch").value.trim().toLowerCase();
@@ -4418,10 +4448,16 @@ function renderLogs() {
     // Tail-first display: newest at bottom (terminal-style).
     let h = "";
     filtered.forEach(evt => {
+      // ⚡ glyph on activity-tagged events so they're identifiable even
+      // when the Activity filter is off (e.g. while scanning the full
+      // log stream around an incident).
+      const activityMark = evt.tag === "activity"
+        ? '<span class="log-activity" title="Fleet-state-changing event">⚡</span> '
+        : '';
       h += `<div class="log-line"><span class="ts">${_fmtTs(evt.ts)}</span>` +
            `<span class="src">${_srcLabel(evt.src)}</span>` +
            `<span class="lvl ${evt.level}">${evt.level}</span>` +
-           `<span class="msg">${_escape(evt.msg)}</span></div>`;
+           `<span class="msg">${activityMark}${_escape(evt.msg)}</span></div>`;
     });
     list.innerHTML = h;
     list.scrollTop = follow ? list.scrollHeight : prevScrollTop;

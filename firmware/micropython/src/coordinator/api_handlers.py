@@ -407,6 +407,7 @@ def handle_scene_apply(scene_name, unit_ids=None):
         else:
             seq = lora_protocol.send_scene(uid, scene_name)
             results[str(uid)] = "sent" if seq else "send_failed"
+    log.activity(f"Scene '{scene_name}' applied to units {targets}")
     return _ok(results)
 
 
@@ -432,7 +433,8 @@ async def handle_manual_override(unit_id, payload):
             for rid, val in relays:
                 log.info(f"[API] Setting relay rl{rid}={val}, revert={revert_s}s")
                 priority_arbiter.set_manual_relay(rid, val, revert_s)
-            log.info("[API] Manual override applied successfully")
+            log.activity(f"Override on coord: {len(channels)} ch, {len(relays)} rl"
+                         + (f", revert {revert_s}s" if revert_s else ""))
             from hardware.status_led import status_led
             status_led.set_state("manual_override" if priority_arbiter.has_manual() else _ok_led_state())
             return _ok({"applied": "local"})
@@ -444,6 +446,8 @@ async def handle_manual_override(unit_id, payload):
         ok = await lora_protocol.send_manual_override_batched(
             unit_id, channels, relays, revert_s, fade_ms
         )
+        if ok:
+            log.activity(f"Override sent to unit {unit_id}: {len(channels)} ch, {len(relays)} rl")
         return _ok({"sent_to": unit_id}) if ok else _err("Send failed", 502)
     except Exception as e:
         log.error(f"[API] Manual override exception: {e}")
@@ -457,9 +461,12 @@ def handle_manual_clear(unit_id):
         priority_arbiter.clear_all_manual()
         from hardware.status_led import status_led
         status_led.set_state(_ok_led_state())
+        log.activity("Manual overrides cleared on coord")
         return _ok()
 
     seq = lora_protocol.send_manual_override(unit_id, [], [], revert_s=-1)
+    if seq:
+        log.activity(f"Manual overrides cleared on unit {unit_id}")
     return _ok({"sent_to": unit_id}) if seq else _err("Send failed", 502)
 
 
@@ -543,6 +550,7 @@ def handle_emergency_off():
     for uid in fleet_manager.get_all():
         seq = lora_protocol.send_emergency_off(uid)
         results[str(uid)] = "sent" if seq else "send_failed"
+    log.activity(f"EMERGENCY OFF fired (coord + {len(results) - 1} leaf(s))")
     return _ok(results)
 
 
@@ -722,6 +730,7 @@ async def handle_unclaimed_claim(chip_uid, body):
     except Exception as e:
         log.warn(f"[API] Could not cache claimed leaf {new_unit_id}: {e}")
     fleet_manager.drop_unclaimed(chip_uid)
+    log.activity(f"Claimed chip {chip_uid} as unit {new_unit_id} ({new_name})")
     return _ok({"claimed": chip_uid, "unit_id": new_unit_id, "name": new_name})
 
 
@@ -918,6 +927,8 @@ async def handle_config_patch(unit_id, body):
         # real HB from the leaf will resync the name within ~30 s.
         pass
 
+    log.activity(f"Config PATCH unit {unit_id} path={path}"
+                 + (" (rebooting)" if rebooted else " (hot-applied)"))
     return _ok({
         "applied": method, "sent_to": unit_id, "path": path,
         "rebooted": rebooted,
@@ -1047,6 +1058,7 @@ def handle_time_sync(body):
     except Exception as e:
         log.warn(f"[API] TS broadcast after manual sync failed: {e}")
 
+    log.activity(f"Time set manually (epoch={epoch})")
     return _ok({"epoch": epoch, "source": "manual"})
 
 
@@ -1056,7 +1068,7 @@ def handle_time_sync(body):
 
 def handle_reboot():
     import machine
-    log.info("[API] Reboot requested")
+    log.activity("Coordinator reboot requested")
     # Schedule reboot after response is sent
     import asyncio
     async def do_reboot():
@@ -1098,5 +1110,5 @@ async def handle_unit_reboot(unit_id):
         return _err(
             f"Leaf rejected reboot: {ack.get('reason', 'unknown')}", 502
         )
-    log.info(f"[API] Leaf {unit_id} reboot requested via LoRa RB")
+    log.activity(f"Leaf {unit_id} reboot requested via LoRa RB")
     return _ok({"rebooting": unit_id})

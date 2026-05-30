@@ -69,12 +69,12 @@ class Logger:
         except Exception:
             return "<no-rtc>"
 
-    def _log(self, level, msg):
+    def _log(self, level, msg, tag=None):
         if self.LEVELS.get(level, 3) <= self.level:
             print(self._timestamp(), level + ":", msg)
             if _bus is not None:
                 try:
-                    _bus.push(level, msg)
+                    _bus.push(level, msg, tag=tag)
                 except Exception:
                     # Bus failures must never break logging itself.
                     pass
@@ -84,3 +84,14 @@ class Logger:
     def warn(self,  m): self._log("WARN",  m)
     def info(self,  m): self._log("INFO",  m)
     def debug(self, m): self._log("DEBUG", m)
+
+    def activity(self, m):
+        """User-action / fleet-state-change events that should appear
+        in the dashboard's Activity view (UX-4.2). Logged at INFO and
+        tagged so the dashboard can filter for "what changed today?"
+        Cost on Pico: one short-string tag per event in the ring
+        (~10 bytes). Reserved for endpoints that represent an
+        operator intent or a state-changing outcome — manual
+        overrides, config pushes, scene applies, claims, reboots,
+        time-sync overrides. Don't tag every INFO line."""
+        self._log("INFO", m, tag="activity")
