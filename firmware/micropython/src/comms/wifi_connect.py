@@ -250,9 +250,14 @@ def ap_start():
 
     ap = network.WLAN(network.AP_IF)
     try:
-        # security=4 = WPA2-PSK on the Pico W's cyw43. Other values
-        # are open/WEP/WPA, all worse. Don't downgrade.
-        ap.config(essid=ap_ssid, password=ap_password, security=4)
+        # security=3 = pure WPA2-PSK on the Pico W's cyw43. We
+        # previously used security=4 (WPA/WPA2 mixed mode) which
+        # caused macOS to misinterpret the beacon as WEP and prompt
+        # for a WEP key. Pure WPA2 is what every modern client
+        # expects; we don't need WPA1 compatibility for setup.
+        # Values reference (MicroPython cyw43 driver):
+        #   0 = open, 2 = WPA-PSK, 3 = WPA2-PSK, 4 = WPA/WPA2 mixed.
+        ap.config(essid=ap_ssid, password=ap_password, security=3)
     except Exception as e:
         log.error(f"[AP] config() failed: {e}")
         return False
