@@ -585,6 +585,46 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
 .bell-row .meta { color:var(--muted); font-size:.8em; margin-top:2px; }
 .bell-row .msg  { word-break:break-word; }
 
+/* Above-fleet banners (time-waiting, AP-fallback, unprotected-auth).
+   Inline styles previously hardcoded light-mode colours so the banners
+   blazed white in dark mode. CSS custom properties make the colour
+   pair theme-aware. Each variant defines its own --b-bg / --b-border /
+   --b-accent / --b-text; the dark-mode block at the bottom of this
+   stylesheet overrides them. */
+.banner {
+  margin-bottom:16px; padding:12px 16px;
+  background:var(--b-bg);
+  border:1px solid var(--b-border);
+  border-left:4px solid var(--b-accent);
+  border-radius:6px;
+  color:var(--b-text);
+}
+.banner code {
+  background:rgba(0,0,0,.08); padding:1px 5px; border-radius:4px;
+  font-size:.95em;
+}
+.banner-warning {  /* amber — time-waiting */
+  --b-bg:#fef3c7; --b-border:#fbbf24; --b-accent:#d97706; --b-text:#78350f;
+}
+.banner-info {     /* magenta — AP fallback */
+  --b-bg:#fdf2f8; --b-border:#f0abfc; --b-accent:#a21caf; --b-text:#581c87;
+}
+.banner-danger {   /* red — unprotected dashboard */
+  --b-bg:#fef2f2; --b-border:#fca5a5; --b-accent:#dc2626; --b-text:#7f1d1d;
+}
+@media (prefers-color-scheme: dark) {
+  .banner-warning {
+    --b-bg:#3b2a06; --b-border:#92400e; --b-accent:#f59e0b; --b-text:#fde68a;
+  }
+  .banner-info {
+    --b-bg:#3b0764; --b-border:#86198f; --b-accent:#c026d3; --b-text:#f5d0fe;
+  }
+  .banner-danger {
+    --b-bg:#3b0a0a; --b-border:#7f1d1d; --b-accent:#ef4444; --b-text:#fecaca;
+  }
+  .banner code { background:rgba(255,255,255,.08); }
+}
+
 /* Logs view */
 .logs-controls {
   display:flex; gap:8px; flex-wrap:wrap; align-items:center;
@@ -705,22 +745,22 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
         <div id="connStatus" style="margin-top:12px;font-size:.85em;opacity:.8"></div>
       </div>
       <main>
-        <div id="timeWaitingBanner" style="display:none;margin-bottom:16px;padding:12px 16px;background:#fef3c7;border:1px solid #fbbf24;border-left:4px solid #d97706;border-radius:6px;color:#78350f">
+        <div id="timeWaitingBanner" class="banner banner-warning" style="display:none">
           <strong>⏱ Waiting for time sync.</strong>
           The coordinator hasn't confirmed a real wall-clock time yet, so the schedule is paused — channels and relays are held at their default state. Time normally arrives via NTP (coord) or a LoRa broadcast (leaves). If this persists, check WiFi connectivity and the DS3231 backup battery.
           <div style="margin-top:8px">
-            <button class="btn" onclick="setTimeFromBrowser()" style="background:#d97706;color:#fff;border-color:#d97706">⏱ Set time from this browser</button>
+            <button class="btn" onclick="setTimeFromBrowser()" style="background:var(--b-accent);color:#fff;border-color:var(--b-accent)">⏱ Set time from this browser</button>
             <span id="timeSyncStatus" style="margin-left:8px;font-size:.9em"></span>
           </div>
         </div>
-        <div id="apModeBanner" style="display:none;margin-bottom:16px;padding:12px 16px;background:#fdf2f8;border:1px solid #f0abfc;border-left:4px solid #a21caf;border-radius:6px;color:#581c87">
+        <div id="apModeBanner" class="banner banner-info" style="display:none">
           <strong>📡 SoftAP fallback active.</strong>
           You're connected to the coordinator's own access point — the venue's WiFi is either unreachable or hasn't been configured yet. The dashboard is fully usable, but MQTT and NTP won't sync until the coordinator rejoins your network. The SoftAP itself is <strong>open / no password</strong> (a Pico W cyw43 quirk we couldn't work around — see commit log). <span id="apModeIp"></span>
           <div style="margin-top:8px;font-size:.85em">
             Configure WiFi via <strong>Configure</strong> → <strong>Advanced</strong> → <strong>WiFi</strong>. The coord reboots after saving and will rejoin your network on next boot; the SoftAP comes down 60 s after STA is stable.
           </div>
         </div>
-        <div id="apOpenAuthWarning" style="display:none;margin-bottom:16px;padding:12px 16px;background:#fef2f2;border:1px solid #fca5a5;border-left:4px solid #dc2626;border-radius:6px;color:#7f1d1d">
+        <div id="apOpenAuthWarning" class="banner banner-danger" style="display:none">
           <strong>⚠ Unprotected dashboard exposure.</strong>
           The SoftAP is open AND <code>dashboard.auth_password</code> isn't set, so anyone within WiFi range can join <code>Lokki-Setup</code> and reach this page with no credentials. <strong>Set a dashboard password now</strong> — Configure → Advanced → Dashboard Auth. Then close this AP by configuring real WiFi.
         </div>
