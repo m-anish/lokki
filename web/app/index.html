@@ -933,7 +933,8 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
         <div id="fleet">Loading…</div>
         <div style="margin-top:40px;padding-top:20px;border-top:1px solid var(--border);font-size:.85em;color:var(--muted);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
           <div>
-            <a href="/api/config" download="config.json" style="color:var(--brand)">📥 Export Config</a> ·
+            <a href="/api/config" download="config.json" style="color:var(--brand)">📥 Coord config</a> ·
+            <a href="javascript:void(0)" onclick="exportFleetBackup()" style="color:var(--brand)" title="Download a full-fleet backup (coord + every cached leaf config) as a single JSON file. Contains WiFi + dashboard secrets — keep the file private.">💾 Fleet backup</a> ·
             <a href="https://lokki.starstucklab.com" target="_blank" rel="noopener" style="color:var(--brand)">📄 Documentation</a> ·
             <a href="/config-builder.html" style="color:var(--brand)">⚙️ Config Builder</a> ·
             <button class="btn btn-danger" onclick="rebootDevice()">🔄 Reboot</button>
@@ -2284,6 +2285,51 @@ async function rebootDevice() {
     alert("Rebooting... The page will reload in 10 seconds.");
     setTimeout(() => window.location.reload(), 10000);
   } catch (e) { alert("Reboot request failed: " + (e.message || e)); }
+}
+
+// UX-4.3 — fleet-wide backup export. Pulls coord + cached leaf
+// configs from /api/fleet-config, saves as one JSON file the
+// operator can stash for disaster recovery / replacement-unit
+// provisioning. Includes secrets (WiFi password, dashboard auth)
+// because anything less wouldn't be restorable; we warn before
+// triggering the download so the operator chooses to handle the
+// file carefully.
+async function exportFleetBackup() {
+  const ok = confirm(
+    "Download a full fleet backup?\n\n" +
+    "The file will contain the coordinator's config and every cached " +
+    "leaf config — including WiFi password and dashboard auth password. " +
+    "Treat the downloaded file like a credentials file: don't share or " +
+    "back up to public storage.\n\n" +
+    "Continue?"
+  );
+  if (!ok) return;
+  try {
+    const r = await fetchJSON("/api/fleet-config");
+    if (!r.ok) { alert("Backup failed: " + (r.error || "unknown")); return; }
+    // Stamp filename with the exporting unit's name + ISO-ish date so
+    // multiple backups don't all save as the same name.
+    const data = r.data || {};
+    const name = (data.exported_by || "lokki").replace(/[^\w-]+/g, "_");
+    const d = new Date();
+    const stamp = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+    const fname = `lokki-fleet-${name}-${stamp}.json`;
+    // Trigger download via Blob URL — fetchJSON gave us parsed JSON,
+    // so re-serialise. Indented for human-readability since these
+    // files get reviewed before restore.
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    const leafCount = Object.keys(data.leaves || {}).length;
+    console.log(`Fleet backup saved: ${fname} (coord + ${leafCount} leaf config(s))`);
+  } catch (e) {
+    alert("Backup failed: " + (e.message || e));
+  }
 }
 
 // Manual time-sync from the time-waiting banner. Uses the browser's

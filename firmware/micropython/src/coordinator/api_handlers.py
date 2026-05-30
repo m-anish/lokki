@@ -300,6 +300,35 @@ async def handle_config_push(unit_id, config_str):
     return _err(f"Config transfer to unit {unit_id} failed — check LoRa link", 502)
 
 
+def handle_fleet_config_export():
+    """Build a fleet-wide backup containing the coord's live config
+    plus every cached leaf config. Returns the assembled JSON dict;
+    the web layer wraps it in `_ok` and the operator downloads it
+    as `fleet-backup-<unit>-<date>.json`.
+
+    Secrets included: this is a BACKUP, intended to be restorable
+    onto a replacement device. Anyone with the file effectively has
+    the coord's WiFi password and dashboard auth. The dashboard UI
+    surfaces this risk before triggering the download.
+
+    RAM-shaped note: 8 leaves × ~3 KB + coord ~5 KB peaks around
+    30 KB JSON. We assemble as a single dict and let json.dumps do
+    one pass (the web layer's _send_all already chunk-sends the
+    response so we don't double-buffer post-serialisation).
+    """
+    import time as _t
+    leaves = {}
+    for uid in sorted(_leaf_config_cache.keys()):
+        leaves[str(uid)] = _leaf_config_cache[uid]
+    return _ok({
+        "format":       "lokki-fleet-config-v1",
+        "exported_at":  int(_t.time()),
+        "exported_by":  config_manager.unit_name,
+        "coord":        config_manager.get_all(),
+        "leaves":       leaves,
+    })
+
+
 def handle_full_config():
     """Return full config but mask the secret fields.
 

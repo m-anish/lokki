@@ -351,6 +351,12 @@ class WebServer:
         if path == "/api/config" and method == "GET":
             return self._json(api.handle_full_config())
 
+        if path == "/api/fleet-config" and method == "GET":
+            # UX-4.3 — fleet-wide backup endpoint. Includes coord
+            # config + every cached leaf config. Contains secrets;
+            # operator is warned in the dashboard before download.
+            return self._json(api.handle_fleet_config_export())
+
         if path == "/api/config-progress" and method == "GET":
             return self._json(api.handle_config_progress())
 

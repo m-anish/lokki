@@ -132,6 +132,16 @@ def _route(path, method):
     if p == "/api/config":
         return _ok(COORD_CFG)
 
+    if p == "/api/fleet-config":
+        # UX-4.3 — mirror the firmware shape: coord + cached leaves.
+        return _ok({
+            "format":      "lokki-fleet-config-v1",
+            "exported_at": int(time.time()),
+            "exported_by": COORD_CFG["system"]["unit_name"],
+            "coord":       COORD_CFG,
+            "leaves":      {"1": LEAF1_CFG},
+        })
+
     if p == "/api/events":
         return _ok({"events": [], "cursor": 0})
 
