@@ -784,6 +784,14 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
 @media (prefers-color-scheme: dark) {
   .log-activity { color:#fbbf24; }
 }
+/* UX-4.4 — clickable src label in log lines. Subtle underline-on-
+   hover and pointer cursor so it reads as a link without screaming
+   for attention on a dense log list. */
+.log-line .src-link {
+  cursor:pointer; text-decoration:underline; text-decoration-color:var(--border);
+  text-decoration-thickness:1px; text-underline-offset:2px;
+}
+.log-line .src-link:hover { color:var(--brand); text-decoration-color:var(--brand); }
 .logs-controls select, .logs-controls input[type=text] {
   font-size:.85em; padding:5px 8px; border:1px solid var(--border);
   border-radius:6px; background:var(--card); color:var(--text);
@@ -4500,8 +4508,15 @@ function renderLogs() {
       const activityMark = evt.tag === "activity"
         ? '<span class="log-activity" title="Fleet-state-changing event">⚡</span> '
         : '';
+      // UX-4.4 — clickable src label routes to the unit detail
+      // page. Encoded src as data attr; event-delegated handler
+      // below decides which tab to open from the message text.
+      const srcLabel = _srcLabel(evt.src);
+      const srcSpan = (typeof evt.src === "number" && evt.src >= 0 && evt.src <= 8)
+        ? `<span class="src src-link" data-unit="${evt.src}" data-msg="${_escape(evt.msg || '')}" title="Open this unit's detail page">${srcLabel}</span>`
+        : `<span class="src">${srcLabel}</span>`;
       h += `<div class="log-line"><span class="ts">${_fmtTs(evt.ts)}</span>` +
-           `<span class="src">${_srcLabel(evt.src)}</span>` +
+           srcSpan +
            `<span class="lvl ${evt.level}">${evt.level}</span>` +
            `<span class="msg">${activityMark}${_escape(evt.msg)}</span></div>`;
     });
@@ -4509,6 +4524,47 @@ function renderLogs() {
     list.scrollTop = follow ? list.scrollHeight : prevScrollTop;
   }
   stats.textContent = `${filtered.length} shown · ${logBuffer.length} cached · cursor ${lastSeq}`;
+  _bindLogSrcLinks(list);
+}
+
+// UX-4.4 — click handler for src labels in the log list.
+// Event-delegated (one listener on the list, not per row) so
+// renderLogs's innerHTML replacement doesn't leak handlers.
+function _bindLogSrcLinks(list) {
+  if (list._srcLinkBound) return;
+  list._srcLinkBound = true;
+  list.addEventListener("click", (e) => {
+    const span = e.target.closest(".src-link");
+    if (!span) return;
+    const uid = parseInt(span.dataset.unit, 10);
+    if (isNaN(uid)) return;
+    const msg = span.dataset.msg || "";
+    const tab = _logMessageToTab(msg);
+    openUnit(uid);
+    if (tab && tab !== "overview") {
+      // Defer until openUnit's render settles, then switch tab.
+      setTimeout(() => switchUnitTab(tab), 50);
+    }
+  });
+}
+
+// Pick the most relevant per-unit tab to land on based on the log
+// message text. Heuristics — no exhaustive list, just the common
+// ones. Default to "overview" when nothing matches; that's the
+// landing page anyway so no harm.
+function _logMessageToTab(msg) {
+  const m = (msg || "").toLowerCase();
+  if (m.includes("led_channels") || m.includes("channel"))  return "channels";
+  if (m.includes("relays")       || m.includes("relay"))    return "relays";
+  if (m.includes("pir/")         || m.includes("[pir]"))    return "pirs";
+  if (m.includes("scene"))                                  return "scenes";
+  if (m.includes("schedule")     || m.includes("sunrise") || m.includes("sunset"))
+    return "schedule";
+  if (m.includes("wifi")    || m.includes("ntp") || m.includes("lora") ||
+      m.includes("timezone")|| m.includes("dst") || m.includes("location") ||
+      m.includes("dashboard"))
+    return "advanced";
+  return "overview";
 }
 
 // Plain-text copy of the currently-visible (filtered) log lines. Goes to the
