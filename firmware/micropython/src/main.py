@@ -239,7 +239,7 @@ async def wifi_monitor_task():
         return  # leaves don't use WiFi
 
     import network
-    from comms.wifi_connect import connect_wifi, sync_time_ntp
+    from comms.wifi_connect import connect_wifi_async, sync_time_ntp
     wlan = network.WLAN(network.STA_IF)
 
     while True:
@@ -282,16 +282,19 @@ async def wifi_monitor_task():
             status_led.set_state(_ok_led_state())
 
         if not connected:
-            # Attempt reconnect. connect_wifi() re-sets hostname and
-            # runs up to 3 internal retries with 4 s spacing — if it
-            # returns False, give the AP a longer breather before the
-            # next outer attempt.
+            # Attempt one cooperative reconnect, then sleep before the
+            # next try. connect_wifi_async() re-asserts hostname (so
+            # mDNS re-announces on success) and yields to the event
+            # loop between polls — the sync connect_wifi() used at
+            # boot would freeze every asyncio task for up to ~30 s
+            # here, which is exactly how the reset button stopped
+            # responding during outages.
             try:
-                if connect_wifi():
-                    # The connected branch above will fire next iter
-                    # and do the recovery side-effects. We don't dupe
-                    # the work here.
-                    pass
+                ok = await connect_wifi_async(timeout=10)
+                # The connected branch above will fire next iter and
+                # handle the recovery side-effects (LED, MQTT, NTP).
+                # We don't dupe the work here.
+                _ = ok
             except Exception as e:
                 log.warn(f"[WIFI-MON] reconnect attempt raised: {e}")
             await asyncio.sleep(30)
@@ -316,16 +319,26 @@ async def time_sync_task():
     while True:
         tz_config = config_manager.get("timezone") or {}
         if tz_config.get("ntp_enabled", True):
-            try:
-                from comms.wifi_connect import sync_time_ntp
-                if sync_time_ntp():
-                    log.info("[MAIN] Periodic NTP sync successful")
-                    if time_is_sane():
-                        system_status.mark_time_synced("ntp")
-                else:
-                    log.warn("[MAIN] Periodic NTP sync failed")
-            except Exception as e:
-                log.warn(f"[MAIN] NTP sync exception: {e}")
+            # Skip the NTP attempt outright if WiFi is currently down.
+            # ntptime.settime() is fully synchronous and will block the
+            # entire asyncio loop for several seconds (DNS lookup +
+            # socket timeout per server) on a dead network — long
+            # enough to make the reset button stop responding during
+            # the freeze. wifi_monitor_task flips wifi_connected back
+            # to True on recovery; the next iteration will catch up.
+            if not system_status.wifi_connected:
+                log.debug("[MAIN] NTP skipped — WiFi is down")
+            else:
+                try:
+                    from comms.wifi_connect import sync_time_ntp
+                    if sync_time_ntp():
+                        log.info("[MAIN] Periodic NTP sync successful")
+                        if time_is_sane():
+                            system_status.mark_time_synced("ntp")
+                    else:
+                        log.warn("[MAIN] Periodic NTP sync failed")
+                except Exception as e:
+                    log.warn(f"[MAIN] NTP sync exception: {e}")
         # Belt-and-suspenders: if some upstream side effect (DS3231
         # write, TS broadcast) had previously raised AFTER NTP set the
         # MCU clock — masking a real sync as a failure — observing a

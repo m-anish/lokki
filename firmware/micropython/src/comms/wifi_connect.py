@@ -1,5 +1,6 @@
 import network
 import time
+import asyncio
 import ntptime
 from hardware import urtc
 from machine import Pin
@@ -15,18 +16,21 @@ except Exception:
     led = Pin(25, Pin.OUT)
 
 
-def connect_wifi(timeout=10, max_attempts=3):
+def _prepare_wlan():
+    """Common setup for connect_wifi / connect_wifi_async. Sets the
+    hostname (which is what lwIP's mDNS responder advertises), activates
+    the STA interface, and returns (wlan, ssid, password). Safe to call
+    repeatedly — `wlan.active(True)` and `network.hostname()` are both
+    idempotent on every RP2 build we've tested."""
     wifi_cfg = config_manager.get("wifi")
     ssid     = wifi_cfg.get("ssid", "")
     password = wifi_cfg.get("password", "")
     hostname = wifi_cfg.get("hostname", "lokki")
 
-    # Set the hostname BEFORE activating the interface — some lwIP
-    # builds latch the netif name at active() time and ignore later
-    # changes. This also activates lwIP's built-in mDNS responder on
-    # builds that compiled LWIP_MDNS_RESPONDER (every RP2 build we've
-    # tested in the field), making the dashboard reachable at
-    # <hostname>.local without any further setup.
+    # Hostname BEFORE active(True) — some lwIP builds latch the netif
+    # name at activation time. Re-setting on every call (including
+    # post-reconnect) keeps mDNS announcing the right name even after
+    # the radio renegotiates with the AP.
     try:
         network.hostname(hostname)
         log.info(f"[WIFI] Hostname set to '{hostname}' (try {hostname}.local)")
@@ -35,6 +39,17 @@ def connect_wifi(timeout=10, max_attempts=3):
 
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
+    return wlan, ssid, password
+
+
+def connect_wifi(timeout=10, max_attempts=3):
+    """BLOCKING WiFi connect. Used at boot — fine to block there since
+    no async tasks are running yet. Do NOT call this from inside an
+    async task; the 3×10 s gauntlet will freeze the event loop and
+    things like the reset button won't poll. Use
+    connect_wifi_async() from async code instead.
+    """
+    wlan, ssid, password = _prepare_wlan()
 
     if wlan.isconnected():
         log.info(f"[WIFI] Already connected, IP: {wlan.ifconfig()[0]}")
@@ -62,6 +77,41 @@ def connect_wifi(timeout=10, max_attempts=3):
     log.error(f"[WIFI] Failed after {max_attempts} attempts")
     led.value(0)
     return False
+
+
+async def connect_wifi_async(timeout=10):
+    """Cooperative single-attempt reconnect, for async callers (the
+    wifi_monitor recovery loop). Yields to the event loop between
+    polls so the reset button task and other asyncio coroutines
+    keep ticking while we're waiting for the AP. One attempt only —
+    callers schedule retries at the cadence that suits them.
+
+    Returns True if connected, False otherwise. Does NOT log noisily;
+    the monitor loop owns user-visible state-change logging.
+    """
+    wlan, ssid, password = _prepare_wlan()
+
+    if wlan.isconnected():
+        led.value(1)
+        return True
+
+    try:
+        wlan.connect(ssid, password)
+    except Exception as e:
+        log.warn(f"[WIFI] connect() raised: {e}")
+        return False
+
+    # Poll wlan.isconnected() with short async sleeps. ticks_ms /
+    # ticks_diff avoid time-of-day discontinuities if NTP fires
+    # mid-wait (which is unlikely while WiFi is still coming up, but
+    # cheap insurance).
+    start = time.ticks_ms()
+    while not wlan.isconnected():
+        if time.ticks_diff(time.ticks_ms(), start) > timeout * 1000:
+            return False
+        await asyncio.sleep_ms(250)
+    led.value(1)
+    return True
 
 
 def sync_time_ntp():
