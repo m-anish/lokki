@@ -99,6 +99,13 @@ class ScheduleEngine:
             return False
 
     def _match_window(self, windows, current_minutes, rise_str, set_str):
+        # FIRST-MATCH-WINS on overlap. Array order in time_windows is
+        # therefore semantic, not cosmetic — two windows covering the
+        # same minute will resolve to whichever appears earlier in the
+        # array. The dashboard's schedule editor exposes ↑/↓ reorder
+        # buttons to give operators explicit control of this; never
+        # auto-sort time_windows or you'll silently change behaviour
+        # for configs that use overlap deliberately.
         for w in windows:
             start = self._resolve(w.get("start"), rise_str, set_str)
             end   = self._resolve(w.get("end"),   rise_str, set_str)

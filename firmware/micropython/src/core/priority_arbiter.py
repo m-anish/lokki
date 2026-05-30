@@ -18,6 +18,19 @@ class PriorityArbiter:
       4. ldr_cap  — channel-only modifier; applied ONLY when the active source
                     is schedule. Manual and PIR overrides bypass the cap so an
                     explicit user/motion request is honored even in daylight.
+
+    Phase 5 — calendar_override:
+      Calendar overrides will slot at the SCHEDULE LAYER (not above PIR).
+      During an active calendar event, schedule_engine should consult the
+      event's overlay schedule (and pir actions, if the event supplies any)
+      instead of the baseline config. Manual still wins, PIR still gets to
+      bump on motion — only the schedule baseline is swapped. Putting the
+      override above PIR would break "during the course, briefly bump
+      lights on motion in the corridor" use cases.
+
+      Each leaf evaluates the calendar locally from its own DS3231 clock —
+      coord is just the config/UI surface, not a runtime dependency for
+      calendar activation. See ROADMAP.md Phase 5 for the data model.
     """
 
     def __init__(self):

@@ -384,6 +384,114 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
   background:#ef4444; vertical-align:middle; margin-right:4px;
 }
 
+/* ── Scene editor (UX-3.3) ───────────────────────────────────── */
+.scene-card {
+  border:1px solid var(--border); border-radius:8px;
+  padding:14px; margin:12px 0; background:var(--card);
+}
+.scene-card.dirty { border-color:#f59e0b; }
+.scene-card-head {
+  display:flex; align-items:center; gap:12px;
+  margin-bottom:12px;
+}
+.scene-card-head input[type=text] {
+  flex:1; min-width:160px;
+  padding:6px 10px; font-size:.95em; font-weight:600;
+  border:1px solid var(--border); border-radius:6px;
+  background:var(--bg); color:var(--text);
+}
+.scene-card-head input[type=text].dirty { border-color:#f59e0b; }
+.scene-card-summary {
+  font-size:.78em; color:var(--muted);
+}
+.scene-grid-section { margin-top:8px; }
+.scene-grid-title {
+  font-size:.72em; font-weight:600; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.05em; margin:0 0 4px;
+}
+.scene-row {
+  display:grid; gap:6px 10px; align-items:center;
+  margin:2px 0; font-size:.85em;
+}
+.scene-row.kind-ch  { grid-template-columns: 28px 1fr 70px 80px; }
+.scene-row.kind-rl  { grid-template-columns: 28px 1fr 90px; }
+.scene-row .scene-row-label {
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.scene-row .scene-row-label .id {
+  color:var(--muted); font-variant-numeric:tabular-nums;
+  display:inline-block; min-width:18px;
+}
+.scene-row.excluded { opacity:.45; }
+.scene-row input[type=number],
+.scene-row select {
+  padding:4px 6px; border:1px solid var(--border);
+  background:var(--card); color:var(--text);
+  border-radius:5px; font-size:.95em; width:100%; box-sizing:border-box;
+  font-variant-numeric:tabular-nums;
+}
+.scene-row input[type=checkbox] { width:18px; height:18px; }
+.scene-card-actions {
+  display:flex; justify-content:flex-end; gap:6px;
+  margin-top:12px; padding-top:10px; border-top:1px solid var(--border);
+}
+.scene-card-actions .save-status {
+  font-size:.85em; color:var(--green); margin-right:auto;
+  display:flex; align-items:center;
+}
+.scene-card-actions .save-status.err { color:#dc2626; }
+.scene-card-actions .btn { padding:5px 12px; font-size:.85em; }
+.scene-card-actions .btn-apply { background:var(--brand); color:#fff; border-color:var(--brand); }
+.scene-card-actions .btn-apply:hover { background:var(--brand-d); }
+.scene-card-actions .btn-delete { color:#dc2626; }
+.scene-add-btn {
+  margin:6px 0 14px;
+  font-size:.9em; padding:8px 14px;
+  background:transparent; border:1px dashed var(--border);
+  color:var(--muted); border-radius:8px; cursor:pointer;
+  width:100%;
+}
+.scene-add-btn:hover { border-color:var(--brand); color:var(--brand); }
+
+/* Compact strip variant (used in stacked overview — no ticks row,
+   shorter overall, segments fill the full height). */
+.sched-strip-compact {
+  height:18px; margin:2px 0;
+}
+.sched-strip-compact .sched-seg {
+  top:1px; bottom:1px;
+}
+.sched-strip-empty-compact {
+  height:18px; padding:0 8px; margin:2px 0;
+}
+
+/* Schedule overview tab — stacked rows, one shared tick ruler */
+.sched-overview-section { margin-bottom:18px; }
+.sched-overview-section-title {
+  font-size:.75em; font-weight:600; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.05em;
+  margin:0 0 6px;
+}
+.sched-overview-row {
+  display:grid; grid-template-columns:160px 1fr;
+  align-items:center; gap:10px; margin:2px 0;
+}
+.sched-overview-row.row-disabled { opacity:.4; }
+.sched-overview-label {
+  font-size:.85em; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.sched-overview-label .id {
+  display:inline-block; min-width:18px;
+  color:var(--muted); font-variant-numeric:tabular-nums;
+}
+.sched-tick-row {
+  position:relative; height:14px;
+  margin-left:170px;  /* align with strip column past 160px label + 10px gap */
+  margin-bottom:4px;
+  border-bottom:1px solid var(--border);
+}
+
 /* ── Inline schedule editor (UX-3.2) ─────────────────────────── */
 .sched-editor {
   display:grid; gap:4px 6px; align-items:center;
@@ -661,7 +769,7 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
           <div id="unitDetailSubtitle" style="color:var(--muted);font-size:.95em"></div>
         </div>
         <div class="tab-bar" id="unitTabBar">
-          <button class="tab active" data-tab="overview" onclick="switchUnitTab('overview')">Overview</button>
+          <button class="tab active" data-tab="overview" onclick="switchUnitTab('overview')">Status</button>
           <button class="tab"        data-tab="channels" onclick="switchUnitTab('channels')">Channels</button>
           <button class="tab"        data-tab="relays"   onclick="switchUnitTab('relays')">Relays</button>
           <button class="tab"        data-tab="pirs"     onclick="switchUnitTab('pirs')">PIRs</button>
@@ -674,8 +782,8 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
           <div id="tab-channels" class="tab-panel"><p class="tab-stub">Channels editing — coming in UX-2b.</p></div>
           <div id="tab-relays"   class="tab-panel"><p class="tab-stub">Relays editing — coming in UX-2b.</p></div>
           <div id="tab-pirs"     class="tab-panel"><p class="tab-stub">PIRs editing — coming in UX-2b.</p></div>
-          <div id="tab-schedule" class="tab-panel"><p class="tab-stub">Schedule visualizer — coming in UX-3.</p></div>
-          <div id="tab-scenes"   class="tab-panel"><p class="tab-stub">Scene editor — coming in UX-3.</p></div>
+          <div id="tab-schedule" class="tab-panel"></div>
+          <div id="tab-scenes"   class="tab-panel"></div>
           <div id="tab-advanced" class="tab-panel"><p class="tab-stub">Advanced (LoRa, hardware, validation) — coming in UX-2c.</p></div>
         </div>
       </main>
@@ -1326,9 +1434,18 @@ function _channelSegBg(duty) {
   return `rgb(${r},${g},${b})`;
 }
 
-function renderScheduleStrip(windows, kind) {
+function renderScheduleStrip(windows, kind, opts) {
+  // opts.compact: hide hour ticks (caller renders a shared tick row
+  //               above the stack). The strip itself gets shorter.
+  // opts.now: false to hide the red "now" line (also handy when a
+  //           shared one is rendered at the wrapper level).
+  opts = opts || {};
+  const compact = opts.compact === true;
+  const showNow = opts.now !== false;
+  const cls = compact ? 'sched-strip sched-strip-compact' : 'sched-strip';
   if (!windows || !windows.length) {
-    return `<div class="sched-strip-empty">No schedule windows — uses default state all day</div>`;
+    const emptyCls = compact ? 'sched-strip-empty sched-strip-empty-compact' : 'sched-strip-empty';
+    return `<div class="${emptyCls}">No schedule windows — uses default state all day</div>`;
   }
   let segs = '';
   for (const w of windows) {
@@ -1363,22 +1480,40 @@ function renderScheduleStrip(windows, kind) {
       segs += `<div class="${cls}" style="left:${left}%;width:${width}%;background:${bg}" title="${_escape(title)}"></div>`;
     }
   }
-  // Hour ticks at 0/6/12/18/24
+  // Hour ticks at 0/6/12/18/24 — omitted in compact mode (caller
+  // renders a shared tick row at the top of a stack).
   let ticks = '';
-  for (let h = 0; h <= 24; h += 6) {
-    const left = (h / 24 * 100).toFixed(2);
-    ticks += `<div class="sched-tick" style="left:${left}%">${String(h).padStart(2,'0')}</div>`;
+  if (!compact) {
+    for (let h = 0; h <= 24; h += 6) {
+      const left = (h / 24 * 100).toFixed(2);
+      ticks += `<div class="sched-tick" style="left:${left}%">${String(h).padStart(2,'0')}</div>`;
+    }
   }
   // "Now" marker — browser-local. Schedule on the device runs in
   // device tz; if the operator's browser is in a different tz the
   // line will lie. Acceptable for v1: the operator is almost always
   // physically near the venue.
-  const now = new Date();
-  const nowMins = now.getHours() * 60 + now.getMinutes();
-  const nowLeft = (nowMins / 1440 * 100).toFixed(2);
-  const nowLabel = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-  const nowMark = `<div class="sched-now" style="left:${nowLeft}%" title="Now: ${nowLabel} (browser local)"></div>`;
-  return `<div class="sched-strip" aria-label="24-hour schedule">${segs}${nowMark}${ticks}</div>`;
+  let nowMark = '';
+  if (showNow) {
+    const now = new Date();
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const nowLeft = (nowMins / 1440 * 100).toFixed(2);
+    const nowLabel = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    nowMark = `<div class="sched-now" style="left:${nowLeft}%" title="Now: ${nowLabel} (browser local)"></div>`;
+  }
+  return `<div class="${cls}" aria-label="24-hour schedule">${segs}${nowMark}${ticks}</div>`;
+}
+
+// Standalone hour-tick ruler for the Schedule overview tab — rendered
+// once at the top of the stacked view so individual rows don't each
+// repeat the 00/06/12/18/24 labels.
+function renderScheduleTickRow() {
+  let ticks = '';
+  for (let h = 0; h <= 24; h += 6) {
+    const left = (h / 24 * 100).toFixed(2);
+    ticks += `<div class="sched-tick" style="left:${left}%">${String(h).padStart(2,'0')}</div>`;
+  }
+  return `<div class="sched-tick-row">${ticks}</div>`;
 }
 
 // ── Inline window editor (UX-3.2) ──────────────────────────────────
@@ -1875,8 +2010,9 @@ function switchUnitTab(tab) {
   else if (tab === "channels")  renderChannelsTab();
   else if (tab === "relays")    renderRelaysTab();
   else if (tab === "pirs")      renderPirsTab();
+  else if (tab === "schedule")  renderScheduleTab();
+  else if (tab === "scenes")    renderScenesTab();
   else if (tab === "advanced")  renderAdvancedTab();
-  // schedule, scenes — placeholders until UX-3.
 }
 
 // ============================================================
@@ -2756,6 +2892,447 @@ function discardPirEdit(pirId) {
 // path (e.g. `system`, `lora`). On a leaf, system/timezone/lora
 // edits trigger a reboot; on the coord, they apply via
 // config_manager.replace() without a reboot.
+
+// ============================================================
+// UX-3.4: Schedule overview tab — stacked 24h view
+// ------------------------------------------------------------
+// Cross-row companion to the per-row strips on Channels / Relays.
+// One shared hour-tick ruler at the top, then one compact strip
+// per channel (1..8) and per relay (1..2) — all on the same 24h
+// axis. Read-only; editing still happens on Channels / Relays.
+// Purpose: answer "at 19:00, what's the venue doing overall?" at
+// a glance, without tab-flipping.
+// ============================================================
+
+async function renderScheduleTab() {
+  if (currentUnitId == null) return;
+  const panel = document.getElementById("tab-schedule");
+  panel.innerHTML = '<p class="tab-stub">Loading…</p>';
+  const cfg = await getUnitConfig(currentUnitId, true);
+  if (!cfg) {
+    panel.innerHTML = '<p class="tab-stub">Could not load config — try Refresh.</p>';
+    return;
+  }
+  if (cfg.source === "none") {
+    panel.innerHTML = '<p class="tab-stub">No config cached on coord for this leaf yet. Push a config via the Config Builder first.</p>';
+    return;
+  }
+
+  const channels = cfg.led_channels || [];
+  const relays   = cfg.relays       || [];
+
+  let h = '';
+  h += '<div class="tab-section">';
+  h += '<h3 class="tab-section-title">24h Schedule — all rows</h3>';
+  h += '<div class="tab-section-hint">Every channel and relay on the same axis. Edit individual rows from the Channels / Relays tabs.</div>';
+  h += '<div class="sched-legend">' +
+       '<span><span class="sched-legend-now"></span>Now (browser local)</span>' +
+       '<span><span class="sched-legend-dash"></span>Sunrise/sunset (shown at default time)</span>' +
+       '<span>First matching window wins on overlap.</span>' +
+       '</div>';
+
+  // Shared tick ruler — rendered once above the stack.
+  h += renderScheduleTickRow();
+
+  // LED channels — 8 fixed slots so empty slots still show up
+  // (otherwise an operator wonders "where's channel 5?").
+  h += '<div class="sched-overview-section">';
+  h += '<div class="sched-overview-section-title">LED Channels</div>';
+  for (let i = 1; i <= 8; i++) {
+    const ch = channels.find(c => c.id === i) || {};
+    const enabled = ch.enabled === true;
+    const name = ch.name != null ? ch.name : `Channel ${i}`;
+    const tw = ch.time_windows || [];
+    h += `<div class="sched-overview-row${enabled ? '' : ' row-disabled'}">`;
+    h += `<div class="sched-overview-label"><span class="id">${i}:</span> ${_escape(name)}</div>`;
+    h += `<div>${renderScheduleStrip(tw, 'channel', { compact: true })}</div>`;
+    h += `</div>`;
+  }
+  h += '</div>';
+
+  // Relays — 2 fixed slots.
+  h += '<div class="sched-overview-section">';
+  h += '<div class="sched-overview-section-title">Relays</div>';
+  for (let i = 1; i <= 2; i++) {
+    const r = relays.find(x => x.id === i) || {};
+    const enabled = r.enabled === true;
+    const name = r.name != null ? r.name : `Relay ${i}`;
+    const tw = r.time_windows || [];
+    h += `<div class="sched-overview-row${enabled ? '' : ' row-disabled'}">`;
+    h += `<div class="sched-overview-label"><span class="id">${i}:</span> ${_escape(name)}</div>`;
+    h += `<div>${renderScheduleStrip(tw, 'relay', { compact: true })}</div>`;
+    h += `</div>`;
+  }
+  h += '</div>';
+
+  h += '</div>';   // /tab-section
+  panel.innerHTML = h;
+}
+
+// ============================================================
+// UX-3.3: Scene editor tab
+// ------------------------------------------------------------
+// Scenes are named bundles of per-channel duty + per-relay state
+// that the PIR `set_scene` action and the coord `apply_scene`
+// LoRa broadcast reference by name. apply_scene only touches
+// entries actually present in a scene's arrays — channels/relays
+// not mentioned keep their current value. So each entry has an
+// "include in scene" checkbox; unchecked entries are dropped
+// from the saved scene.
+//
+// Save model: per-card Save button reads ALL scene cards in the
+// DOM, assembles the new `scenes` array, and PATCHes the whole
+// `scenes` path. Same for Delete (drop the card) and Add (append
+// a blank). Whole-array PATCH because:
+//   - scenes are small enough that one chunked transfer is fine
+//   - dedicated array-mutation semantics (per-index update) get
+//     awkward when you also need add/remove
+// ============================================================
+
+async function renderScenesTab() {
+  if (currentUnitId == null) return;
+  const panel = document.getElementById("tab-scenes");
+  panel.innerHTML = '<p class="tab-stub">Loading…</p>';
+  const cfg = await getUnitConfig(currentUnitId, true);
+  if (!cfg) {
+    panel.innerHTML = '<p class="tab-stub">Could not load config — try Refresh.</p>';
+    return;
+  }
+  if (cfg.source === "none") {
+    panel.innerHTML = '<p class="tab-stub">No config cached on coord for this leaf yet. Push a config via the Config Builder first.</p>';
+    return;
+  }
+
+  const scenes   = cfg.scenes        || [];
+  const channels = cfg.led_channels  || [];
+  const relays   = cfg.relays        || [];
+
+  let h = '';
+  h += '<div class="tab-section">';
+  h += '<h3 class="tab-section-title">Scenes</h3>';
+  h += '<div class="tab-section-hint">' +
+       'Named snapshots of channel duty + relay state. PIR <code>set_scene</code> ' +
+       'actions and the coord <code>Apply</code> broadcast reference these by name. ' +
+       'Renaming a scene breaks any PIR action that references the old name — ' +
+       'check the PIRs tab after renaming. ' +
+       (isCoord(currentUnitId) ? 'Coordinator changes apply immediately.' : 'Leaf will reboot after saving (~30 s).') +
+       '</div>';
+  scenes.forEach((s, i) => { h += renderSceneCard(s, i, channels, relays); });
+  h += `<button class="scene-add-btn" onclick="addScene()">+ Add scene</button>`;
+  h += '</div>';
+  panel.innerHTML = h;
+
+  // Seed snapshots per scene for dirty tracking + Discard.
+  scenes.forEach((s, i) => {
+    _setEditSnapshot('scene', i, { scene_json: JSON.stringify(_normaliseScene(s)) });
+  });
+
+  // Bind change listeners across every input/select in every scene card.
+  document.querySelectorAll('[data-scene-card]').forEach(card => {
+    card.querySelectorAll('input, select').forEach(el => {
+      const h = () => onSceneCardChanged(card);
+      el.addEventListener('input', h);
+      el.addEventListener('change', h);
+    });
+  });
+}
+
+// Normalise a scene to a canonical shape for stable stringified diff.
+// Drop excluded entries (consistent with what gets saved); sort
+// led_channels and relays by id so reordering doesn't appear dirty.
+function _normaliseScene(s) {
+  const norm = { name: (s && s.name) || '' };
+  const lc = (s && s.led_channels) || [];
+  const rl = (s && s.relays) || [];
+  norm.led_channels = lc.slice()
+    .filter(e => e && typeof e.id === 'number')
+    .sort((a, b) => a.id - b.id)
+    .map(e => ({
+      id: e.id,
+      duty_percent: Number(e.duty_percent || 0),
+      ...(e.fade_ms ? { fade_ms: Number(e.fade_ms) } : {}),
+    }));
+  norm.relays = rl.slice()
+    .filter(e => e && typeof e.id === 'number')
+    .sort((a, b) => a.id - b.id)
+    .map(e => ({ id: e.id, state: e.state === 'on' ? 'on' : 'off' }));
+  return norm;
+}
+
+function renderSceneCard(scene, idx, channels, relays) {
+  const name = (scene && scene.name) || '';
+  const sceneCh = ((scene && scene.led_channels) || []).reduce((m, e) => { m[e.id] = e; return m; }, {});
+  const sceneRl = ((scene && scene.relays)       || []).reduce((m, e) => { m[e.id] = e; return m; }, {});
+  const chCount = Object.keys(sceneCh).length;
+  const rlCount = Object.keys(sceneRl).length;
+
+  let h = `<div class="scene-card" data-scene-card data-scene-idx="${idx}">`;
+  h += `<div class="scene-card-head">`;
+  h += `<input type="text" data-scene-field="name" value="${_escape(name)}" placeholder="scene name (lowercase, no spaces)" />`;
+  h += `<div class="scene-card-summary" data-scene-summary>${chCount} ch · ${rlCount} rl</div>`;
+  h += `</div>`;
+
+  // LED channels — 8 fixed slots so the operator can opt any in.
+  h += `<div class="scene-grid-section">`;
+  h += `<div class="scene-grid-title">LED Channels</div>`;
+  for (let i = 1; i <= 8; i++) {
+    const ch = channels.find(c => c.id === i) || {};
+    const cname = ch.name || `Channel ${i}`;
+    const entry = sceneCh[i];
+    const included = !!entry;
+    const duty = entry ? (entry.duty_percent != null ? entry.duty_percent : 0) : 0;
+    const fade = entry ? (entry.fade_ms != null ? entry.fade_ms : 0) : 0;
+    h += `<div class="scene-row kind-ch${included ? '' : ' excluded'}" data-scene-ch-row="${i}">`;
+    h += `<input type="checkbox" data-scene-field="ch.${i}.include"${included ? ' checked' : ''} />`;
+    h += `<div class="scene-row-label"><span class="id">${i}:</span> ${_escape(cname)}</div>`;
+    h += `<input type="number" min="0" max="100" step="1" data-scene-field="ch.${i}.duty" value="${duty}" title="Duty %" />`;
+    h += `<input type="number" min="0" max="60000" step="100" data-scene-field="ch.${i}.fade" value="${fade}" title="Fade ms" />`;
+    h += `</div>`;
+  }
+  h += `</div>`;
+
+  // Relays — 2 fixed slots.
+  h += `<div class="scene-grid-section">`;
+  h += `<div class="scene-grid-title">Relays</div>`;
+  for (let i = 1; i <= 2; i++) {
+    const r = relays.find(x => x.id === i) || {};
+    const rname = r.name || `Relay ${i}`;
+    const entry = sceneRl[i];
+    const included = !!entry;
+    const state = entry ? (entry.state === 'on' ? 'on' : 'off') : 'off';
+    h += `<div class="scene-row kind-rl${included ? '' : ' excluded'}" data-scene-rl-row="${i}">`;
+    h += `<input type="checkbox" data-scene-field="rl.${i}.include"${included ? ' checked' : ''} />`;
+    h += `<div class="scene-row-label"><span class="id">${i}:</span> ${_escape(rname)}</div>`;
+    h += `<select data-scene-field="rl.${i}.state">`;
+    h += `<option value="off"${state === 'off' ? ' selected' : ''}>off</option>`;
+    h += `<option value="on"${state === 'on' ? ' selected' : ''}>on</option>`;
+    h += `</select>`;
+    h += `</div>`;
+  }
+  h += `</div>`;
+
+  // Actions — Save / Discard / Apply / Delete.
+  h += `<div class="scene-card-actions">`;
+  h += `<span class="save-status"></span>`;
+  h += `<button class="btn btn-delete" onclick="deleteScene(${idx})" title="Remove this scene from config">Delete</button>`;
+  h += `<button class="btn" onclick="discardSceneEdit(${idx})">Discard</button>`;
+  h += `<button class="btn btn-apply" onclick="applyScene(${idx})" title="Broadcast this scene to the unit now">Apply to unit</button>`;
+  h += `<button class="btn btn-save" onclick="saveSceneEdit(${idx})">Save</button>`;
+  h += `</div>`;
+
+  h += `</div>`;   // /scene-card
+  return h;
+}
+
+// Read a single scene card's form values into a normalised Scene
+// object. Dropped entries (include unchecked) are excluded from
+// the arrays — matching what apply_scene actually iterates.
+function _readSceneFromCard(card) {
+  const name = (card.querySelector('[data-scene-field="name"]').value || '').trim();
+  const led_channels = [];
+  for (let i = 1; i <= 8; i++) {
+    const inc = card.querySelector(`[data-scene-field="ch.${i}.include"]`);
+    if (!inc || !inc.checked) continue;
+    const duty = Number(card.querySelector(`[data-scene-field="ch.${i}.duty"]`).value || 0);
+    const fade = Number(card.querySelector(`[data-scene-field="ch.${i}.fade"]`).value || 0);
+    const entry = { id: i, duty_percent: Math.max(0, Math.min(100, duty)) };
+    if (fade > 0) entry.fade_ms = Math.max(0, Math.min(60000, fade));
+    led_channels.push(entry);
+  }
+  const relays = [];
+  for (let i = 1; i <= 2; i++) {
+    const inc = card.querySelector(`[data-scene-field="rl.${i}.include"]`);
+    if (!inc || !inc.checked) continue;
+    const state = card.querySelector(`[data-scene-field="rl.${i}.state"]`).value;
+    relays.push({ id: i, state: (state === 'on' ? 'on' : 'off') });
+  }
+  return { name, led_channels, relays };
+}
+
+// Read every scene card in the DOM into an array. Used at save time.
+function _readAllScenes() {
+  const cards = Array.from(document.querySelectorAll('[data-scene-card]'));
+  return cards.map(c => _readSceneFromCard(c));
+}
+
+function onSceneCardChanged(card) {
+  const idx = parseInt(card.dataset.sceneIdx, 10);
+  const snap = _editSnapshotFor('scene', idx);
+  // Update "N ch · M rl" summary live.
+  const summary = card.querySelector('[data-scene-summary]');
+  if (summary) {
+    let chN = 0, rlN = 0;
+    for (let i = 1; i <= 8; i++) {
+      if (card.querySelector(`[data-scene-field="ch.${i}.include"]`)?.checked) chN++;
+    }
+    for (let i = 1; i <= 2; i++) {
+      if (card.querySelector(`[data-scene-field="rl.${i}.include"]`)?.checked) rlN++;
+    }
+    summary.textContent = `${chN} ch · ${rlN} rl`;
+  }
+  // Dim excluded rows.
+  for (let i = 1; i <= 8; i++) {
+    const row = card.querySelector(`[data-scene-ch-row="${i}"]`);
+    const inc = card.querySelector(`[data-scene-field="ch.${i}.include"]`);
+    if (row && inc) row.classList.toggle('excluded', !inc.checked);
+  }
+  for (let i = 1; i <= 2; i++) {
+    const row = card.querySelector(`[data-scene-rl-row="${i}"]`);
+    const inc = card.querySelector(`[data-scene-field="rl.${i}.include"]`);
+    if (row && inc) row.classList.toggle('excluded', !inc.checked);
+  }
+  // Dirty diff against snapshot.
+  const cur = _normaliseScene(_readSceneFromCard(card));
+  const dirty = !snap || JSON.stringify(cur) !== snap.scene_json;
+  card.classList.toggle('dirty', dirty);
+  const status = card.querySelector('.save-status');
+  if (status) { status.textContent = ''; status.classList.remove('err'); }
+}
+
+async function saveSceneEdit(idx) {
+  const card = document.querySelector(`[data-scene-card][data-scene-idx="${idx}"]`);
+  if (!card) return;
+  const status = card.querySelector('.save-status');
+  status.classList.remove('err');
+  status.textContent = _savingCopy(currentUnitId);
+
+  // Validate scene name — must be non-empty, lowercase-ish, no
+  // spaces (matches firmware lookup convention in `on_scene`).
+  const target = _readSceneFromCard(card);
+  if (!target.name) {
+    status.textContent = 'Save failed: scene name is required';
+    status.classList.add('err');
+    return;
+  }
+  if (/\s/.test(target.name)) {
+    status.textContent = 'Save failed: scene name cannot contain spaces';
+    status.classList.add('err');
+    return;
+  }
+
+  // Assemble full scenes array from all cards.
+  const newScenes = _readAllScenes();
+
+  // Check for duplicate names within the array — apply_scene picks
+  // first match, so dups silently shadow the later one. Warn here.
+  const names = newScenes.map(s => s.name);
+  const dupIdx = names.findIndex((n, i) => n && names.indexOf(n) !== i);
+  if (dupIdx !== -1) {
+    status.textContent = `Save failed: duplicate scene name "${names[dupIdx]}"`;
+    status.classList.add('err');
+    return;
+  }
+
+  try {
+    const r = await fetchJSON(`/api/units/${currentUnitId}/config`, {
+      method: 'PATCH',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({ path: 'scenes', value: newScenes }),
+    });
+    if (!r.ok) {
+      status.textContent = `Save failed: ${r.error || 'unknown'}`;
+      status.classList.add('err');
+      return;
+    }
+    delete _unitConfigCache[currentUnitId];
+    // Re-snapshot every card — saving one card persists the whole array.
+    newScenes.forEach((s, i) => {
+      _setEditSnapshot('scene', i, { scene_json: JSON.stringify(_normaliseScene(s)) });
+    });
+    document.querySelectorAll('[data-scene-card]').forEach(c => c.classList.remove('dirty'));
+    status.textContent = _savedCopy(currentUnitId, !r.data || r.data.rebooted !== false);
+  } catch (e) {
+    status.textContent = `Save failed: ${e.message || e}`;
+    status.classList.add('err');
+  }
+}
+
+function discardSceneEdit(idx) {
+  // Cheapest restore: re-render the whole tab from the cached config.
+  // Other tabs do per-row restores; here the cross-card array semantics
+  // make per-card restore fiddly (e.g. what if you added a new card
+  // then hit Discard on the first one?). Simplest is a clean reload.
+  renderScenesTab();
+}
+
+function addScene() {
+  // Append a blank scene card and re-render. The new card sits at
+  // the end; operator can fill in name + entries then Save (which
+  // PATCHes the whole array including the new entry).
+  const cfgCard = document.querySelector('[data-scene-card]');   // any card, just to read existing
+  const allCurrent = _readAllScenes();
+  allCurrent.push({ name: '', led_channels: [], relays: [] });
+  // Mutate the cache so re-render shows the new entry without a
+  // server round-trip. Operator hasn't saved yet — the server still
+  // doesn't know about the new scene.
+  const cached = _unitConfigCache[currentUnitId];
+  if (cached && cached.cfg) {
+    cached.cfg.scenes = allCurrent;
+    cached.ts = Date.now();
+    renderScenesTab();
+  } else {
+    // Cache miss — re-render via the normal path (will refetch).
+    renderScenesTab();
+  }
+}
+
+async function deleteScene(idx) {
+  const card = document.querySelector(`[data-scene-card][data-scene-idx="${idx}"]`);
+  if (!card) return;
+  const name = card.querySelector('[data-scene-field="name"]').value || '(unnamed)';
+  if (!confirm(`Delete scene "${name}"? Any PIR action referencing this name will become a no-op.`)) return;
+  // Read all cards, then drop the one at idx.
+  const all = _readAllScenes();
+  all.splice(idx, 1);
+  const status = card.querySelector('.save-status');
+  status.textContent = 'Deleting…';
+  try {
+    const r = await fetchJSON(`/api/units/${currentUnitId}/config`, {
+      method: 'PATCH',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({ path: 'scenes', value: all }),
+    });
+    if (!r.ok) {
+      status.textContent = `Delete failed: ${r.error || 'unknown'}`;
+      status.classList.add('err');
+      return;
+    }
+    delete _unitConfigCache[currentUnitId];
+    renderScenesTab();
+  } catch (e) {
+    status.textContent = `Delete failed: ${e.message || e}`;
+    status.classList.add('err');
+  }
+}
+
+async function applyScene(idx) {
+  const card = document.querySelector(`[data-scene-card][data-scene-idx="${idx}"]`);
+  if (!card) return;
+  const name = (card.querySelector('[data-scene-field="name"]').value || '').trim();
+  if (!name) { alert('Save the scene first — apply needs a name.'); return; }
+  if (card.classList.contains('dirty')) {
+    if (!confirm('Scene has unsaved changes — Apply uses the SAVED version. Continue?')) return;
+  }
+  const status = card.querySelector('.save-status');
+  status.textContent = 'Applying…';
+  try {
+    const r = await fetchJSON(`/api/scenes/${encodeURIComponent(name)}/apply`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ unit_ids: [currentUnitId] }),
+    });
+    if (!r.ok) {
+      status.textContent = `Apply failed: ${r.error || 'unknown'}`;
+      status.classList.add('err');
+      return;
+    }
+    status.textContent = `Applied ✓`;
+    setTimeout(load, 800);
+  } catch (e) {
+    status.textContent = `Apply failed: ${e.message || e}`;
+    status.classList.add('err');
+  }
+}
 
 async function renderAdvancedTab() {
   if (currentUnitId == null) return;
