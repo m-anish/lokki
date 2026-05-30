@@ -34,6 +34,9 @@ _MIME = {
 _STATIC_PATHS = {
     "/index.html",      # the dashboard (formerly /dashboard.html — renamed May 2026)
     "/config-builder.html",
+    "/manifest.json",   # PWA manifest (UX-5.3)
+    "/icon.svg",        # PWA icon — also referenced by <link rel="icon">
+    "/sw.js",           # service worker — caches the shell for offline-load
 }
 
 

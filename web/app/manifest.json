@@ -1,0 +1,19 @@
+{
+  "name": "Lokki Dashboard",
+  "short_name": "Lokki",
+  "description": "Campus-scale LED lighting controller — coordinator + leaves over LoRa.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f172a",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -226,6 +226,12 @@ echo "[update] Flashing web assets $WEB_DIR -> :/www ..."
 mk_remote_dir "www"
 mpremote connect auto fs cp "$WEB_DIR/index.html" :www/
 mpremote connect auto fs cp "$WEB_DIR/config-builder.html" :www/
+# PWA bundle (UX-5.3) — manifest, icon, service worker. Service worker
+# pre-caches the shell so a phone home-screen install survives a coord
+# reboot without showing "can't connect" while the device is booting.
+mpremote connect auto fs cp "$WEB_DIR/manifest.json" :www/
+mpremote connect auto fs cp "$WEB_DIR/icon.svg" :www/
+mpremote connect auto fs cp "$WEB_DIR/sw.js" :www/
 mpremote connect auto fs cp "$WEB_DIR/config.schema.json" :www/
 # Also flash the schema to /config.schema.json (filesystem root, not
 # under /www/) so the firmware's config_manager._load_schema() can

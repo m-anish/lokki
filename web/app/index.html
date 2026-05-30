@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#4f46e5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="apple-touch-icon" href="/icon.svg">
 <title>Lokki Dashboard</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; }
@@ -4508,6 +4513,17 @@ init().then(() => {
   setInterval(tickLastSeen, 1000);
   // Event poller: 3 s feels responsive without flooding the Pico's webserver.
   pollEvents(); setInterval(pollEvents, 3000);
+
+  // PWA service worker registration. Fires fire-and-forget — the
+  // SW caches the shell so a coord reboot or brief WiFi flake
+  // doesn't show a "can't connect" screen on a phone. Failure
+  // (older browser, file:// load, blocked by CSP) is non-fatal:
+  // the dashboard works normally without it.
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch((e) => {
+      console.warn("SW register failed:", e);
+    });
+  }
 });
 </script>
 </body>
