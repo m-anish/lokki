@@ -202,3 +202,108 @@ def get_network_status():
         "dns": ip_info[3],
         "rssi": rssi,
     }
+
+
+# ── AP-mode fallback ────────────────────────────────────────────────
+# When the configured STA network is unreachable (or no SSID is set
+# at all — fresh install), the coord brings up its own access point
+# so the operator can join it from a phone and reach the dashboard
+# at lokki.local (or the AP gateway IP 192.168.4.1). Same web server,
+# same auth — just a different netif providing the route.
+#
+# WPA2-PSK only. The dashboard's HTTP Basic auth is the actual
+# access control; the AP password is just there to deter casual
+# WiFi scanners from joining. Operators are expected to set
+# dashboard.auth_password before exposing the device anywhere.
+
+# Pico W's cyw43 stack defaults AP gateway IP to 192.168.4.1 and
+# runs a built-in DHCP server. No extra plumbing needed.
+_AP_GATEWAY_IP = "192.168.4.1"
+
+# WPA2 needs >=8 chars. Anything shorter and ap.active(True) silently
+# refuses to come up. We refuse loudly instead.
+_AP_MIN_PASSWORD_LEN = 8
+
+
+def ap_start():
+    """Bring up the SoftAP. Idempotent — safe to call when AP is
+    already active. Returns True if the AP is up afterwards, False
+    on any config / activation failure.
+
+    Reads wifi.ap_ssid / wifi.ap_password from config. Sensible
+    fallback for ssid (so a fresh install with no AP config still
+    comes up reachable); password has no fallback because shipping
+    a hardcoded password to every device in the wild would be a
+    real security hole.
+    """
+    wifi_cfg = config_manager.get("wifi") or {}
+    ap_ssid = wifi_cfg.get("ap_ssid") or "Lokki-Setup"
+    ap_password = wifi_cfg.get("ap_password") or ""
+
+    if len(ap_password) < _AP_MIN_PASSWORD_LEN:
+        log.error(
+            f"[AP] wifi.ap_password is {len(ap_password)} chars; need "
+            f">={_AP_MIN_PASSWORD_LEN} for WPA2. AP mode disabled — set "
+            "a longer password via the dashboard or config-builder."
+        )
+        return False
+
+    ap = network.WLAN(network.AP_IF)
+    try:
+        # security=4 = WPA2-PSK on the Pico W's cyw43. Other values
+        # are open/WEP/WPA, all worse. Don't downgrade.
+        ap.config(essid=ap_ssid, password=ap_password, security=4)
+    except Exception as e:
+        log.error(f"[AP] config() failed: {e}")
+        return False
+
+    try:
+        ap.active(True)
+    except Exception as e:
+        log.error(f"[AP] active(True) failed: {e}")
+        return False
+
+    # Poll briefly until active() reports True — cyw43 takes a tick
+    # or two to come up. If it doesn't, we report failure rather than
+    # claim success and have the operator wonder why no SSID is
+    # visible.
+    for _ in range(20):
+        if ap.active():
+            ip = None
+            try:
+                ip = ap.ifconfig()[0]
+            except Exception:
+                pass
+            log.info(f"[AP] Up: SSID='{ap_ssid}' IP={ip or _AP_GATEWAY_IP}")
+            return True
+        time.sleep_ms(100)
+
+    log.error("[AP] Failed to come up within 2 s")
+    return False
+
+
+def ap_stop():
+    """Tear down the SoftAP. Idempotent — safe to call when AP isn't
+    active. Used when STA recovers and we want to deny accidental
+    long-lived AP exposure."""
+    ap = network.WLAN(network.AP_IF)
+    try:
+        if ap.active():
+            ap.active(False)
+            log.info("[AP] Stopped")
+    except Exception as e:
+        log.warn(f"[AP] active(False) failed: {e}")
+
+
+def ap_is_active():
+    try:
+        return network.WLAN(network.AP_IF).active()
+    except Exception:
+        return False
+
+
+def ap_ip():
+    try:
+        return network.WLAN(network.AP_IF).ifconfig()[0]
+    except Exception:
+        return None

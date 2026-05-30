@@ -181,11 +181,15 @@ def _ok_led_state():
     Precedence (highest first):
       1. time_waiting     — no sane wall-clock; schedule is paused.
                             Most user-visible failure.
-      2. wifi_disconnected (coord only) — WiFi dropped after boot;
-                            dashboard unreachable. Schedule still
-                            runs from RTC and LoRa still works, so
-                            this is a degraded but functional state.
-      3. running_lora_ok / running_ok — happy path.
+      2. ap_mode (coord only) — SoftAP fallback is active. Dashboard
+                            is reachable via Lokki-Setup SSID. This
+                            outranks wifi_disconnected because "no
+                            STA but AP up" is a known reachable
+                            state, not a dead one.
+      3. wifi_disconnected (coord only) — no STA and no AP either.
+                            Truly unreachable; the monitor's next
+                            cycle will try to bring AP up.
+      4. running_lora_ok / running_ok — happy path.
 
     LoRa-down on its own doesn't take the steady LED — it's surfaced
     via the lora_status_flash_task (red-vs-blue periodic flash) so
@@ -195,8 +199,11 @@ def _ok_led_state():
     """
     if not system_status.time_synced:
         return "time_waiting"
-    if config_manager.role == "coordinator" and not system_status.wifi_connected:
-        return "wifi_disconnected"
+    if config_manager.role == "coordinator":
+        if system_status.ap_active and not system_status.wifi_connected:
+            return "ap_mode"
+        if not system_status.wifi_connected:
+            return "wifi_disconnected"
     return "running_lora_ok" if system_status.lora_connected else "running_ok"
 
 
@@ -211,36 +218,58 @@ async def leaf_status_task():
 
 
 async def wifi_monitor_task():
-    """Coordinator task: detect WiFi disconnects and reconnect.
+    """Coordinator task: detect STA disconnects, reconnect, and
+    fall in/out of SoftAP fallback.
 
-    Flaky APs are routine in venue networks (hospitality routers
-    rebooting at 03:00, mesh roaming hiccups, etc.). Without this
-    task the coord stays in a dead-WiFi state forever — dashboard
-    unreachable, NTP can't refresh, mDNS goes stale. Schedule still
-    runs from RTC and LoRa still works, so the device is degraded
-    but functional; this monitor restores full service silently.
+    State machine (per iteration, every 5 s when STA is healthy or
+    after each reconnect attempt when it isn't):
 
-    Cadence:
-      - Connected: poll every 5 s. Lightweight `wlan.isconnected()`
-        call; no socket traffic.
-      - Disconnected: attempt reconnect, then sleep 30 s before the
-        next attempt. 30 s is intentionally above any router's
-        client-blacklist window for rapid-reconnect storms.
+        STA up:
+            - If we just transitioned up: nudge MQTT, opportunistic
+              NTP resync, drop AP after stability window.
+            - Else: idle 5 s.
 
-    On reconnect:
-      - `connect_wifi()` re-asserts `network.hostname()` at the top
-        of every call, which is what tells lwIP's mDNS responder to
-        re-announce. So <hostname>.local resolves again without
-        any other plumbing.
-      - MQTT gets a reconnect kick — its socket dropped when WiFi
-        did, and it doesn't auto-recover.
+        STA down:
+            - Mark wifi_connected=False, increment failure counter.
+            - After STA_FAIL_BRINGUP_AP_AFTER consecutive failures
+              (≈90 s default), bring up the SoftAP if not already up.
+            - Attempt one cooperative reconnect (yields to event loop
+              between polls — the sync connect_wifi() used at boot
+              would freeze every asyncio task for ~30 s, killing the
+              reset button responsiveness during outages).
+            - Sleep 30 s. Above any router's client-blacklist window
+              for rapid-reconnect storms.
+
+    AP teardown — STA recovery doesn't immediately drop the AP.
+    Operators connected to the AP mid-recovery would get yanked off
+    the second STA flips back. We wait STA_STABLE_AP_TEARDOWN_S
+    (60 s) of solid STA before dropping the AP, so any in-flight
+    dashboard session has a chance to finish or migrate.
+
+    No STA configured (fresh install): the AP comes up at boot and
+    this task just sits idle in the "no STA connected, AP active"
+    state. Operator finishes WiFi setup via the dashboard; their
+    save triggers a reboot, and the next boot uses the new SSID.
     """
     if config_manager.role != "coordinator":
         return  # leaves don't use WiFi
 
+    import time
     import network
-    from comms.wifi_connect import connect_wifi_async, sync_time_ntp
+    from comms.wifi_connect import (
+        connect_wifi_async, sync_time_ntp,
+        ap_start, ap_stop, ap_is_active, ap_ip,
+    )
     wlan = network.WLAN(network.STA_IF)
+
+    # Tunables — comments in docstring above. Numbers chosen for a
+    # mix of "operator notices fast enough" and "we don't flap on
+    # marginal links."
+    STA_FAIL_BRINGUP_AP_AFTER = 3       # 3 fails × 30 s = ~90 s before AP rises
+    STA_STABLE_AP_TEARDOWN_S  = 60      # 60 s of solid STA before AP comes down
+
+    sta_fail_count    = 0
+    sta_recovered_at  = None    # ticks_ms when STA went up; None while down
 
     while True:
         connected = False
@@ -249,52 +278,78 @@ async def wifi_monitor_task():
         except Exception as e:
             log.warn(f"[WIFI-MON] isconnected() raised: {e}")
 
-        # Reconcile observed state with system_status. Edge transitions
-        # are interesting; steady-state isn't.
+        # ── STA recovery (edge transition: was down, now up) ───────
         if connected and not system_status.wifi_connected:
             ip = None
             try:
                 ip = wlan.ifconfig()[0]
             except Exception:
                 pass
-            log.info(f"[WIFI-MON] WiFi recovered (IP {ip})")
+            log.info(f"[WIFI-MON] STA recovered (IP {ip})")
             system_status.set_connection_status(wifi=True)
+            sta_fail_count   = 0
+            sta_recovered_at = time.ticks_ms()
             status_led.set_state(_ok_led_state())
-            # MQTT socket dropped with the WiFi; nudge it to reconnect.
+            # MQTT socket dropped with WiFi; nudge it back.
             try:
                 from comms.mqtt_notifier import mqtt_notifier
                 if mqtt_notifier.connect():
                     log.info("[WIFI-MON] MQTT reconnected")
             except Exception as e:
                 log.warn(f"[WIFI-MON] MQTT reconnect failed: {e}")
-            # Try to refresh NTP opportunistically — drift over a long
-            # outage is the most visible recovery artifact.
+            # Opportunistic NTP — drift over a long outage is the
+            # most visible recovery artifact for operators.
             try:
                 if sync_time_ntp():
                     log.info("[WIFI-MON] NTP resync after recovery OK")
             except Exception as e:
                 log.warn(f"[WIFI-MON] NTP resync failed: {e}")
 
+        # ── STA loss (edge transition: was up, now down) ───────────
         elif not connected and system_status.wifi_connected:
-            log.warn("[WIFI-MON] WiFi lost — entering reconnect loop")
+            log.warn("[WIFI-MON] STA lost — entering reconnect loop")
             system_status.set_connection_status(wifi=False)
             system_status.record_error("wifi_lost")
+            sta_recovered_at = None
+            status_led.set_state(_ok_led_state())
+
+        # ── AP teardown: STA stable for the grace window ──────────
+        if (connected and ap_is_active() and sta_recovered_at is not None and
+                time.ticks_diff(time.ticks_ms(), sta_recovered_at) >
+                STA_STABLE_AP_TEARDOWN_S * 1000):
+            log.info(
+                f"[WIFI-MON] STA stable for {STA_STABLE_AP_TEARDOWN_S}s — "
+                "tearing down SoftAP fallback"
+            )
+            ap_stop()
+            system_status.set_connection_status(ap_active=False, ap_ip=None)
             status_led.set_state(_ok_led_state())
 
         if not connected:
-            # Attempt one cooperative reconnect, then sleep before the
-            # next try. connect_wifi_async() re-asserts hostname (so
-            # mDNS re-announces on success) and yields to the event
-            # loop between polls — the sync connect_wifi() used at
-            # boot would freeze every asyncio task for up to ~30 s
-            # here, which is exactly how the reset button stopped
-            # responding during outages.
+            sta_fail_count += 1
+
+            # ── AP bringup: STA failed N consecutive times ─────────
+            # Only meaningful if we have a valid AP password
+            # configured AND we're not already in AP mode (e.g. from
+            # boot). ap_start() is idempotent and logs its own
+            # failures, so we just call it and trust the return.
+            if (sta_fail_count >= STA_FAIL_BRINGUP_AP_AFTER and
+                    not ap_is_active()):
+                log.warn(
+                    f"[WIFI-MON] STA failed {sta_fail_count}× — "
+                    "bringing up SoftAP fallback"
+                )
+                if ap_start():
+                    system_status.set_connection_status(
+                        ap_active=True, ap_ip=ap_ip()
+                    )
+                    status_led.set_state(_ok_led_state())
+
             try:
-                ok = await connect_wifi_async(timeout=10)
+                await connect_wifi_async(timeout=10)
                 # The connected branch above will fire next iter and
-                # handle the recovery side-effects (LED, MQTT, NTP).
-                # We don't dupe the work here.
-                _ = ok
+                # handle the recovery side-effects (LED, MQTT, NTP,
+                # AP teardown). We don't dupe the work here.
             except Exception as e:
                 log.warn(f"[WIFI-MON] reconnect attempt raised: {e}")
             await asyncio.sleep(30)
@@ -1375,25 +1430,42 @@ async def main():
     # harmless if no frames ever arrive (lookup misses → no-op).
     _register_lora_handlers(role, fleet_mgr)
 
-    # --- WiFi + NTP (coordinator only) ---
+    # --- WiFi (coordinator only) ---
+    #
+    # Three-state boot:
+    #   (1) wifi.ssid set + STA reachable  → connect, do NTP, run as normal.
+    #   (2) wifi.ssid set + STA unreachable → fall back to SoftAP so the
+    #       operator can still reach the dashboard from a phone.
+    #   (3) wifi.ssid empty (fresh install) → skip STA entirely, come
+    #       up directly in AP mode. The operator finishes setup from
+    #       the dashboard.
+    #
+    # The web server is started unconditionally (below) as long as
+    # SOME interface is up — STA or AP. wifi_monitor_task handles
+    # runtime recovery (STA dropped at 3am, AP rises after backoff;
+    # STA recovers, AP tears down after stability window).
     wifi_ok = False
     if role == "coordinator":
-        status_led.set_state("wifi_connecting")
-        try:
-            from comms.wifi_connect import connect_wifi, sync_time_ntp
-            wifi_ok = connect_wifi()
+        wifi_cfg = cfg.get("wifi") or {}
+        configured_ssid = (wifi_cfg.get("ssid") or "").strip()
+
+        if configured_ssid:
+            status_led.set_state("wifi_connecting")
+            try:
+                from comms.wifi_connect import connect_wifi, sync_time_ntp
+                wifi_ok = connect_wifi()
+            except Exception as e:
+                log.error(f"[MAIN] WiFi/NTP error: {e}")
+                system_status.record_error(f"wifi: {e}")
+
             if wifi_ok:
                 log.info("[MAIN] WiFi connected")
                 system_status.set_connection_status(wifi=True)
                 # mDNS: handled entirely by lwIP's built-in responder.
-                # network.hostname() in wifi_connect.connect_wifi() is
-                # what tells lwIP what to advertise; the Python-side
-                # fallback we used to ship was redundant on every build
-                # we've tested and has been removed.
-                # NTP sync — enabled by default, can be disabled in config
+                # network.hostname() in wifi_connect._prepare_wlan() is
+                # what tells lwIP what to advertise.
                 tz_config = cfg.get("timezone") or {}
-                ntp_enabled = tz_config.get("ntp_enabled", True)
-                if ntp_enabled:
+                if tz_config.get("ntp_enabled", True):
                     log.info("[MAIN] NTP enabled, attempting sync...")
                     try:
                         if sync_time_ntp():
@@ -1406,16 +1478,26 @@ async def main():
                         log.warn(f"[MAIN] NTP sync exception: {ntp_e}")
                 else:
                     log.info("[MAIN] NTP disabled in config — using RTC time")
-                    # If the operator turned NTP off, the DS3231 is the
-                    # only source for the coord. If _try_seed_time_from_rtc
-                    # didn't already mark synced (battery flat etc.), we
-                    # stay paused — same as any other coord with no time.
             else:
-                log.warn("[MAIN] WiFi failed — running on RTC")
+                log.warn("[MAIN] WiFi unreachable — falling back to SoftAP")
                 system_status.record_error("wifi_connect failed")
-        except Exception as e:
-            log.error(f"[MAIN] WiFi/NTP error: {e}")
-            system_status.record_error(f"wifi: {e}")
+        else:
+            log.info("[MAIN] No wifi.ssid configured — coming up in SoftAP mode")
+
+        if not wifi_ok:
+            # Either no SSID configured, or STA didn't come up. Either
+            # way, bring up the AP so the operator can reach us.
+            try:
+                from comms.wifi_connect import ap_start, ap_ip
+                if ap_start():
+                    system_status.set_connection_status(
+                        ap_active=True, ap_ip=ap_ip()
+                    )
+                else:
+                    system_status.record_error("ap_start failed")
+            except Exception as e:
+                log.error(f"[MAIN] AP start raised: {e}")
+                system_status.record_error(f"ap_start: {e}")
 
     status_led.set_state(_ok_led_state())
 
@@ -1474,8 +1556,10 @@ async def main():
         # which is exactly the recovery path for "coord booted before
         # the AP came up."
         tasks.append(asyncio.create_task(wifi_monitor_task()))
+        # MQTT — only meaningful with real internet (STA mode). Skip
+        # while we're in AP-only fallback; wifi_monitor will retry it
+        # when STA comes back.
         if wifi_ok:
-            # MQTT notifications (if enabled)
             try:
                 from comms.mqtt_notifier import mqtt_notifier
                 if mqtt_notifier.connect():
@@ -1484,13 +1568,18 @@ async def main():
                     log.info("[MAIN] MQTT disabled or unavailable")
             except Exception as e:
                 log.error(f"[MAIN] MQTT init failed: {e}")
-            # Web server
-            try:
-                from coordinator.web_server import web_server
-                tasks.append(asyncio.create_task(web_server.start_and_serve()))
-                log.info("[MAIN] Web server task added")
-            except Exception as e:
-                log.error(f"[MAIN] Web server init failed: {e}")
+        # Web server — start unconditionally now. Binds 0.0.0.0:80
+        # so it serves on STA or AP (or both, simultaneously, during
+        # the brief STA-recovery overlap). Operator reaches the
+        # dashboard whichever interface they're connected to. The
+        # auth gate in web_server is what keeps the AP-mode surface
+        # from being open to anyone in WiFi range.
+        try:
+            from coordinator.web_server import web_server
+            tasks.append(asyncio.create_task(web_server.start_and_serve()))
+            log.info("[MAIN] Web server task added")
+        except Exception as e:
+            log.error(f"[MAIN] Web server init failed: {e}")
     else:
         # Leaf: always start HB broadcast + event forwarder. If the
         # transport isn't ready, lora_protocol.send_heartbeat/

@@ -102,11 +102,21 @@ def _route(path, method):
         return None
 
     if p == "/api/status":
+        # Mirror the firmware's status shape including the new AP
+        # fields so the dashboard can render the AP-mode banner. To
+        # preview AP fallback locally: set DEV_AP_MODE=1 in the env.
+        ap_active = os.environ.get("DEV_AP_MODE") == "1"
         return _ok({
             "unit_name":   COORD_CFG["system"]["unit_name"],
             "time_synced": True,
             "uptime":      f"{int(time.time() - BOOT_TIME)}s",
-            "connections": {"wifi": True, "lora": True, "mqtt": False},
+            "connections": {
+                "wifi":      not ap_active,
+                "lora":      True,
+                "mqtt":      False,
+                "ap_active": ap_active,
+                "ap_ip":     "192.168.4.1" if ap_active else None,
+            },
         })
 
     if p == "/api/fleet":

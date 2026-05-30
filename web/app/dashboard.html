@@ -713,6 +713,13 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
             <span id="timeSyncStatus" style="margin-left:8px;font-size:.9em"></span>
           </div>
         </div>
+        <div id="apModeBanner" style="display:none;margin-bottom:16px;padding:12px 16px;background:#fdf2f8;border:1px solid #f0abfc;border-left:4px solid #a21caf;border-radius:6px;color:#581c87">
+          <strong>📡 SoftAP fallback active.</strong>
+          You're connected to the coordinator's own access point — the venue's WiFi is either unreachable or hasn't been configured yet. The dashboard is fully usable, but MQTT and NTP won't sync until the coordinator rejoins your network. <span id="apModeIp"></span>
+          <div style="margin-top:8px;font-size:.85em">
+            Configure WiFi via <strong>Configure</strong> → <strong>Advanced</strong> → <strong>WiFi</strong>. The coord reboots after saving and will rejoin your network on next boot; the SoftAP comes down 60 s after STA is stable.
+          </div>
+        </div>
         <div id="unclaimedSection" style="display:none;margin-bottom:24px">
           <h2 style="font-size:1.2em;margin:0 0 4px;font-weight:700">New Devices</h2>
           <p style="margin:0 0 12px;color:var(--muted);font-size:.9em">
@@ -1932,6 +1939,7 @@ async function updateStatus() {
       const c = s.data.connections;
       let cs = "";
       if (c.wifi) cs += "📶 WiFi ";
+      if (c.ap_active) cs += "📡 SoftAP ";
       if (c.lora) cs += "📡 LoRa ";
       if (c.mqtt) cs += "🔔 MQTT ";
       document.getElementById("connStatus").textContent = cs.trim() || "⚠️ No connections";
@@ -1940,6 +1948,20 @@ async function updateStatus() {
     // wall-clock time. Schedule is paused on the device until then.
     const banner = document.getElementById("timeWaitingBanner");
     if (banner) banner.style.display = (s.data.time_synced === false) ? "" : "none";
+    // AP-mode banner: shown when the SoftAP fallback is up. Either
+    // venue WiFi failed, or fresh install with no SSID configured.
+    const apBanner = document.getElementById("apModeBanner");
+    if (apBanner) {
+      const c = s.data.connections || {};
+      const apOn = c.ap_active === true;
+      apBanner.style.display = apOn ? "" : "none";
+      const ipEl = document.getElementById("apModeIp");
+      if (ipEl) {
+        ipEl.textContent = apOn && c.ap_ip
+          ? `If the hostname doesn't resolve, try http://${c.ap_ip}/.`
+          : "";
+      }
+    }
   } catch (e) { /* swallow polling errors */ }
 }
 

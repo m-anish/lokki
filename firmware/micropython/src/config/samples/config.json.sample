@@ -16,7 +16,9 @@
   "wifi": {
     "ssid": "YourNetworkName",
     "password": "YourPassword",
-    "hostname": "lokki"
+    "hostname": "lokki",
+    "ap_ssid": "Lokki-Setup",
+    "ap_password": "lokki-setup-1234"
   },
 
   "lora": {

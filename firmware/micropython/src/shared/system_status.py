@@ -32,6 +32,14 @@ class SystemStatus:
         self.lora_connected = False
         self.web_server_running = False
         self.mqtt_connected = False
+        # SoftAP fallback (coord only). When the configured STA network
+        # is unreachable or no SSID is configured at all, the coord
+        # brings up its own AP so the dashboard stays accessible.
+        # ap_active flips True/False as the AP comes up/down; ap_ip
+        # carries the gateway address operators can type into a browser
+        # when mDNS isn't reaching them.
+        self.ap_active = False
+        self.ap_ip = None
         # Set True once we've confirmed a real wall-clock time — from
         # NTP (coord), the DS3231 returning a sane value (either role),
         # a LoRa TS broadcast (leaf), or operator override. Until this
@@ -50,7 +58,8 @@ class SystemStatus:
             self.time_synced = True
             self.time_synced_source = source
 
-    def set_connection_status(self, wifi=None, lora=None, web_server=None, mqtt=None):
+    def set_connection_status(self, wifi=None, lora=None, web_server=None, mqtt=None,
+                              ap_active=None, ap_ip=None):
         if wifi is not None:
             self.wifi_connected = wifi
         if lora is not None:
@@ -59,6 +68,10 @@ class SystemStatus:
             self.web_server_running = web_server
         if mqtt is not None:
             self.mqtt_connected = mqtt
+        if ap_active is not None:
+            self.ap_active = ap_active
+        if ap_ip is not None:
+            self.ap_ip = ap_ip
 
     def record_error(self, msg):
         self.error_count += 1
@@ -100,6 +113,8 @@ class SystemStatus:
                 "lora": self.lora_connected,
                 "web_server": self.web_server_running,
                 "mqtt": self.mqtt_connected,
+                "ap_active": self.ap_active,
+                "ap_ip": self.ap_ip,
             },
             "time_synced":        self.time_synced,
             "time_synced_source": self.time_synced_source,

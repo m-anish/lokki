@@ -44,6 +44,7 @@ _STATES = {
     "booting":           COLOR_WHITE   + (0.15, "pulse"), # white pulse — booting up, not yet ready
     "wifi_connecting":   (0, 100, 255) + (0.4,  "blink"), # blue blink — trying to connect to WiFi (initial boot)
     "wifi_disconnected": COLOR_AMBER   + (0.4,  "blink"), # amber blink — coord lost WiFi after boot; reconnect loop is running
+    "ap_mode":           COLOR_MAGENTA + (0.3,  "pulse"), # magenta pulse — SoftAP fallback active; dashboard reachable via Lokki-Setup SSID
     "lora_init":         COLOR_CYAN    + (0.3,  "solid"), # cyan solid — WiFi up, now initializing LoRa
     "running_ok":        COLOR_GREEN   + (0.08, "solid"), # green solid — all systems nominal
     # Same green-solid base as running_ok. The "lora is alive" cue is

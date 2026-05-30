@@ -28,12 +28,13 @@
 
     "wifi": {
       "type": "object",
-      "required": ["ssid", "password"],
       "additionalProperties": false,
       "properties": {
-        "ssid":     { "type": "string", "minLength": 1 },
-        "password": { "type": "string" },
-        "hostname": { "type": "string" }
+        "ssid":        { "type": "string" },
+        "password":    { "type": "string" },
+        "hostname":    { "type": "string" },
+        "ap_ssid":     { "type": "string" },
+        "ap_password": { "type": "string", "minLength": 8 }
       }
     },
 
