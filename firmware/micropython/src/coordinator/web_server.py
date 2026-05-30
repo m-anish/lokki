@@ -372,6 +372,9 @@ class WebServer:
         if path == "/api/sensors" and method == "GET":
             return self._json(api.handle_sensors())
 
+        if path == "/api/sun-times" and method == "GET":
+            return self._json(api.handle_sun_times())
+
         # --- Scenes ---
         if path == "/api/scenes" and method == "GET":
             return self._json(api.handle_list_scenes())

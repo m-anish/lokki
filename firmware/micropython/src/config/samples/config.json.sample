@@ -40,6 +40,12 @@
     "utc_offset_hours": 5.5
   },
 
+  "location": {
+    "name": "Dharamsala",
+    "lat": 32.2190,
+    "lon": 76.3234
+  },
+
   "hardware": {
     "i2c_sda_pin": 20,
     "i2c_scl_pin": 21,

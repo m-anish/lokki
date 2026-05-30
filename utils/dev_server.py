@@ -131,6 +131,22 @@ def _route(path, method):
     if p == "/api/events":
         return _ok({"events": [], "cursor": 0})
 
+    if p == "/api/sun-times":
+        # Stub today's sunrise/sunset for the Dharamsala coords in
+        # the sample config. Marked source=compute so the schedule
+        # strip drops the dashed-approximate border.
+        from datetime import date
+        today = date.today()
+        return _ok({
+            "date":     today.strftime("%Y-%m-%d"),
+            "sunrise":  "06:00",
+            "sunset":   "18:30",
+            "source":   "compute",
+            "location": COORD_CFG.get("location", {}).get("name"),
+            "lat":      COORD_CFG.get("location", {}).get("lat"),
+            "lon":      COORD_CFG.get("location", {}).get("lon"),
+        })
+
     if p.startswith("/api/units/"):
         # /api/units/N/{config|scenes|status|manual}
         parts = p.split("/")

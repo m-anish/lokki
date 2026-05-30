@@ -476,6 +476,44 @@ def handle_sensors():
 
 
 # ------------------------------------------------------------------
+# Sun times — today's sunrise/sunset for the dashboard schedule
+# strip. Uses the same get_sunrise_sunset() the schedule engine
+# uses, so what the visualizer shows matches what the leaf actually
+# does at the same minute.
+# ------------------------------------------------------------------
+
+def handle_sun_times():
+    import time as _t
+    try:
+        now = _t.localtime()
+        year, month, day = now[0], now[1], now[2]
+    except Exception as e:
+        return _err(f"clock not available: {e}", 503)
+
+    from shared.sun_times import get_sunrise_sunset
+    try:
+        rh, rm, sh, sm = get_sunrise_sunset(month, day, year)
+    except Exception as e:
+        return _err(f"sun-times resolution failed: {e}", 500)
+
+    loc = config_manager.get("location") or {}
+    has_compute = loc.get("lat") is not None and loc.get("lon") is not None
+    return _ok({
+        "date":     f"{year:04d}-{month:02d}-{day:02d}",
+        "sunrise":  f"{rh:02d}:{rm:02d}",
+        "sunset":   f"{sh:02d}:{sm:02d}",
+        # `source` tells the dashboard whether to drop the
+        # "approximate" dashed border on sunrise/sunset strip
+        # segments. "compute" = exact for this date; "json" = static
+        # table; "default" = the hardcoded 06:30/18:30 fallback.
+        "source":   "compute" if has_compute else "json",
+        "location": loc.get("name") or None,
+        "lat":      loc.get("lat"),
+        "lon":      loc.get("lon"),
+    })
+
+
+# ------------------------------------------------------------------
 # Per-unit scenes (from fleet cache, or coordinator config)
 # ------------------------------------------------------------------
 

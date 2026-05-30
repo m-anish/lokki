@@ -129,13 +129,56 @@ def get_location_info():
     return _location, _lat, _lon
 
 
-def get_sunrise_sunset(month, day):
+def get_sunrise_sunset(month, day, year=None):
     """
     Get sunrise/sunset for given date.
-    Falls back to last available date not after (dd, mm). Wraps to last entry if none before.
-    If JSON not loaded, returns default fallback times.
+
+    Resolution order (highest precedence first):
+      1. On-device compute from `config.location.lat/lon` via sun_calc.
+         Most accurate, no file maintenance, works anywhere on Earth
+         (except polar nights / midnight sun where it falls through).
+      2. Flashed sun_times.json table, with last-prior-week fallback.
+         Legacy path; useful for venues that pre-date config.location
+         or that want to override compute with custom values.
+      3. Hardcoded DEFAULT_SUNRISE / DEFAULT_SUNSET (06:30 / 18:30).
+
+    `year` is optional. When omitted, sun_calc uses the year baked
+    into the date via `time.localtime()` — but that's a side effect
+    we don't want here, so we default to a non-leap year that gives
+    correct results for non-Feb-29 dates. Callers that care (the
+    schedule engine) should pass the real year.
+
     Returns tuple: (rise_h, rise_m, set_h, set_m)
     """
+    # --- 1. compute from config.location.lat/lon if available ---
+    try:
+        from core.config_manager import config_manager
+        loc = config_manager.get("location") or {}
+        lat = loc.get("lat")
+        lon = loc.get("lon")
+        if lat is not None and lon is not None:
+            from shared import sun_calc
+            tz_cfg = config_manager.get("timezone") or {}
+            tz_offset = tz_cfg.get("utc_offset_hours", 0)
+            if year is None:
+                # Read year from the device's wall clock. If the clock
+                # is bogus (no NTP / no RTC), `year` lands in 1970 or
+                # 2000 — sun_calc still returns plausible values (the
+                # day-of-year math is mod-365), just not for *this*
+                # specific year. Acceptable; schedule resolution is
+                # minute-level either way.
+                import time as _t
+                year = _t.localtime()[0]
+            r = sun_calc.compute(year, month, day, lat, lon, tz_offset)
+            if r is not None:
+                return r
+            # Polar night / midnight sun → fall through to JSON / defaults.
+    except Exception as e:
+        # config_manager might not be ready at very early boot, or
+        # sun_calc could raise on malformed input. Fall through.
+        print(f"[SUN_TIMES] compute path failed: {e}")
+
+    # --- 2. flashed sun_times.json (legacy) ---
     try:
         if _loaded and _entries:
             target = (int(day), int(month))  # Convert to (dd, mm) format
@@ -155,9 +198,9 @@ def get_sunrise_sunset(month, day):
             return rh, rm, sh, sm
     except Exception as e:
         # Log error but continue with fallback
-        print(f"[SUN_TIMES] Error getting sunrise/sunset: {e}")
+        print(f"[SUN_TIMES] JSON path failed: {e}")
 
-    # Ultimate fallback: use default times
+    # --- 3. ultimate hardcoded fallback ---
     return DEFAULT_SUNRISE[0], DEFAULT_SUNRISE[1], DEFAULT_SUNSET[0], DEFAULT_SUNSET[1]
 
 

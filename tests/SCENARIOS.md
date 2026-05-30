@@ -321,7 +321,27 @@ Channels tab Manual Override slider.
 - LED returns to running_*.
 **Last verified**: not yet.
 
-### 5.3 LDR cap rule activates
+### 5.3 Sunrise/sunset compute from lat/lon
+**Setup**: Coord with `config.location.lat = 32.219, lon = 76.323` (Dharamsala
+defaults from the sample config). Schedule has a window `{start: "sunset",
+end: "21:30"}` on at least one channel. Clock is synced.
+**Steps**:
+1. `GET /api/sun-times`. Note the response.
+2. Open dashboard Channels tab on the coord, expand the channel with the
+   sunset-start window.
+3. Edit lat/lon via **Advanced → Location** to something dramatically
+   different (e.g. Tromsø `69.65, 18.96`). Save.
+**Expected**:
+- (1) Response has `source: "compute"`, sunrise/sunset values within a
+  minute of an external sunrise/sunset reference for today's date.
+- (2) Schedule strip's sunset segment edge sits at the real sunset minute,
+  without the dashed-approximate border.
+- (3) After save, the strip re-renders. Edge moves to the new location's
+  sunset time. In Arctic-circle summer the compute returns None — strip
+  falls back to dashed default placement.
+**Last verified**: not yet.
+
+### 5.4 LDR cap rule activates
 **Setup**: LDR enabled, `cap_rules: [{above_percent: 70, cap_percent: 20}]`.
 Channel scheduled at 100%.
 **Steps**: Shine a bright light at the LDR.

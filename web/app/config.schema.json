@@ -75,6 +75,16 @@
       }
     },
 
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "lat":  { "type": "number", "minimum": -90,  "maximum": 90 },
+        "lon":  { "type": "number", "minimum": -180, "maximum": 180 }
+      }
+    },
+
     "hardware": {
       "type": "object",
       "additionalProperties": false,

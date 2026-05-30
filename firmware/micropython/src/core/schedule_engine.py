@@ -67,7 +67,10 @@ class ScheduleEngine:
         date = (now[0], now[1], now[2])
         if self._cached_date != date:
             try:
-                rh, rm, sh, sm = get_sunrise_sunset(now[1], now[2])
+                # Pass the year explicitly so the on-device compute
+                # path (sun_calc) uses the right day-of-year — leap-year
+                # handling depends on it.
+                rh, rm, sh, sm = get_sunrise_sunset(now[1], now[2], now[0])
                 self._cached_rise = f"{rh:02d}:{rm:02d}"
                 self._cached_set  = f"{sh:02d}:{sm:02d}"
             except Exception:

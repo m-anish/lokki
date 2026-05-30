@@ -865,6 +865,11 @@ async function init() {
       document.getElementById("heroTitle").textContent = unitName;
       document.getElementById("heroSubtitle").textContent = "Coordinator · Unit ID " + coordUnitId;
     }
+    // Fetch today's sunrise/sunset so the schedule visualizer places
+    // sun-relative window edges at real positions instead of the
+    // dashed 06:00/18:00 defaults. Daily-ish refresh is enough — the
+    // values only change by ~a minute day-over-day.
+    refreshSunTimes();
   } catch (e) {
     console.error("Init failed:", e);
   }
@@ -1421,9 +1426,51 @@ function swatchStyle(pct) {
 // split into two segments. A red "now" line shows the current
 // browser-local time so the operator can see where they are in
 // the day.
+// Cache for today's sunrise/sunset, populated from /api/sun-times.
+// When `source === "compute"` the coord has lat/lon and the values
+// are exact for today — the strip drops the dashed-approximate
+// border. When source is "json" or "default" or _sunTimes is null
+// (we haven't fetched yet, or the request failed), placement stays
+// approximate and the dashed border tells the operator so.
+let _sunTimes = null;
+
+async function refreshSunTimes() {
+  try {
+    const r = await fetchJSON('/api/sun-times');
+    if (r.ok && r.data && r.data.sunrise && r.data.sunset) {
+      _sunTimes = r.data;
+    }
+  } catch (e) {
+    // Endpoint missing (old firmware) or network blip — strip keeps
+    // its 06:00/18:00 dashed defaults and the visual conveys it.
+  }
+}
+
+function _parseHHMM(s) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim());
+  if (!m) return null;
+  return (parseInt(m[1], 10) * 60 + parseInt(m[2], 10)) % 1440;
+}
+
 function _timeTokenToMinutes(tok) {
-  if (tok === 'sunrise') return { mins: 360,  approx: true, label: 'sunrise' };   // ~06:00
-  if (tok === 'sunset')  return { mins: 1080, approx: true, label: 'sunset'  };   // ~18:00
+  const t = String(tok || '').trim().toLowerCase();
+  if (t === 'sunrise' || t === 'sunset') {
+    const key = t === 'sunrise' ? 'sunrise' : 'sunset';
+    if (_sunTimes && _sunTimes.source === 'compute' && _sunTimes[key]) {
+      const m = _parseHHMM(_sunTimes[key]);
+      if (m !== null) {
+        return { mins: m, approx: false, label: t };
+      }
+    }
+    if (_sunTimes && _sunTimes[key]) {
+      const m = _parseHHMM(_sunTimes[key]);
+      if (m !== null) {
+        return { mins: m, approx: true, label: t };   // JSON-table source: still mark approx
+      }
+    }
+    // No sun-times available — fall back to fixed defaults.
+    return { mins: t === 'sunrise' ? 360 : 1080, approx: true, label: t };
+  }
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(tok || '').trim());
   if (m) {
     const mins = (parseInt(m[1],10) * 60 + parseInt(m[2],10)) % 1440;
@@ -3397,6 +3444,19 @@ async function renderAdvancedTab() {
     value: cfg.timezone || {},
   });
 
+  // ----- Location (lat/lon for on-device sunrise/sunset compute) -----
+  h += renderAdvancedSection({
+    title: 'Location',
+    hint: 'Latitude and longitude let the firmware compute sunrise/sunset for the current date — no JSON file or annual refresh needed. Used by schedule windows with `sunrise` / `sunset` edges. ' + rebootNote,
+    sectionKey: 'location',
+    fields: [
+      ['name', 'Location name (e.g. Dharamsala)', 'text'],
+      ['lat',  'Latitude (°, positive N)',         'number', null, {step: 0.0001, min: -90,  max: 90 }],
+      ['lon',  'Longitude (°, positive E)',        'number', null, {step: 0.0001, min: -180, max: 180}],
+    ],
+    value: cfg.location || {},
+  });
+
   // ----- LoRa -----
   h += renderAdvancedSection({
     title: 'LoRa Radio',
@@ -3598,6 +3658,13 @@ async function saveAdvancedEdit(sectionKey) {
       // Backup sync: pull fresh fleet state ~800 ms later in case
       // anything raced past the optimistic update.
       setTimeout(load, 800);
+    }
+    // Location edits change the on-device sun_calc inputs, so the
+    // dashboard's cached /api/sun-times response is now stale. Refresh
+    // it so the schedule visualizer re-renders sun-relative segments
+    // at the new positions without a full page reload.
+    if (sectionKey === 'location') {
+      setTimeout(refreshSunTimes, 800);
     }
   } catch (e) {
     status.textContent = `Save failed: ${e.message || e}`;
