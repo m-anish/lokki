@@ -384,6 +384,61 @@ input:checked + .toggle-slider:before { transform:translateX(24px); }
   background:#ef4444; vertical-align:middle; margin-right:4px;
 }
 
+/* ── Inline schedule editor (UX-3.2) ─────────────────────────── */
+.sched-editor {
+  display:grid; gap:4px 6px; align-items:center;
+  margin:4px 0 8px; font-size:.85em;
+}
+.sched-editor.kind-channel { grid-template-columns: 90px 90px 60px 70px auto; }
+.sched-editor.kind-relay   { grid-template-columns: 90px 90px 70px auto; }
+.sched-editor .sched-editor-head {
+  font-size:.7em; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.04em;
+  padding-bottom:2px;
+}
+.sched-editor input,
+.sched-editor select {
+  padding:4px 6px; border:1px solid var(--border);
+  background:var(--card); color:var(--text);
+  border-radius:5px; font-size:.95em; width:100%; box-sizing:border-box;
+  font-variant-numeric:tabular-nums;
+}
+.sched-editor input.invalid {
+  border-color:#dc2626; background:rgba(220,38,38,0.08);
+}
+.sched-editor input.dirty,
+.sched-editor select.dirty {
+  border-color:#f59e0b; background:rgba(245,158,11,0.06);
+}
+.sched-editor .win-actions {
+  display:flex; gap:3px; justify-content:flex-end;
+}
+.sched-editor .win-actions button {
+  width:24px; height:24px; padding:0; line-height:1;
+  border:1px solid var(--border); background:var(--card);
+  color:var(--text); border-radius:5px; cursor:pointer;
+  font-size:.9em;
+}
+.sched-editor .win-actions button:hover { background:var(--bg); }
+.sched-editor .win-actions button:disabled {
+  opacity:.35; cursor:not-allowed;
+}
+.sched-editor .win-del { color:#dc2626; }
+.sched-editor-add {
+  margin:0 0 10px;
+  font-size:.82em; padding:4px 10px;
+  background:transparent; border:1px dashed var(--border);
+  color:var(--muted); border-radius:6px; cursor:pointer;
+}
+.sched-editor-add:hover { border-color:var(--brand); color:var(--brand); }
+.sched-editor-empty {
+  font-size:.78em; color:var(--muted); font-style:italic;
+  margin:0 0 8px;
+}
+.sched-editor-error {
+  font-size:.78em; color:#dc2626; margin:-4px 0 8px;
+}
+
 /* Bell + alerts */
 .bell-wrap { position:relative; }
 .bell-btn {
@@ -1326,6 +1381,312 @@ function renderScheduleStrip(windows, kind) {
   return `<div class="sched-strip" aria-label="24-hour schedule">${segs}${nowMark}${ticks}</div>`;
 }
 
+// ── Inline window editor (UX-3.2) ──────────────────────────────────
+//
+// One <div class="sched-editor"> per row, containing a header row +
+// one editor row per existing window + a "+ Add window" button below.
+// All inputs carry data-field markers so we can both read them back
+// at save time and trigger live preview/dirty-tracking on input.
+//
+// Validation mirrors firmware's schedule_engine parser:
+//   - start/end: /^\d{1,2}:\d{2}$/ (hour 0..23, minute 0..59) OR
+//                literal "sunrise" / "sunset" (case-insensitive,
+//                normalised to lowercase on save).
+//   - duty_percent: int 0..100
+//   - fade_ms: int 0..60000  (1-minute cap — operators going beyond
+//             that are almost certainly typoing a "seconds" value)
+//   - state (relay): "on" or "off"
+//
+// First-match-wins overlap semantics in schedule_engine ⇒ order
+// matters. We expose ↑/↓ buttons for reordering. Auto-sorting would
+// silently change behaviour for operators using overlap deliberately.
+
+const _TIME_SUGGEST = ['sunrise', 'sunset', '00:00', '06:00', '12:00', '18:00', '21:00', '23:00'];
+
+function _renderTimeInput(value, field, idx) {
+  const v = _escape(value || '');
+  return `<input type="text" list="sched-time-suggest" autocomplete="off" spellcheck="false"
+                 data-win-idx="${idx}" data-win-field="${field}" value="${v}"
+                 placeholder="HH:MM" />`;
+}
+
+function _renderWindowEditor(windows, kind) {
+  const ws = windows || [];
+  let h = `<div class="sched-editor kind-${kind}" data-sched-editor="${kind}">`;
+  // Header
+  h += `<div class="sched-editor-head">Start</div>`;
+  h += `<div class="sched-editor-head">End</div>`;
+  if (kind === 'channel') {
+    h += `<div class="sched-editor-head">Duty %</div>`;
+    h += `<div class="sched-editor-head">Fade ms</div>`;
+  } else {
+    h += `<div class="sched-editor-head">State</div>`;
+  }
+  h += `<div class="sched-editor-head" style="text-align:right">Order / Remove</div>`;
+
+  ws.forEach((w, i) => {
+    h += _renderTimeInput(w.start, 'start', i);
+    h += _renderTimeInput(w.end,   'end',   i);
+    if (kind === 'channel') {
+      const d = (w.duty_percent != null ? w.duty_percent : 0);
+      const f = (w.fade_ms != null ? w.fade_ms : 0);
+      h += `<input type="number" min="0" max="100" step="1"
+                   data-win-idx="${i}" data-win-field="duty_percent" value="${d}" />`;
+      h += `<input type="number" min="0" max="60000" step="100"
+                   data-win-idx="${i}" data-win-field="fade_ms" value="${f}" />`;
+    } else {
+      const s = w.state || 'off';
+      h += `<select data-win-idx="${i}" data-win-field="state">
+              <option value="on"${s === 'on' ? ' selected' : ''}>on</option>
+              <option value="off"${s === 'off' ? ' selected' : ''}>off</option>
+            </select>`;
+    }
+    h += `<div class="win-actions">`;
+    h += `<button type="button" title="Move up" onclick="_winMove(this, -1)" ${i === 0 ? 'disabled' : ''}>↑</button>`;
+    h += `<button type="button" title="Move down" onclick="_winMove(this, 1)" ${i === ws.length - 1 ? 'disabled' : ''}>↓</button>`;
+    h += `<button type="button" class="win-del" title="Remove window" onclick="_winRemove(this)">×</button>`;
+    h += `</div>`;
+  });
+  h += `</div>`;
+
+  if (!ws.length) {
+    h += `<div class="sched-editor-empty">No schedule windows. Click "Add window" to define one — outside any window the row uses its default state.</div>`;
+  }
+  h += `<div class="sched-editor-error" data-sched-error style="display:none"></div>`;
+  h += `<button type="button" class="sched-editor-add" onclick="_winAdd(this, '${kind}')">+ Add window</button>`;
+  return h;
+}
+
+// Shared <datalist> for all time inputs. Injected once at first use.
+function _ensureTimeSuggestList() {
+  if (document.getElementById('sched-time-suggest')) return;
+  const dl = document.createElement('datalist');
+  dl.id = 'sched-time-suggest';
+  _TIME_SUGGEST.forEach(v => {
+    const o = document.createElement('option');
+    o.value = v;
+    dl.appendChild(o);
+  });
+  document.body.appendChild(dl);
+}
+
+// Returns the assembled windows array from the editor in the given row.
+// Used at save time AND for live preview after every change.
+function _readWindowsFromRow(row, kind) {
+  const editor = row.querySelector('[data-sched-editor]');
+  if (!editor) return [];
+  // Walk DOM order; each "row" is N consecutive inputs sharing the
+  // same data-win-idx. We index the unique idx values to assemble.
+  const byIdx = {};
+  editor.querySelectorAll('[data-win-idx]').forEach(el => {
+    const i = parseInt(el.dataset.winIdx, 10);
+    const f = el.dataset.winField;
+    if (!byIdx[i]) byIdx[i] = {};
+    if (el.type === 'number') {
+      byIdx[i][f] = el.value === '' ? 0 : Number(el.value);
+    } else {
+      byIdx[i][f] = el.value;
+    }
+  });
+  // Sort by numeric idx so the assembled array reflects on-screen order.
+  const out = [];
+  Object.keys(byIdx).map(k => parseInt(k, 10)).sort((a, b) => a - b).forEach(i => {
+    const w = byIdx[i];
+    if (kind === 'channel') {
+      out.push({
+        start: String(w.start || '').trim().toLowerCase() === 'sunrise' ? 'sunrise'
+             : String(w.start || '').trim().toLowerCase() === 'sunset'  ? 'sunset'
+             : String(w.start || '').trim(),
+        end:   String(w.end || '').trim().toLowerCase() === 'sunrise' ? 'sunrise'
+             : String(w.end || '').trim().toLowerCase() === 'sunset'  ? 'sunset'
+             : String(w.end || '').trim(),
+        duty_percent: Math.max(0, Math.min(100, parseInt(w.duty_percent, 10) || 0)),
+        fade_ms:      Math.max(0, Math.min(60000, parseInt(w.fade_ms, 10) || 0)),
+      });
+    } else {
+      out.push({
+        start: String(w.start || '').trim().toLowerCase() === 'sunrise' ? 'sunrise'
+             : String(w.start || '').trim().toLowerCase() === 'sunset'  ? 'sunset'
+             : String(w.start || '').trim(),
+        end:   String(w.end || '').trim().toLowerCase() === 'sunrise' ? 'sunrise'
+             : String(w.end || '').trim().toLowerCase() === 'sunset'  ? 'sunset'
+             : String(w.end || '').trim(),
+        state: (w.state === 'on') ? 'on' : 'off',
+      });
+    }
+  });
+  return out;
+}
+
+// Validate per the firmware's parser rules. Returns null if valid,
+// else a human string describing the first problem.
+const _TIME_RE = /^(\d{1,2}):(\d{2})$/;
+function _validateWindow(w, kind) {
+  for (const f of ['start', 'end']) {
+    const v = String(w[f] || '').trim().toLowerCase();
+    if (v === 'sunrise' || v === 'sunset') continue;
+    const m = _TIME_RE.exec(v);
+    if (!m) return `${f}: use HH:MM or "sunrise" / "sunset"`;
+    const h = parseInt(m[1], 10), mn = parseInt(m[2], 10);
+    if (h < 0 || h > 23) return `${f}: hour must be 00–23`;
+    if (mn < 0 || mn > 59) return `${f}: minute must be 00–59`;
+  }
+  if (kind === 'channel') {
+    if (typeof w.duty_percent !== 'number' || w.duty_percent < 0 || w.duty_percent > 100) {
+      return 'duty_percent must be 0–100';
+    }
+    if (typeof w.fade_ms !== 'number' || w.fade_ms < 0 || w.fade_ms > 60000) {
+      return 'fade_ms must be 0–60000';
+    }
+  } else {
+    if (w.state !== 'on' && w.state !== 'off') return 'state must be on or off';
+  }
+  return null;
+}
+
+function _validateAllWindows(windows, kind) {
+  for (let i = 0; i < windows.length; i++) {
+    const err = _validateWindow(windows[i], kind);
+    if (err) return `Window ${i + 1}: ${err}`;
+  }
+  return null;
+}
+
+// ── Editor mutation: rebuild the editor + strip in place after a change.
+// Keeping it simple: regenerate the whole editor block when the array
+// length changes (add/remove/reorder). Cheap and avoids tracking input
+// focus across structural changes.
+function _winContext(btn) {
+  const row = btn.closest('[data-row-kind]');
+  if (!row) return null;
+  const kind = row.dataset.rowKind;
+  const editor = row.querySelector('[data-sched-editor]');
+  return { row, kind, editor };
+}
+
+function _winAdd(btn, kind) {
+  const ctx = _winContext(btn);
+  if (!ctx) return;
+  const windows = _readWindowsFromRow(ctx.row, kind);
+  // Default: blank-ish window. Operator fills it in.
+  if (kind === 'channel') {
+    windows.push({ start: '00:00', end: '00:00', duty_percent: 0, fade_ms: 0 });
+  } else {
+    windows.push({ start: '00:00', end: '00:00', state: 'on' });
+  }
+  _replaceEditor(ctx.row, kind, windows);
+}
+
+// Find this row's idx by walking left from the actions container
+// until we hit an input with data-win-idx (every grid row's inputs
+// precede its actions div in DOM order).
+function _winIdxFromButton(btn) {
+  let prev = btn.parentNode.previousElementSibling;
+  while (prev) {
+    if (prev.dataset && prev.dataset.winIdx != null) {
+      return parseInt(prev.dataset.winIdx, 10);
+    }
+    prev = prev.previousElementSibling;
+  }
+  return -1;
+}
+
+function _winRemove(btn) {
+  const ctx = _winContext(btn);
+  if (!ctx) return;
+  const i = _winIdxFromButton(btn);
+  if (i < 0) return;
+  const windows = _readWindowsFromRow(ctx.row, ctx.kind);
+  windows.splice(i, 1);
+  _replaceEditor(ctx.row, ctx.kind, windows);
+}
+
+function _winMove(btn, delta) {
+  const ctx = _winContext(btn);
+  if (!ctx) return;
+  const i = _winIdxFromButton(btn);
+  if (i < 0) return;
+  const windows = _readWindowsFromRow(ctx.row, ctx.kind);
+  const j = i + delta;
+  if (j < 0 || j >= windows.length) return;
+  const tmp = windows[i]; windows[i] = windows[j]; windows[j] = tmp;
+  _replaceEditor(ctx.row, ctx.kind, windows);
+}
+
+// Replace the editor block + the strip preview from a windows array.
+// The strip is the sibling immediately before the editor.
+function _replaceEditor(row, kind, windows) {
+  const oldEditor = row.querySelector('[data-sched-editor]');
+  if (!oldEditor) return;
+  // Build the new editor HTML, replace.
+  const tmp = document.createElement('div');
+  tmp.innerHTML = _renderWindowEditor(windows, kind);
+  // _renderWindowEditor returns multiple top-level elements (editor +
+  // empty hint + error slot + add button). We need to replace ALL
+  // editor-related siblings, not just the grid. Walk forward from the
+  // editor and remove until we hit the row-actions block.
+  const toRemove = [];
+  let cur = oldEditor;
+  while (cur && !cur.classList.contains('edit-row-actions')) {
+    toRemove.push(cur);
+    cur = cur.nextElementSibling;
+  }
+  // Insert all new nodes before the row-actions block.
+  const anchor = cur;  // the edit-row-actions div
+  toRemove.forEach(n => n.remove());
+  while (tmp.firstChild) {
+    row.insertBefore(tmp.firstChild, anchor);
+  }
+  // Also refresh the strip (lives BEFORE the editor block).
+  _refreshStrip(row, kind, windows);
+  // Bind change listeners to the new inputs so live preview + dirty
+  // tracking work on freshly-rendered fields.
+  _bindWindowEditorListeners(row, kind);
+  onEditRowChanged(row);
+}
+
+function _refreshStrip(row, kind, windows) {
+  const oldStrip = row.querySelector('.sched-strip, .sched-strip-empty');
+  if (!oldStrip) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = renderScheduleStrip(windows, kind);
+  oldStrip.replaceWith(tmp.firstChild);
+}
+
+function _bindWindowEditorListeners(row, kind) {
+  const editor = row.querySelector('[data-sched-editor]');
+  if (!editor) return;
+  editor.querySelectorAll('[data-win-idx]').forEach(el => {
+    const handler = () => {
+      // Live preview: re-render strip from current values.
+      const windows = _readWindowsFromRow(row, kind);
+      _refreshStrip(row, kind, windows);
+      // Per-input validation for inline red highlight.
+      _markWindowFieldValidity(el);
+      onEditRowChanged(row);
+    };
+    el.addEventListener('input', handler);
+    el.addEventListener('change', handler);
+  });
+}
+
+function _markWindowFieldValidity(el) {
+  const f = el.dataset.winField;
+  const v = el.value;
+  let bad = false;
+  if (f === 'start' || f === 'end') {
+    const low = String(v || '').trim().toLowerCase();
+    bad = !(low === 'sunrise' || low === 'sunset' || _TIME_RE.test(low));
+  } else if (f === 'duty_percent') {
+    const n = parseInt(v, 10);
+    bad = isNaN(n) || n < 0 || n > 100;
+  } else if (f === 'fade_ms') {
+    const n = parseInt(v, 10);
+    bad = isNaN(n) || n < 0 || n > 60000;
+  }
+  el.classList.toggle('invalid', bad);
+}
+
 function updateSlider(id, val) {
   document.getElementById(`val_${id}`).textContent = val + "%";
   const sw = document.getElementById(`sw_${id}`);
@@ -1612,23 +1973,27 @@ async function renderChannelsTab() {
   h += '<div class="sched-legend">' +
        '<span><span class="sched-legend-now"></span>Now (browser local)</span>' +
        '<span><span class="sched-legend-dash"></span>Sunrise/sunset (shown at default time)</span>' +
-       '<span>Hover a segment for details.</span>' +
+       '<span>First matching window wins on overlap — use ↑/↓ to reorder.</span>' +
        '</div>';
   for (let i = 1; i <= 8; i++) {
     const ch = channels.find(c => c.id === i) || {};
     const idx = channels.findIndex(c => c.id === i);   // for PATCH path
     h += renderChannelEditRow(i, idx, ch);
     // Seed snapshot from the loaded config so dirty tracking compares
-    // against "what's currently saved on the device".
+    // against "what's currently saved on the device". time_windows is
+    // stringified so the diff is a single string compare (arrays of
+    // dicts otherwise need deep equality).
     _setEditSnapshot('channel', i, {
       name: ch.name != null ? ch.name : `Channel ${i}`,
       enabled: ch.enabled === true,
       default_duty_percent: ch.default_duty_percent != null ? ch.default_duty_percent : 0,
+      time_windows_json: JSON.stringify(ch.time_windows || []),
     });
   }
   h += '</div>';
 
   panel.innerHTML = h;
+  _ensureTimeSuggestList();
 
   // After DOM is set, bind change listeners that toggle dirty styling.
   for (let i = 1; i <= 8; i++) bindChannelEditListeners(i);
@@ -1650,9 +2015,7 @@ function renderChannelEditRow(channelId, idx, ch) {
   h += `<div class="edit-field"><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-field="enabled"${enabled ? ' checked' : ''} /> Enabled</label></div>`;
   h += `</div>`;
   h += renderScheduleStrip(tw, 'channel');
-  if (tw.length) {
-    h += `<div class="config-readonly" style="font-size:.78em">Schedule (read-only — editor in UX-3): ${tw.map(w => `<code>${_escape(w.start)}–${_escape(w.end)} @ ${w.duty_percent}%${w.fade_ms ? ' fade ' + w.fade_ms + 'ms' : ''}</code>`).join(' · ')}</div>`;
-  }
+  h += _renderWindowEditor(tw, 'channel');
   h += `<div class="edit-row-actions" style="display:none">`;
   h += `<span class="save-status"></span>`;
   h += `<button class="btn" onclick="discardChannelEdit(${channelId})">Discard</button>`;
@@ -1665,11 +2028,14 @@ function renderChannelEditRow(channelId, idx, ch) {
 function bindChannelEditListeners(channelId) {
   const row = document.querySelector(`[data-row-kind="channel"][data-row-id="${channelId}"]`);
   if (!row) return;
-  row.querySelectorAll('input').forEach(inp => {
+  // Top-level form fields (name / default_duty_percent / enabled).
+  row.querySelectorAll('input[data-field]').forEach(inp => {
     const handler = () => onEditRowChanged(row);
     inp.addEventListener('input', handler);
     inp.addEventListener('change', handler);
   });
+  // Window-editor inputs (separate from data-field inputs).
+  _bindWindowEditorListeners(row, 'channel');
 }
 
 function isCoord(unitId) { return unitId === 0 || unitId === '0'; }
@@ -1735,7 +2101,9 @@ function onEditRowChanged(row) {
     return;
   }
 
-  // Channels and relays — flat top-level field comparison.
+  // Channels and relays — flat top-level field comparison plus a
+  // stringified-array compare for time_windows (since arrays-of-dicts
+  // need deep equality).
   let anyDirty = false;
   row.querySelectorAll('[data-field]').forEach(inp => {
     const field = inp.dataset.field;
@@ -1747,6 +2115,13 @@ function onEditRowChanged(row) {
     inp.classList.toggle('dirty', dirty);
     if (dirty) anyDirty = true;
   });
+  if (snapshot && (kind === 'channel' || kind === 'relay')) {
+    const windowsNow = _readWindowsFromRow(row, kind);
+    const nowJson = JSON.stringify(windowsNow);
+    if (nowJson !== snapshot.time_windows_json) {
+      anyDirty = true;
+    }
+  }
   const actions = row.querySelector('.edit-row-actions');
   if (actions) actions.style.display = anyDirty ? 'flex' : 'none';
   const status = row.querySelector('.save-status');
@@ -1777,13 +2152,24 @@ async function saveChannelEdit(channelId, idx) {
     return;
   }
   const existing = (cfg.led_channels || []).find(c => c.id === channelId) || {};
+  // Read the operator's time_windows from the inline editor and
+  // validate before we put a malformed value on the wire.
+  const newWindows = _readWindowsFromRow(row, 'channel');
+  const winErr = _validateAllWindows(newWindows, 'channel');
+  if (winErr) {
+    status.textContent = `Save failed: ${winErr}`;
+    status.classList.add('err');
+    const errSlot = row.querySelector('[data-sched-error]');
+    if (errSlot) { errSlot.textContent = winErr; errSlot.style.display = ''; }
+    return;
+  }
   const merged = {
     id: channelId,
     name: row.querySelector('[data-field="name"]').value,
     gpio_pin: existing.gpio_pin,
     enabled: row.querySelector('[data-field="enabled"]').checked,
     default_duty_percent: Number(row.querySelector('[data-field="default_duty_percent"]').value || 0),
-    time_windows: existing.time_windows || [],
+    time_windows: newWindows,
   };
 
   // PATCH the whole entry at `led_channels/<idx>`. The smart-dispatch
@@ -1809,7 +2195,11 @@ async function saveChannelEdit(channelId, idx) {
       name: merged.name,
       enabled: merged.enabled,
       default_duty_percent: merged.default_duty_percent,
+      time_windows_json: JSON.stringify(merged.time_windows),
     });
+    // Clear any window-editor error banner from a previous attempt.
+    const errSlot = row.querySelector('[data-sched-error]');
+    if (errSlot) { errSlot.textContent = ''; errSlot.style.display = 'none'; }
     onEditRowChanged(row);    // recompute dirty (everything matches snapshot now)
     const lbl = row.querySelector('.row-name-label');
     if (lbl) lbl.textContent = merged.name || '';
@@ -1836,6 +2226,11 @@ function discardChannelEdit(channelId) {
   row.querySelector('[data-field="name"]').value = snap.name || '';
   row.querySelector('[data-field="enabled"]').checked = !!snap.enabled;
   row.querySelector('[data-field="default_duty_percent"]').value = snap.default_duty_percent != null ? snap.default_duty_percent : 0;
+  // Restore the time_windows editor to the snapshot.
+  try {
+    const windows = JSON.parse(snap.time_windows_json || '[]');
+    _replaceEditor(row, 'channel', windows);
+  } catch (e) { /* snapshot malformed — leave editor alone */ }
   onEditRowChanged(row);
 }
 
@@ -1925,7 +2320,7 @@ async function renderRelaysTab() {
   h += '<div class="sched-legend">' +
        '<span><span class="sched-legend-now"></span>Now (browser local)</span>' +
        '<span><span class="sched-legend-dash"></span>Sunrise/sunset (shown at default time)</span>' +
-       '<span>Green = relay ON window.</span>' +
+       '<span>Green = ON window. First match wins on overlap — use ↑/↓ to reorder.</span>' +
        '</div>';
   for (let i = 1; i <= 2; i++) {
     const r = relays.find(x => x.id === i) || {};
@@ -1935,11 +2330,13 @@ async function renderRelaysTab() {
       name: r.name != null ? r.name : `Relay ${i}`,
       enabled: r.enabled === true,
       default_state: r.default_state || 'off',
+      time_windows_json: JSON.stringify(r.time_windows || []),
     });
   }
   h += '</div>';
 
   panel.innerHTML = h;
+  _ensureTimeSuggestList();
 
   for (let i = 1; i <= 2; i++) bindRelayEditListeners(i);
 }
@@ -1960,9 +2357,7 @@ function renderRelayEditRow(relayId, idx, r) {
   h += `<div class="edit-field"><label style="display:flex;align-items:center;gap:6px"><input type="checkbox" data-field="enabled"${enabled ? ' checked' : ''} /> Enabled</label></div>`;
   h += `</div>`;
   h += renderScheduleStrip(tw, 'relay');
-  if (tw.length) {
-    h += `<div class="config-readonly" style="font-size:.78em">Schedule (read-only — editor in UX-3): ${tw.map(w => `<code>${_escape(w.start)}–${_escape(w.end)} → ${_escape(w.state)}</code>`).join(' · ')}</div>`;
-  }
+  h += _renderWindowEditor(tw, 'relay');
   h += `<div class="edit-row-actions" style="display:none">`;
   h += `<span class="save-status"></span>`;
   h += `<button class="btn" onclick="discardRelayEdit(${relayId})">Discard</button>`;
@@ -1975,11 +2370,15 @@ function renderRelayEditRow(relayId, idx, r) {
 function bindRelayEditListeners(relayId) {
   const row = document.querySelector(`[data-row-kind="relay"][data-row-id="${relayId}"]`);
   if (!row) return;
-  row.querySelectorAll('input, select').forEach(inp => {
+  // Top-level form fields only (windows editor selects/inputs are
+  // bound separately so they don't double-fire and so dirty styling
+  // doesn't leak onto the per-window grid).
+  row.querySelectorAll('input[data-field], select[data-field]').forEach(inp => {
     const handler = () => onEditRowChanged(row);
     inp.addEventListener('input', handler);
     inp.addEventListener('change', handler);
   });
+  _bindWindowEditorListeners(row, 'relay');
 }
 
 async function saveRelayEdit(relayId, idx) {
@@ -1996,13 +2395,22 @@ async function saveRelayEdit(relayId, idx) {
     return;
   }
   const existing = (cfg.relays || []).find(x => x.id === relayId) || {};
+  const newWindows = _readWindowsFromRow(row, 'relay');
+  const winErr = _validateAllWindows(newWindows, 'relay');
+  if (winErr) {
+    status.textContent = `Save failed: ${winErr}`;
+    status.classList.add('err');
+    const errSlot = row.querySelector('[data-sched-error]');
+    if (errSlot) { errSlot.textContent = winErr; errSlot.style.display = ''; }
+    return;
+  }
   const merged = {
     id: relayId,
     name: row.querySelector('[data-field="name"]').value,
     gpio_pin: existing.gpio_pin,
     enabled: row.querySelector('[data-field="enabled"]').checked,
     default_state: row.querySelector('[data-field="default_state"]').value,
-    time_windows: existing.time_windows || [],
+    time_windows: newWindows,
   };
 
   try {
@@ -2021,7 +2429,10 @@ async function saveRelayEdit(relayId, idx) {
       name: merged.name,
       enabled: merged.enabled,
       default_state: merged.default_state,
+      time_windows_json: JSON.stringify(merged.time_windows),
     });
+    const errSlot = row.querySelector('[data-sched-error]');
+    if (errSlot) { errSlot.textContent = ''; errSlot.style.display = 'none'; }
     onEditRowChanged(row);
     const lbl = row.querySelector('.row-name-label');
     if (lbl) lbl.textContent = merged.name || '';
@@ -2044,6 +2455,10 @@ function discardRelayEdit(relayId) {
   row.querySelector('[data-field="name"]').value = snap.name || '';
   row.querySelector('[data-field="enabled"]').checked = !!snap.enabled;
   row.querySelector('[data-field="default_state"]').value = snap.default_state || 'off';
+  try {
+    const windows = JSON.parse(snap.time_windows_json || '[]');
+    _replaceEditor(row, 'relay', windows);
+  } catch (e) { /* snapshot malformed — leave editor alone */ }
   onEditRowChanged(row);
 }
 
