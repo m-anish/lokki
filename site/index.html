@@ -41,6 +41,7 @@
     <nav class="lk-nav" aria-label="Primary">
       <a href="#how">How it works</a>
       <a href="#instrument">The unit</a>
+      <a href="#compare">Compare</a>
       <a href="https://github.com/m-anish/lokki" rel="noopener">GitHub <span aria-hidden="true">↗</span></a>
     </nav>
   </div>
@@ -719,6 +720,164 @@
         Norse vowel and a Finnish accent.
       </p>
     </div>
+  </div>
+</section>
+
+
+<!-- ============ HOW IT COMPARES ============ -->
+<!-- Stays in the site's register: no brand names, no ✅/❌ shouting.
+     Competitors are shown as honest category buckets; the marks are
+     the site's own dot language (● full · ◐ partial · – none), with
+     Lokki's column washed in copper. The table scrolls horizontally
+     on narrow screens rather than collapsing. -->
+<section class="lk-bay lk-bay--rule" id="compare">
+  <div class="lk-bay-inner">
+
+    <div class="lk-mech-header lk-reveal">
+      <span class="lk-label">How it compares</span>
+      <p class="lk-mech-figure">
+        The only one that is <b>long-range</b>, <b>gateway-free</b>, and
+        <b>fully local</b> at once.
+        <span class="lk-mech-sub">No cloud · no subscription · no app — ever.</span>
+      </p>
+    </div>
+
+    <!-- three differentiators, reusing the hardware-card primitive -->
+    <div class="lk-hw-grid lk-reveal" style="margin-bottom: var(--breath-6);">
+
+      <article class="lk-card">
+        <svg class="lk-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+          <line x1="12" y1="3"  x2="12" y2="20"/>
+          <line x1="12" y1="3"  x2="9.5" y2="1.5"/>
+          <line x1="12" y1="3"  x2="14.5" y2="1.5"/>
+          <path d="M5 13 Q3 14 3.5 17.5"/>
+          <path d="M8 14.5 Q7 15 7 17.5"/>
+          <path d="M19 13 Q21 14 20.5 17.5"/>
+          <path d="M16 14.5 Q17 15 17 17.5"/>
+        </svg>
+        <h3 class="lk-card-name">Long-range by radio</h3>
+        <p class="lk-card-spec">868 MHz LoRa · ~1 km · no gateway</p>
+        <p class="lk-card-note">Reaches across a campus on its own sub-GHz link. No mesh hops to babysit, no gateway to buy, no WiFi between units.</p>
+      </article>
+
+      <article class="lk-card">
+        <svg class="lk-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+          <line x1="2.5"  y1="20" x2="21.5" y2="20"/>
+          <line x1="3"    y1="20" x2="3"    y2="11"/>
+          <line x1="5.6"  y1="20" x2="5.6"  y2="11"/>
+          <line x1="8.1"  y1="20" x2="8.1"  y2="11"/>
+          <line x1="10.7" y1="20" x2="10.7" y2="11"/>
+          <line x1="13.3" y1="20" x2="13.3" y2="11"/>
+          <line x1="15.9" y1="20" x2="15.9" y2="11"/>
+          <line x1="18.4" y1="20" x2="18.4" y2="11"/>
+          <line x1="21"   y1="20" x2="21"   y2="11"/>
+          <circle cx="3"    cy="9.5" r="1.1" fill="currentColor" stroke="none"/>
+          <circle cx="5.6"  cy="9.5" r="1.1" fill="currentColor" stroke="none"/>
+          <circle cx="8.1"  cy="9.5" r="1.1" fill="currentColor" stroke="none"/>
+          <circle cx="10.7" cy="9.5" r="1.1" fill="currentColor" stroke="none"/>
+          <circle cx="13.3" cy="9.5" r="1.1" fill="currentColor" stroke="none"/>
+          <circle cx="15.9" cy="9.5" r="1.1" fill="currentColor" stroke="none"/>
+          <circle cx="18.4" cy="9.5" r="1.1" fill="currentColor" stroke="none"/>
+          <circle cx="21"   cy="9.5" r="1.1" fill="currentColor" stroke="none"/>
+        </svg>
+        <h3 class="lk-card-name">Eight channels per box</h3>
+        <p class="lk-card-spec">8 channels · up to 56 points</p>
+        <p class="lk-card-note">One unit dims up to fifty-six light points across eight constant-current channels — the lowest cost per controlled point of anything here.</p>
+      </article>
+
+      <article class="lk-card">
+        <!-- A cloud with a quiet diagonal stroke through it: "no cloud". -->
+        <svg class="lk-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 17 h8.5 a3.2 3.2 0 0 0 .3 -6.4 A4.6 4.6 0 0 0 8.1 9 A3.8 3.8 0 0 0 8 17 Z"/>
+          <line x1="4.5" y1="20" x2="19.5" y2="4.5"/>
+        </svg>
+        <h3 class="lk-card-name">No cloud, ever</h3>
+        <p class="lk-card-spec">no fee · no app · no broker</p>
+        <p class="lk-card-note">Nothing to subscribe to and nothing to install. The lights keep their schedule whether or not the internet — or even the coordinator — is there.</p>
+      </article>
+
+    </div>
+
+    <!-- the quiet comparison matrix -->
+    <div class="lk-cmp lk-reveal">
+      <table class="lk-cmp-table">
+        <thead>
+          <tr>
+            <th scope="col"></th>
+            <th scope="col" class="lk-cmp-lok lk-cmp-head-lok">Lokki</th>
+            <th scope="col">Wireless mesh</th>
+            <th scope="col">Wired bus</th>
+            <th scope="col">Room GRMS</th>
+            <th scope="col">DIY / hub</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Works with no cloud</th>
+            <td class="lk-cmp-lok"><span class="lk-cmp-mark">●</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-part">◐</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-yes">●</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-no">–</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-yes">●</span></td>
+          </tr>
+          <tr>
+            <th scope="row">No subscription, ever</th>
+            <td class="lk-cmp-lok"><span class="lk-cmp-mark">●</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-part">◐</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-yes">●</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-part">◐</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-yes">●</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Long-range wireless (~1 km)</th>
+            <td class="lk-cmp-lok"><span class="lk-cmp-mark">●</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-no">–</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-no">–</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-no">–</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-no">–</span></td>
+          </tr>
+          <tr>
+            <th scope="row">No paid hub or gateway</th>
+            <td class="lk-cmp-lok"><span class="lk-cmp-mark">●</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-part">◐</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-no">–</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-no">–</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-part">◐</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Keeps its schedule if the network drops</th>
+            <td class="lk-cmp-lok"><span class="lk-cmp-mark">●</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-part">◐</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-yes">●</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-no">–</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-part">◐</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Dimming + motion + light, built in</th>
+            <td class="lk-cmp-lok"><span class="lk-cmp-mark">●</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-no">–</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-part">◐</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-part">◐</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-no">–</span></td>
+          </tr>
+          <tr>
+            <th scope="row">Open source, open hardware</th>
+            <td class="lk-cmp-lok"><span class="lk-cmp-mark">●</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-no">–</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-part">◐</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-no">–</span></td>
+            <td><span class="lk-cmp-mark lk-cmp-yes">●</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="lk-cmp-legend">● full <span class="lk-cmp-legend-sep">·</span> ◐ partial <span class="lk-cmp-legend-sep">·</span> – none</p>
+      <p class="lk-cmp-foot">
+        The lowest cost per controlled light point — and nothing to pay,
+        month after month, for the privilege of keeping your own lights on.
+      </p>
+    </div>
+
   </div>
 </section>
 
