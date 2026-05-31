@@ -980,6 +980,110 @@ body.is-bar-visible .lk-bar {
 }
 
 
+/* ---------- how it compares ----------
+   A quiet matrix. No brand names (honest category buckets), and the
+   marks reuse the site's own dot language — ● full, ◐ partial, – none
+   — graded by colour from paper (bright) through ash to silver (dim).
+   Lokki's column is washed in copper and its marks are copper. On
+   narrow screens the table scrolls horizontally rather than reflow. */
+
+.lk-cmp {
+  margin-top: var(--breath-3);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.lk-cmp-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 600px;                 /* below this, the wrapper scrolls */
+}
+.lk-cmp-table th,
+.lk-cmp-table td {
+  padding: var(--breath-3) var(--breath-3);
+  text-align: center;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--shadow);
+}
+
+/* column headers — mono call-numbers, like the rest of the site */
+.lk-cmp-table thead th {
+  font-family: var(--type-glyph);
+  font-size: 10.5px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--silver);
+  font-weight: 400;
+  border-bottom: 1px solid var(--bone);
+  padding-bottom: var(--breath-3);
+}
+
+/* row labels (first column) — body type, paper, left-aligned */
+.lk-cmp-table tbody th {
+  text-align: left;
+  font-family: var(--type-body);
+  font-size: 14.5px;
+  font-weight: 400;
+  color: var(--paper);
+  line-height: 1.4;
+}
+
+/* Pin the row-label column so labels stay readable while the table
+   scrolls horizontally on narrow screens. The opaque ink background
+   lets the data columns slide cleanly underneath; a hairline on the
+   right edge signals the column is held. */
+.lk-cmp-table th:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--ink);
+  border-right: 1px solid var(--shadow);
+  z-index: 2;
+}
+.lk-cmp-table thead th:first-child { z-index: 3; }
+
+.lk-cmp-table tbody tr:last-child th,
+.lk-cmp-table tbody tr:last-child td { border-bottom: none; }
+
+/* the Lokki column — copper wash + copper marks */
+.lk-cmp-lok { background: var(--copper-soft); }
+.lk-cmp-lok .lk-cmp-mark { color: var(--copper); }
+.lk-cmp-head-lok {
+  color: var(--copper) !important;
+  font-family: var(--type-display) !important;
+  font-size: 15px !important;
+  font-weight: 600;
+  font-variation-settings: "opsz" 36, "SOFT" 30;
+  letter-spacing: -0.01em;
+  text-transform: none !important;
+}
+
+/* marks — a brightness gradient: yes (paper) → partial (ash) → no (silver) */
+.lk-cmp-mark { font-size: 14px; line-height: 1; display: inline-block; }
+.lk-cmp-yes  { color: var(--paper); }
+.lk-cmp-part { color: var(--ash); }
+.lk-cmp-no   { color: var(--silver); }
+
+.lk-cmp-legend {
+  font-family: var(--type-glyph);
+  font-size: 10.5px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--silver);
+  margin: var(--breath-4) 0 0;
+}
+.lk-cmp-legend-sep { margin: 0 var(--breath-2); color: var(--bone); }
+
+.lk-cmp-foot {
+  font-family: var(--type-display);
+  font-style: italic;
+  font-variation-settings: "opsz" 48, "SOFT" 70;
+  font-size: clamp(17px, 1.8vw, 21px);
+  line-height: 1.45;
+  color: var(--ash);
+  max-width: 46ch;
+  margin: var(--breath-4) 0 0;
+}
+
+
 /* ---------- kin (family) ---------- */
 
 .lk-kin {
