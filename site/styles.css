@@ -987,6 +987,14 @@ body.is-bar-visible .lk-bar {
    Lokki's column is washed in copper and its marks are copper. On
    narrow screens the table scrolls horizontally rather than reflow. */
 
+/* Section headline — keep the emphasised words italic (the upright-bold
+   of .lk-mech-figure b reads as a clash mid-sentence; it only works for
+   lone numerals). We harmonise by lifting colour + weight instead. */
+.lk-cmp-figure b {
+  font-style: italic;
+  font-variation-settings: "opsz" 96, "SOFT" 80;
+}
+
 .lk-cmp {
   margin-top: var(--breath-3);
   overflow-x: auto;
@@ -1040,6 +1048,21 @@ body.is-bar-visible .lk-bar {
 }
 .lk-cmp-table thead th:first-child { z-index: 3; }
 
+/* "For example" row — names each generic bucket to a real product so
+   the comparison stays concrete. Quiet by default; copper on hover. */
+.lk-cmp-eg-row th,
+.lk-cmp-eg-row td { padding-top: var(--breath-4); }
+.lk-cmp-eg {
+  font-family: var(--type-glyph);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--ash);
+  border-bottom: none;
+}
+a.lk-cmp-eg { color: var(--ash); border-bottom: 1px solid var(--copper-soft); }
+a.lk-cmp-eg:hover { color: var(--copper); border-color: var(--copper); }
+.lk-cmp-lok .lk-cmp-eg { color: var(--copper); font-style: italic; letter-spacing: 0; }
+
 .lk-cmp-table tbody tr:last-child th,
 .lk-cmp-table tbody tr:last-child td { border-bottom: none; }
 
@@ -1081,6 +1104,22 @@ body.is-bar-visible .lk-bar {
   color: var(--ash);
   max-width: 46ch;
   margin: var(--breath-4) 0 0;
+}
+
+/* Narrow screens: the pinned label column was eating most of the
+   viewport, leaving only Lokki visible. Cap its width and tighten
+   padding so Lokki plus a data column or two read at a glance; long
+   labels wrap within the capped column. */
+@media (max-width: 640px) {
+  .lk-cmp-table { min-width: 520px; }
+  .lk-cmp-table th:first-child {
+    width: 38vw;
+    max-width: 168px;
+    white-space: normal;
+  }
+  .lk-cmp-table th,
+  .lk-cmp-table td { padding: var(--breath-3) var(--breath-2); }
+  .lk-cmp-table tbody th { font-size: 13.5px; }
 }
 
 
