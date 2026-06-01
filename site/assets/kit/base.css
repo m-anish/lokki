@@ -1,0 +1,116 @@
+/* ==========================================================================
+   STARSTUCK LAB KIT — SHARED PRIMITIVES + PARTIALS
+   --------------------------------------------------------------------------
+   Consumes the --sl-* token contract (see tokens.css). Never hardcodes brand
+   colors or fonts; every value resolves through a token (with a safe fallback).
+
+   Phase 1 scope — the high-value / low-risk shared pieces only:
+     · .sl-wrap     container
+     · .sl-kicker   eyebrow/label
+     · .sl-link     accent link
+     · .sl-family   "Part of starstucklab" band
+     · .sl-footer   build + family columns + signoff
+
+   Per-spoke identity (hero, topbar, band quote, motion gimmicks) is
+   intentionally NOT here — keep that in each spoke's own stylesheet.
+   ========================================================================== */
+
+/* ── Container ── */
+.sl-wrap {
+  width: 100%;
+  max-width: var(--sl-maxw, 1180px);
+  margin-inline: auto;
+  padding-inline: 28px;
+}
+
+/* ── Eyebrow / kicker — mono, accent, wide tracking ── */
+.sl-kicker {
+  display: inline-block;
+  font-family: var(--sl-font-mono, ui-monospace, Menlo, monospace);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--sl-accent, #c9b97a);
+  margin: 0 0 18px;
+}
+
+/* ── Accent link ── */
+.sl-link {
+  color: var(--sl-accent, #c9b97a);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--sl-accent, #c9b97a) 40%, transparent);
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.sl-link:hover { border-bottom-color: var(--sl-accent, #c9b97a); }
+
+/* ── Family band: "Part of starstucklab" ── */
+.sl-family h2,
+.sl-family h3 {
+  font-family: var(--sl-font-display, Georgia, serif);
+  font-weight: 600;
+  font-size: clamp(26px, 3.4vw, 38px);
+  line-height: 1.15;
+  color: var(--sl-text, #e8e6e1);
+  margin: 0 0 18px;
+}
+.sl-family p {
+  font-family: var(--sl-font-body, system-ui, sans-serif);
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--sl-text-dim, #8a8780);
+  margin: 0 0 14px;
+  max-width: 46ch;
+}
+
+/* ── Footer: build + family columns + signoff ── */
+.sl-footer {
+  border-top: 1px solid var(--sl-border, #1f1f23);
+  padding: 64px 0 84px;
+}
+.sl-footer-cols {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 60px;
+}
+.sl-footer h4 {
+  font-family: var(--sl-font-mono, ui-monospace, Menlo, monospace);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--sl-text-mute, #5a5854);
+  margin: 0 0 12px;
+}
+.sl-footer p {
+  font-family: var(--sl-font-body, system-ui, sans-serif);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--sl-text-dim, #8a8780);
+  margin: 0;
+}
+.sl-footer a {
+  color: var(--sl-text, #e8e6e1);
+  text-decoration: none;
+  border-bottom: 1px solid var(--sl-border, #1f1f23);
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.sl-footer a:hover {
+  border-bottom-color: var(--sl-accent, #c9b97a);
+  color: var(--sl-accent, #c9b97a);
+}
+
+.sl-signoff {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 56px;
+  font-family: var(--sl-font-mono, ui-monospace, Menlo, monospace);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sl-text-mute, #5a5854);
+}
+
+@media (max-width: 800px) {
+  .sl-footer-cols { grid-template-columns: 1fr; gap: 36px; }
+}
