@@ -1,3 +1,19 @@
+/* Starstuck Lab kit — lokki theme overrides */
+:root {
+  --sl-bg:        #0d0e10;
+  --sl-surface:   #15171a;
+  --sl-border:    #181918;
+  --sl-text:      #ece9e0;
+  --sl-text-dim:  #8e8d88;
+  --sl-text-mute: #5f5e5a;
+  --sl-accent:    #c66a44;
+  --sl-accent-2:  #3da8a8;
+  --sl-font-display: 'Fraunces', Georgia, serif;
+  --sl-font-body:    'Manrope', system-ui, sans-serif;
+  --sl-font-mono:    'Space Mono', ui-monospace, Menlo, monospace;
+  --sl-maxw:      1080px;
+}
+
 /* ============================================================
    lokki — marketing site
    ----------------------------------------------------------

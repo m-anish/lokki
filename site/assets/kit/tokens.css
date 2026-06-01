@@ -1,0 +1,33 @@
+/* ==========================================================================
+   STARSTUCK LAB KIT — THEME TOKEN CONTRACT (defaults)
+   --------------------------------------------------------------------------
+   The ~12 variables every spoke may override. base.css consumes ONLY these
+   tokens — never raw colors or font names. A spoke sets its own values in its
+   stylesheet (loaded AFTER this file), and base.css picks them up.
+
+   These defaults are the neutral "lab" look (starlight gold on near-black), so
+   an un-themed spoke still reads as Starstuck Lab.
+   ========================================================================== */
+:root {
+  /* ── Surfaces ── */
+  --sl-bg:        #0b0b0d;   /* page background */
+  --sl-surface:   #131316;   /* elevated surface / card */
+  --sl-border:    #1f1f23;   /* subtle rule / border */
+
+  /* ── Text ── */
+  --sl-text:      #e8e6e1;   /* primary body text */
+  --sl-text-dim:  #8a8780;   /* secondary */
+  --sl-text-mute: #5a5854;   /* tertiary / labels */
+
+  /* ── Accents ── */
+  --sl-accent:    #c9b97a;   /* primary — links, kickers, active */
+  --sl-accent-2:  #6ec1e4;   /* secondary — occasional UI */
+
+  /* ── Type ── */
+  --sl-font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --sl-font-body:    system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --sl-font-mono:    'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+  /* ── Layout ── */
+  --sl-maxw:      1180px;    /* container max-width */
+}
