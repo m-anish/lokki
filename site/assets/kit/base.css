@@ -114,3 +114,39 @@
 @media (max-width: 800px) {
   .sl-footer-cols { grid-template-columns: 1fr; gap: 36px; }
 }
+
+/* ── Support / donate ── house-styled pills, tinted with the spoke's accent ── */
+.sl-support {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: var(--space-5, 1.25rem) 0;
+}
+
+.sl-support-note {
+  font-family: var(--sl-font-body, system-ui, sans-serif);
+  font-size: 14px;
+  font-style: italic;
+  color: var(--sl-text-dim, #8a8780);
+}
+
+.sl-support a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border: 1px solid color-mix(in srgb, var(--sl-accent, #c9b97a) 45%, transparent);
+  border-radius: 9999px;
+  font-family: var(--sl-font-mono, ui-monospace, Menlo, monospace);
+  font-size: 13px;
+  color: var(--sl-accent, #c9b97a);
+  text-decoration: none;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.sl-support a:hover {
+  background: var(--sl-accent, #c9b97a);
+  color: #0c0c0e;
+  border-color: var(--sl-accent, #c9b97a);
+}
