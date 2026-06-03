@@ -264,13 +264,18 @@ body.is-bar-visible .lk-bar {
     radial-gradient(ellipse 50% 20% at 70% 0%,
       var(--copper-soft) 0%,
       rgba(0,0,0,0) 70%);
-  background-size: 200% 100%;
-  animation: lk-aurora-drift var(--aurora-cycle) ease-in-out infinite alternate;
   opacity: 0.55;
+  /* Drift via transform, not background-position. background-position is a
+     paint-only property, so Blink (Chrome/Brave) repaints this full-viewport
+     gradient EVERY frame, forever — even while idle — which drags the whole
+     page down on Intel Macs. WebKit/Safari hide it, hence "fine on Safari /
+     iPhone". transform is GPU-composited: the same gentle drift, zero repaint. */
+  will-change: transform;
+  animation: lk-aurora-drift var(--aurora-cycle) ease-in-out infinite alternate;
 }
 @keyframes lk-aurora-drift {
-  0%   { background-position:   0% 0%, 100% 0%; }
-  100% { background-position: 100% 0%,   0% 0%; }
+  0%   { transform: translate3d(-4%, 0, 0); }
+  100% { transform: translate3d( 4%, 0, 0); }
 }
 
 
@@ -670,6 +675,12 @@ body.is-bar-visible .lk-bar {
   transform-origin: 0 0;
   transition: transform 760ms cubic-bezier(.22,.61,.36,1);
   transform: translate(0, 0) scale(1);  /* default = fleet view */
+  /* Promote the camera to its own layer so Blink (Chrome/Brave) GPU-transforms
+     a rasterised snapshot of the scene instead of re-rasterising the whole
+     vector tree every frame of the 760ms zoom. Without this, Chromium repaints
+     the entire SVG (at up to 2× detail) each frame — the "sluggish" camera move.
+     WebKit/Safari already composite SVG transforms, which is why it's smooth there. */
+  will-change: transform;
 }
 
 /* Camera positions per step. Derived from focus point (cx, cy):
@@ -688,9 +699,11 @@ body.is-bar-visible .lk-bar {
    tx = 600 - 859*1.9, ty = 400 - 335*1.9. */
 .lk-scrolly[data-step="3"] .lk-cam {
   transform: translate(-1032px, -237px) scale(1.9);
+  transition-duration: 480ms;   /* snappier arrival on the last two steps */
 }
 .lk-scrolly[data-step="4"] .lk-cam {
   transform: translate(0, 0) scale(1.0);
+  transition-duration: 480ms;
 }
 
 /* === the SVG primitives === */
@@ -704,7 +717,10 @@ body.is-bar-visible .lk-bar {
 /* the coord ring breathes (same 10s cycle as the brand glyph) */
 .lk-cam-coord-ring {
   animation: lk-weave-coord-pulse var(--breath) ease-in-out infinite;
-  transform-origin: 600px 400px;
+  /* fill-box + center keeps the scale pulse centred on the ring itself,
+     independent of the SVG coordinate system. */
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 /* === ability icons (the orbit "ports") === */
@@ -785,23 +801,29 @@ body.is-bar-visible .lk-bar {
 .lk-scrolly[data-step="4"] .lk-cam-link { opacity: 0.55; }
 .lk-scrolly[data-step="4"] .lk-cam-leaf { opacity: 1; }
 
-/* leaves: a soft round-robin highlight on fleet step */
+/* leaves: a one-time power-up wave as the fleet completes, then static.
+   Was infinite (var(--breath)*1.4 = 14s) — a barely-visible crawl that kept
+   the SVG repainting forever and made this step feel sluggish in Chrome/Brave.
+   Now it plays a brisk wave on arrival (the nth-of-type delays stagger it),
+   then settles to idle. */
 .lk-scrolly[data-step="4"] .lk-cam-leaf {
-  animation: lk-weave-leaf-step calc(var(--breath) * 1.4) ease-in-out infinite;
+  animation: lk-weave-leaf-step 0.9s ease-in-out 1;
   transform-origin: center;
 }
-.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(1) { animation-delay: 0.0s; }
-.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(2) { animation-delay: 0.5s; }
-.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(3) { animation-delay: 1.0s; }
-.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(4) { animation-delay: 1.5s; }
-.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(5) { animation-delay: 2.0s; }
-.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(6) { animation-delay: 2.5s; }
-.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(7) { animation-delay: 3.0s; }
-.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(8) { animation-delay: 3.5s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(1) { animation-delay: 0.00s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(2) { animation-delay: 0.10s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(3) { animation-delay: 0.20s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(4) { animation-delay: 0.30s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(5) { animation-delay: 0.40s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(6) { animation-delay: 0.50s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(7) { animation-delay: 0.60s; }
+.lk-scrolly[data-step="4"] .lk-cam-leaf:nth-of-type(8) { animation-delay: 0.70s; }
 
-/* link flow animation kicks in on the fleet step */
+/* link flow: a brief flow as the links connect, then static (idle). Was
+   infinite stroke-dashoffset (paint-only → endless repaint of 8 long lines
+   in Blink, the main drag on this step). Now it settles after a short pulse. */
 .lk-scrolly[data-step="4"] .lk-cam-link {
-  animation: lk-weave-link-flow calc(var(--breath) * 1.6) linear infinite;
+  animation: lk-weave-link-flow 0.9s linear 2;
 }
 
 /* === the narrator (right) === */
@@ -1287,7 +1309,11 @@ a.lk-cmp-eg:hover { color: var(--copper); border-color: var(--copper); }
   10%           { fill: var(--aurora); }
 }
 
+/* Pulse via transform (scale), not stroke-width: stroke-width is paint-only,
+   so animating it repaints the SVG every frame *while the camera is zooming*
+   (the ring is visible on steps 1–3), defeating the composited camera layer.
+   A subtle scale reads the same and stays on the compositor. */
 @keyframes lk-weave-coord-pulse {
-  0%, 100% { stroke-width: 2.0; opacity: 0.78; }
-  40%      { stroke-width: 2.8; opacity: 1.00; }
+  0%, 100% { transform: scale(1);    opacity: 0.78; }
+  40%      { transform: scale(1.06); opacity: 1.00; }
 }
