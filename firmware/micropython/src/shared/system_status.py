@@ -26,8 +26,18 @@ class SystemStatus:
     """Runtime status for this unit — uptime, connections, output state, errors."""
 
     def __init__(self):
-        # Use ticks_ms for uptime - it's monotonic and not affected by time sync
-        self._boot_ticks = time.ticks_ms()
+        # Uptime is tracked by accumulating ticks_ms deltas into an
+        # unbounded Python int (_uptime_ms). We deliberately do NOT do a
+        # single ticks_diff(now, boot):
+        #   - ticks_ms() wraps at TICKS_PERIOD (2**30 ms ~= 12.43 days).
+        #   - ticks_diff() is only valid for intervals under TICKS_PERIOD/2
+        #     (2**29 ms ~= 6.21 days); past that it returns a NEGATIVE value.
+        # A device left running for a week would therefore report negative
+        # uptime. Instead we _accrue() small deltas (each far under the
+        # half-period; get_uptime is called every heartbeat) and keep a
+        # running total that never overflows and is immune to time sync.
+        self._last_ticks = time.ticks_ms()
+        self._uptime_ms = 0
         self.wifi_connected = False
         self.lora_connected = False
         self.web_server_running = False
@@ -77,10 +87,19 @@ class SystemStatus:
         self.error_count += 1
         self.last_error = {"message": msg, "timestamp": time.time()}
 
+    def _accrue(self):
+        # Fold the ticks since the last sample into the running total.
+        # Each delta is tiny (get_uptime is polled frequently), so it never
+        # approaches the ticks_diff half-period limit. Must run at least
+        # once per ~6 days; the heartbeat cadence guarantees that.
+        now = time.ticks_ms()
+        self._uptime_ms += time.ticks_diff(now, self._last_ticks)
+        self._last_ticks = now
+
     def get_uptime(self):
-        # Use ticks_diff for accurate uptime regardless of time sync
-        uptime_ms = time.ticks_diff(time.ticks_ms(), self._boot_ticks)
-        return uptime_ms // 1000  # Convert to seconds
+        # Monotonic, wrap-safe, and unaffected by time sync. See __init__.
+        self._accrue()
+        return self._uptime_ms // 1000  # Convert to seconds
 
     def get_uptime_string(self):
         s = self.get_uptime()
