@@ -138,6 +138,7 @@ To gate the dashboard behind a password, set `dashboard.auth_password` (and opti
 
 - Confirm `enabled: true` in the PIR config for that sensor
 - Check the `gpio_pin` matches the physical wiring
+- On the HC-SR501, set the mode jumper to **`H` (repeatable)** and turn the time-delay pot to **minimum** — the firmware, not the module, owns the hold time (via `vacancy_timeout_s`). `L` mode leaves the sensor briefly blind after each trigger; a high pot setting adds latency to vacancy detection. See [firmware-modules.md](firmware-modules.md#hardwarepir_managerpy-new) for the reasoning.
 - The `on_motion` action must be set — `revert_to_schedule` is the default (does nothing if already on schedule)
 - `vacancy_timeout_s` — confirm it's not set to 0, which would immediately revert back
 

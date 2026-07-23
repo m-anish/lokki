@@ -272,6 +272,24 @@ MOTION ──(no motion for vacancy_timeout_s)──► VACANT
 Debounce: require stable HIGH for 500ms before declaring motion.  
 Vacancy: started from last motion pulse, reset on each new pulse.
 
+**HC-SR501 jumper — use `H` (repeatable / retriggerable), pot at minimum.**
+The firmware owns the hold timing: `run()` refreshes `_last_motion_ms` on
+*every* HIGH sample and only declares vacancy once the line has been LOW for
+`vacancy_timeout_s`. That is a software retrigger, so the module should hand
+us a clean, continuous "occupied" level while a person is present:
+
+- **`H` (repeatable)** keeps the output HIGH the whole time motion continues,
+  which is exactly what the software hold consumes. **Use this.**
+- **`L` (non-repeatable)** forces the output LOW after its own delay even while
+  someone is still there, then goes deaf for a ~2.5 s blocking window — the
+  firmware only sees leading edges and the sensor is periodically blind. No
+  benefit here; don't use it.
+
+Set the module's **time-delay pot to its minimum (~2–3 s)** so the module's own
+delay doesn't stack on top of `vacancy_timeout_s` and add latency to vacancy
+detection. The real "stay on after last motion" duration is `vacancy_timeout_s`
+in config, not the pot. (Sensitivity/range pot is a separate, coverage concern.)
+
 **Public interface:**
 ```python
 pir_manager.on_motion(pir_id, callback)    # register callback
