@@ -39,6 +39,9 @@ sun_times.json
 *.tmp
 *.temp
 
+# macOS Finder metadata
+.DS_Store
+
 # ------------------------------------
 # KiCad generated/intermediate files
 # (scoped to hardware/kicad/ only)
